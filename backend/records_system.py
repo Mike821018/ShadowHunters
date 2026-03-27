@@ -1,0 +1,681 @@
+"""
+Game Records System - In-Memory Storage Implementation
+Provides data structures and methods for storing game statistics and player records.
+"""
+
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Any
+from datetime import datetime
+import uuid
+import csv
+import json
+import hashlib
+import base64
+from collections import Counter
+
+
+@dataclass
+class PlayerRecord:
+    """Single game player record"""
+    player_id: str
+    player_name: str
+    character_name: str
+    character_camp: str  # 'Hunter', 'Shadow', 'Civilian'
+    is_alive: bool
+    final_hp: int
+    damage_taken: int
+    cards_played: int
+    trip_display: str = ''
+    account_password_hash: str = ''
+    cards_equipped: List[str] = field(default_factory=list)
+
+
+@dataclass
+class TripRegistration:
+    """Registered TRIP identity"""
+    trip: str
+    password_hash: str
+    created_date: str
+    updated_date: str = ''
+
+
+@dataclass
+class TripRatingRecord:
+    """Per-game trip rating record"""
+    record_id: str
+    room_id: int
+    source_trip: str
+    target_trip: str
+    rating: int
+    comment: str = ''
+    created_date: str = ''
+
+
+@dataclass
+class GameRecord:
+    """Single game record"""
+    record_id: str
+    room_id: int
+    game_date: str
+    game_duration_seconds: int
+    game_settings: Dict[str, Any]
+    players: List[PlayerRecord]
+    winner_camp: str
+    winner_players: List[str] = field(default_factory=list)
+    end_reason: str = ''
+    total_actions: int = 0
+    total_damage_dealt: int = 0
+    total_healing: int = 0
+    kills_count: Dict[str, int] = field(default_factory=dict)
+    game_log: List[Dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class CharacterStats:
+    """Character-specific statistics"""
+    character_name: str
+    games_played: int = 0
+    wins: int = 0
+    losses: int = 0
+    total_damage_dealt: int = 0
+    kills: int = 0
+    
+    @property
+    def win_rate(self) -> float:
+        return self.wins / self.games_played if self.games_played > 0 else 0.0
+    
+    @property
+    def average_damage_per_game(self) -> float:
+        return self.total_damage_dealt / self.games_played if self.games_played > 0 else 0.0
+
+
+@dataclass
+class CampStats:
+    """Camp-specific statistics"""
+    camp_name: str
+    games_played: int = 0
+    wins: int = 0
+    
+    @property
+    def win_rate(self) -> float:
+        return self.wins / self.games_played if self.games_played > 0 else 0.0
+
+
+@dataclass
+class PlayerStats:
+    """Player cumulative statistics"""
+    account: str
+    trip_display: str = ''
+    total_games: int = 0
+    wins: int = 0
+    losses: int = 0
+    draws: int = 0
+    
+    character_stats: Dict[str, CharacterStats] = field(default_factory=dict)
+    camp_stats: Dict[str, CampStats] = field(default_factory=dict)
+    
+    cards_used: Dict[str, int] = field(default_factory=dict)
+    cards_equipped: Dict[str, int] = field(default_factory=dict)
+    
+    average_duration_per_game: float = 0.0
+    last_played: str = ''
+    created_date: str = ''
+    
+    skill_level: str = 'Beginner'  # 'Beginner', 'Intermediate', 'Advanced', 'Expert'
+    
+    @property
+    def win_rate(self) -> float:
+        return self.wins / self.total_games if self.total_games > 0 else 0.0
+
+
+@dataclass
+class LeaderboardEntry:
+    """Leaderboard entry"""
+    rank: int
+    player_id: str
+    player_name: str
+    sorting_key: str  # 'win_rate', 'total_wins', 'games_played'
+    value: float
+    trend: str = 'stable'  # 'up', 'down', 'stable'
+    last_update: str = ''
+
+
+@dataclass
+class RoomGameHistory:
+    """Room game history"""
+    room_id: int
+    room_name: str = ''
+    room_created_date: str = ''
+    games: List[GameRecord] = field(default_factory=list)
+    
+    @property
+    def total_games(self) -> int:
+        return len(self.games)
+
+
+class GameRecordStore:
+    """In-memory game record storage system"""
+    
+    def __init__(self):
+        self.game_records: Dict[str, GameRecord] = {}
+        self.player_stats: Dict[str, PlayerStats] = {}
+        self.room_histories: Dict[int, RoomGameHistory] = {}
+        self.trip_registrations: Dict[str, TripRegistration] = {}
+        self.rating_records: List[TripRatingRecord] = []
+        self.leaderboards: Dict[str, List[LeaderboardEntry]] = {
+            'global': [],
+            'by_room': {},
+        }
+
+    def hash_trip_password(self, password: str) -> str:
+        return hashlib.sha256(str(password or '').encode('utf-8')).hexdigest()
+
+    def hash_account_password(self, account: str, password: str) -> str:
+        raw = f"{str(account or '').strip()}\0{str(password or '')}"
+        return hashlib.sha256(raw.encode('utf-8')).hexdigest()
+
+    def has_trip_registration(self, trip: str) -> bool:
+        trip_key = str(trip or '').strip()
+        if not trip_key:
+            return False
+        if trip_key in self.trip_registrations:
+            return True
+        return any(str(stats.trip_display or '').strip() == trip_key for stats in self.player_stats.values())
+
+    def has_explicit_trip_registration(self, trip: str) -> bool:
+        """Return True only when TRIP exists in registration table (supports raw/encrypted lookup)."""
+        trip_key = str(trip or '').strip()
+        if not trip_key:
+            return False
+        if trip_key in self.trip_registrations:
+            return True
+
+        # Allow callers passing encrypted display TRIP by checking registered raw TRIPs.
+        for registered_trip in self.trip_registrations.keys():
+            raw = str(registered_trip or '').strip()
+            if not raw:
+                continue
+            sha1_hex = hashlib.sha1(raw.encode('utf-8')).hexdigest()
+            encoded = base64.b64encode(sha1_hex.encode('ascii')).decode('ascii')
+            if encoded[1:9] == trip_key:
+                return True
+        return False
+
+    def verify_trip_password(self, trip: str, password: str) -> bool:
+        trip_key = str(trip or '').strip()
+        registration = self.trip_registrations.get(trip_key)
+        if not registration:
+            return False
+        return registration.password_hash == self.hash_trip_password(password)
+
+    def register_trip(self, trip: str, password: str) -> str:
+        trip_key = str(trip or '').strip()
+        if not trip_key:
+            raise ValueError('TRIP is required')
+        if not str(password or ''):
+            raise ValueError('password is required')
+
+        password_hash = self.hash_trip_password(password)
+        existing = self.trip_registrations.get(trip_key)
+        now = datetime.now().isoformat()
+        if existing:
+            if existing.password_hash != password_hash:
+                raise ValueError('TRIP password mismatch')
+            existing.updated_date = now
+            return 'verified'
+
+        self.trip_registrations[trip_key] = TripRegistration(
+            trip=trip_key,
+            password_hash=password_hash,
+            created_date=now,
+            updated_date=now,
+        )
+        return 'registered'
+
+    def change_trip_registration(self, old_trip: str, old_password: str, new_trip: str, new_password: str) -> None:
+        old_trip_key = str(old_trip or '').strip()
+        new_trip_key = str(new_trip or '').strip()
+        if not old_trip_key or not new_trip_key:
+            raise ValueError('old_trip and new_trip are required')
+        if not str(new_password or ''):
+            raise ValueError('new password is required')
+        if not self.verify_trip_password(old_trip_key, old_password):
+            raise ValueError('old TRIP verification failed')
+        if new_trip_key != old_trip_key and self.has_trip_registration(new_trip_key):
+            raise ValueError('new TRIP already exists')
+
+        registration = self.trip_registrations.pop(old_trip_key)
+        registration.trip = new_trip_key
+        registration.password_hash = self.hash_trip_password(new_password)
+        registration.updated_date = datetime.now().isoformat()
+        self.trip_registrations[new_trip_key] = registration
+
+        for game_record in self.game_records.values():
+            for player_record in game_record.players:
+                if str(player_record.trip_display or '').strip() == old_trip_key:
+                    player_record.trip_display = new_trip_key
+
+        for rating_record in self.rating_records:
+            if str(rating_record.source_trip or '').strip() == old_trip_key:
+                rating_record.source_trip = new_trip_key
+            if str(rating_record.target_trip or '').strip() == old_trip_key:
+                rating_record.target_trip = new_trip_key
+
+        self.rebuild_player_stats()
+
+    def count_trip_games(self, trip: str) -> int:
+        trip_key = str(trip or '').strip()
+        if not trip_key:
+            return 0
+
+        count = 0
+        for game_record in self.game_records.values():
+            if any(str(player.trip_display or '').strip() == trip_key for player in game_record.players):
+                count += 1
+        return count
+
+    def get_trip_nicknames(self, trip: str) -> List[str]:
+        trip_key = str(trip or '').strip()
+        nicknames = {
+            str(player.player_name or '').strip()
+            for game_record in self.game_records.values()
+            for player in game_record.players
+            if str(player.trip_display or '').strip() == trip_key and str(player.player_name or '').strip()
+        }
+        return sorted(nicknames)
+
+    def get_trip_nickname_counts(self, trip: str) -> List[Dict[str, Any]]:
+        trip_key = str(trip or '').strip()
+        counter = Counter(
+            str(player.player_name or '').strip()
+            for game_record in self.game_records.values()
+            for player in game_record.players
+            if str(player.trip_display or '').strip() == trip_key and str(player.player_name or '').strip()
+        )
+        rows = [
+            {
+                'nickname': nickname,
+                'use_count': int(use_count),
+            }
+            for nickname, use_count in counter.items()
+        ]
+        rows.sort(key=lambda row: (-int(row['use_count']), row['nickname']))
+        for index, row in enumerate(rows, start=1):
+            row['index'] = index
+        return rows
+
+    def get_trip_game_rating_score(self, trip: str, room_id: int) -> int:
+        trip_key = str(trip or '').strip()
+        total = 0
+        for row in self.rating_records:
+            if str(row.target_trip or '').strip() != trip_key:
+                continue
+            if int(row.room_id or 0) != int(room_id or 0):
+                continue
+            total += int(row.rating or 0)
+        return total
+
+    def get_trip_ratings(self, trip: str, limit: int = 100) -> List[TripRatingRecord]:
+        trip_key = str(trip or '').strip()
+        rows = [row for row in self.rating_records if str(row.target_trip or '').strip() == trip_key]
+        rows.sort(key=lambda row: row.created_date, reverse=True)
+        return rows[: max(1, min(limit, 300))]
+
+    def add_trip_rating(self, row: TripRatingRecord) -> str:
+        self.rating_records.append(row)
+        return row.record_id
+
+    def reassign_trip_by_account(self, target_trip: str, account: str, account_password: str, room_id: Optional[int] = None, *, only_unassigned: bool) -> int:
+        trip_key = str(target_trip or '').strip()
+        account_key = str(account or '').strip()
+        if not trip_key or not account_key or not str(account_password or ''):
+            raise ValueError('trip/account/password are required')
+
+        password_hash = self.hash_account_password(account_key, account_password)
+        updated = 0
+        for game_record in self.game_records.values():
+            if room_id is not None and int(game_record.room_id) != int(room_id):
+                continue
+            for player_record in game_record.players:
+                if str(player_record.player_id or '').strip() != account_key:
+                    continue
+                if str(player_record.account_password_hash or '') != password_hash:
+                    continue
+                has_trip = bool(str(player_record.trip_display or '').strip())
+                if only_unassigned and has_trip:
+                    continue
+                if not only_unassigned and not has_trip:
+                    continue
+                player_record.trip_display = trip_key
+                updated += 1
+
+        if updated:
+            self.rebuild_player_stats()
+        return updated
+
+    def clear_trip_records_by_nickname(self, target_trip: str, nickname: str, room_id: Optional[int] = None) -> int:
+        trip_key = str(target_trip or '').strip()
+        nickname_key = str(nickname or '').strip()
+        if not trip_key or not nickname_key:
+            raise ValueError('trip and nickname are required')
+
+        updated = 0
+        for game_record in self.game_records.values():
+            if room_id is not None and int(game_record.room_id) != int(room_id):
+                continue
+            for player_record in game_record.players:
+                if str(player_record.player_name or '').strip() != nickname_key:
+                    continue
+                if str(player_record.trip_display or '').strip() != trip_key:
+                    continue
+                player_record.trip_display = ''
+                updated += 1
+
+        if updated:
+            self.rebuild_player_stats()
+        return updated
+
+    def rebuild_player_stats(self):
+        self.player_stats.clear()
+        for game_record in sorted(self.game_records.values(), key=lambda row: row.game_date):
+            for player_record in game_record.players:
+                self.update_player_stats(player_record.player_id, game_record, player_record)
+        self.update_leaderboards()
+    
+    # ===== Game Record Methods =====
+    
+    def save_game_record(self, record: GameRecord) -> str:
+        """Save a game record"""
+        self.game_records[record.record_id] = record
+        return record.record_id
+    
+    def get_game_record(self, record_id: str) -> Optional[GameRecord]:
+        """Get a game record by ID"""
+        return self.game_records.get(record_id)
+    
+    def get_player_games(self, account: str) -> List[GameRecord]:
+        """Get all games where player participated"""
+        return [r for r in self.game_records.values() 
+                if account in [p.player_id for p in r.players]]
+    
+    def get_room_games(self, room_id: int) -> List[GameRecord]:
+        """Get all games in a room"""
+        return [r for r in self.game_records.values() if r.room_id == room_id]
+    
+    # ===== Player Stats Methods =====
+    
+    def update_player_stats(self, account: str, game_record: GameRecord, player_record: PlayerRecord):
+        """Update player statistics based on game result"""
+        stats = self.player_stats.get(account)
+        if not stats:
+            stats = PlayerStats(account=account, created_date=datetime.now().isoformat())
+
+        if player_record.trip_display:
+            stats.trip_display = player_record.trip_display
+        
+        # Update basic stats
+        stats.total_games += 1
+        if account in game_record.winner_players:
+            stats.wins += 1
+        elif game_record.winner_camp == 'Draw':
+            stats.draws += 1
+        else:
+            stats.losses += 1
+        
+        # Update character stats
+        char_name = player_record.character_name
+        if char_name not in stats.character_stats:
+            stats.character_stats[char_name] = CharacterStats(character_name=char_name)
+        char_stats = stats.character_stats[char_name]
+        char_stats.games_played += 1
+        if account in game_record.winner_players:
+            char_stats.wins += 1
+        else:
+            char_stats.losses += 1
+        char_stats.total_damage_dealt += game_record.kills_count.get(account, 0)
+        char_stats.kills += game_record.kills_count.get(account, 0)
+        
+        # Update camp stats
+        camp_name = player_record.character_camp
+        if camp_name not in stats.camp_stats:
+            stats.camp_stats[camp_name] = CampStats(camp_name=camp_name)
+        camp_stats = stats.camp_stats[camp_name]
+        camp_stats.games_played += 1
+        if account in game_record.winner_players:
+            camp_stats.wins += 1
+        
+        # Update other stats
+        stats.last_played = game_record.game_date
+        stats.average_duration_per_game = (
+            (stats.average_duration_per_game * (stats.total_games - 1) + game_record.game_duration_seconds) 
+            / stats.total_games
+        )
+        
+        # Update skill level based on win rate
+        win_rate = stats.win_rate
+        if stats.total_games >= 10:
+            if win_rate >= 0.6:
+                stats.skill_level = 'Expert'
+            elif win_rate >= 0.5:
+                stats.skill_level = 'Advanced'
+            elif win_rate >= 0.4:
+                stats.skill_level = 'Intermediate'
+            else:
+                stats.skill_level = 'Beginner'
+        
+        self.player_stats[account] = stats
+    
+    def get_player_stats(self, account: str) -> Optional[PlayerStats]:
+        """Get player statistics"""
+        return self.player_stats.get(account)
+    
+    def get_all_players_stats(self) -> List[PlayerStats]:
+        """Get all player statistics"""
+        return list(self.player_stats.values())
+    
+    # ===== Room History Methods =====
+    
+    def add_game_to_room_history(self, room_id: int, game_record: GameRecord):
+        """Add game record to room history"""
+        history = self.room_histories.get(room_id)
+        if not history:
+            history = RoomGameHistory(room_id=room_id, room_created_date=datetime.now().isoformat())
+        history.games.append(game_record)
+        self.room_histories[room_id] = history
+    
+    def get_room_history(self, room_id: int) -> Optional[RoomGameHistory]:
+        """Get room game history"""
+        return self.room_histories.get(room_id)
+    
+    def get_room_stats(self, room_id: int) -> Dict[str, Any]:
+        """Get statistics for a specific room"""
+        history = self.room_histories.get(room_id)
+        if not history:
+            return {}
+        
+        return {
+            'room_id': room_id,
+            'total_games': history.total_games,
+            'games': [r.record_id for r in history.games]
+        }
+    
+    # ===== Leaderboard Methods =====
+    
+    def update_leaderboards(self):
+        """Update global and room leaderboards"""
+        # Update global leaderboard
+        self._update_global_leaderboard()
+        
+        # Update room leaderboards
+        for room_id in self.room_histories.keys():
+            self._update_room_leaderboard(room_id)
+    
+    def _update_global_leaderboard(self):
+        """Update global leaderboard by win rate"""
+        entries = []
+        for account, stats in self.player_stats.items():
+            if stats.total_games >= 5:  # Minimum games requirement
+                entry = LeaderboardEntry(
+                    rank=0,  # Will be set after sorting
+                    player_id=account,
+                    player_name=stats.account,
+                    sorting_key='win_rate',
+                    value=stats.win_rate,
+                    last_update=datetime.now().isoformat()
+                )
+                entries.append(entry)
+        
+        # Sort by win rate
+        entries.sort(key=lambda x: x.value, reverse=True)
+        for i, entry in enumerate(entries, 1):
+            entry.rank = i
+        
+        self.leaderboards['global'] = entries
+    
+    def _update_room_leaderboard(self, room_id: int):
+        """Update leaderboard for a specific room"""
+        history = self.room_histories.get(room_id)
+        if not history:
+            return
+        
+        room_stats = {}
+        for game_record in history.games:
+            for player in game_record.players:
+                if player.player_id not in room_stats:
+                    room_stats[player.player_id] = {'games': 0, 'wins': 0}
+                room_stats[player.player_id]['games'] += 1
+                if player.player_id in game_record.winner_players:
+                    room_stats[player.player_id]['wins'] += 1
+        
+        entries = []
+        for account, stats in room_stats.items():
+            if stats['games'] > 0:
+                win_rate = stats['wins'] / stats['games']
+                entry = LeaderboardEntry(
+                    rank=0,
+                    player_id=account,
+                    player_name=account,
+                    sorting_key='win_rate',
+                    value=win_rate,
+                    last_update=datetime.now().isoformat()
+                )
+                entries.append(entry)
+        
+        # Sort by win rate
+        entries.sort(key=lambda x: x.value, reverse=True)
+        for i, entry in enumerate(entries, 1):
+            entry.rank = i
+        
+        if 'by_room' not in self.leaderboards:
+            self.leaderboards['by_room'] = {}
+        self.leaderboards['by_room'][room_id] = entries
+    
+    def get_leaderboard(self, scope: str = 'global', room_id: Optional[int] = None) -> List[LeaderboardEntry]:
+        """Get leaderboard"""
+        if scope == 'global':
+            return self.leaderboards.get('global', [])
+        elif scope == 'room' and room_id:
+            return self.leaderboards.get('by_room', {}).get(room_id, [])
+        return []
+    
+    # ===== Export Methods =====
+    
+    def export_game_records_csv(self, output_path: str, account: Optional[str] = None):
+        """Export game records to CSV"""
+        records = self.get_player_games(account) if account else list(self.game_records.values())
+        
+        with open(output_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                'record_id', 'room_id', 'game_date', 'duration_seconds', 
+                'player_count', 'winner_camp', 'end_reason'
+            ])
+            for record in records:
+                writer.writerow([
+                    record.record_id,
+                    record.room_id,
+                    record.game_date,
+                    record.game_duration_seconds,
+                    len(record.players),
+                    record.winner_camp,
+                    record.end_reason
+                ])
+    
+    def export_player_stats_json(self, output_path: str, account: str):
+        """Export player statistics to JSON"""
+        stats = self.get_player_stats(account)
+        if not stats:
+            return
+        
+        data = {
+            'account': stats.account,
+            'trip_display': stats.trip_display,
+            'total_games': stats.total_games,
+            'wins': stats.wins,
+            'losses': stats.losses,
+            'draws': stats.draws,
+            'win_rate': stats.win_rate,
+            'skill_level': stats.skill_level,
+            'character_stats': {
+                char: {
+                    'games_played': cs.games_played,
+                    'wins': cs.wins,
+                    'losses': cs.losses,
+                    'win_rate': cs.win_rate,
+                    'average_damage_per_game': cs.average_damage_per_game
+                }
+                for char, cs in stats.character_stats.items()
+            },
+            'camp_stats': {
+                camp: {
+                    'games_played': cs.games_played,
+                    'wins': cs.wins,
+                    'win_rate': cs.win_rate
+                }
+                for camp, cs in stats.camp_stats.items()
+            },
+            'last_played': stats.last_played,
+            'created_date': stats.created_date
+        }
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    
+    def export_leaderboard_csv(self, output_path: str, scope: str = 'global', room_id: Optional[int] = None):
+        """Export leaderboard to CSV"""
+        leaderboard = self.get_leaderboard(scope, room_id)
+        
+        with open(output_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(['rank', 'player_id', 'player_name', 'sorting_key', 'value'])
+            for entry in leaderboard:
+                writer.writerow([
+                    entry.rank,
+                    entry.player_id,
+                    entry.player_name,
+                    entry.sorting_key,
+                    f"{entry.value:.4f}"
+                ])
+    
+    # ===== Utility Methods =====
+    
+    def get_summary_stats(self) -> Dict[str, Any]:
+        """Get overall summary statistics"""
+        return {
+            'total_games_recorded': len(self.game_records),
+            'total_players': len(self.player_stats),
+            'total_rooms': len(self.room_histories),
+            'average_games_per_player': (
+                len(self.game_records) / len(self.player_stats) 
+                if self.player_stats else 0
+            )
+        }
+    
+    def clear_all_data(self):
+        """Clear all stored data (use with caution)"""
+        self.game_records.clear()
+        self.player_stats.clear()
+        self.room_histories.clear()
+        self.trip_registrations.clear()
+        self.rating_records.clear()
+        self.leaderboards = {'global': [], 'by_room': {}}

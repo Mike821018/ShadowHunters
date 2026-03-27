@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>暗影獵人｜過去村莊畫面</title>
+    <link rel="stylesheet" href="./src/theme.css" />
+  </head>
+  <body data-page="record-view">
+    <div id="header">
+      <div class="wrap s_clear">
+        <h2>暗影獵人</h2>
+        <div id="umenu" aria-live="polite">
+          <span id="transportMode" class="pill" data-i18n-title="common.transport.source" title="目前資料來源">AUTO</span>
+          <span id="statusText" class="lighttxt" data-i18n="common.status.init">前端已啟動</span>
+          <div class="lang-switcher">
+            <select class="lang-select" data-lang-select aria-label="Language selector">
+              <option value="zh">ZH</option>
+              <option value="en">EN</option>
+              <option value="jp">JP</option>
+            </select>
+          </div>
+        </div>
+        <div id="menu">
+          <ul class="menu-tabs" role="navigation" aria-label="主功能">
+            <li><a class="tab" href="./lobby.html" data-i18n="common.nav.lobby">大廳</a></li>
+            <li><a class="tab" href="./guide.html" data-i18n="common.nav.rules">遊戲規則</a></li>
+            <li><a class="tab" href="./operation.html" data-i18n="common.nav.operation">操作說明</a></li>
+            <li><a class="tab current" href="./records.html" aria-current="page" data-i18n="common.nav.records">紀錄閱覽</a></li>
+            <li><a class="tab" href="./avatar.html" data-i18n="common.nav.avatars">頭像一覽</a></li>
+            <li><a class="tab" href="./resident_register.html" data-i18n="common.nav.identity">身分登錄</a></li>
+            <li><a class="tab" href="./version.html" data-i18n="common.nav.versions">版本紀錄</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="wrap s_clear" id="wrap">
+      <main class="main records-page higu-records-page">
+        <section class="panel" tabindex="0">
+          <fieldset>
+            <legend><strong id="recordViewTitle">過去村莊畫面</strong></legend>
+            <div class="card-body">
+              <p class="lighttxt" id="recordViewMeta">載入中...</p>
+              <div class="rooms-table-wrap">
+                <table class="data-table" aria-label="過去村莊畫面">
+                  <thead>
+                    <tr>
+                      <th>玩家</th>
+                      <th>角色</th>
+                      <th>陣營</th>
+                      <th>生死</th>
+                      <th>最終 HP</th>
+                      <th>裝備</th>
+                    </tr>
+                  </thead>
+                  <tbody id="recordViewPlayers"></tbody>
+                </table>
+              </div>
+            </div>
+          </fieldset>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

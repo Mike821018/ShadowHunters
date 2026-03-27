@@ -1,0 +1,27 @@
+camp_setting = {
+    4:{
+        'Shadow':2,
+        'Hunter':2,
+        'Civilian':0,
+    },
+    5:{
+        'Shadow':2,
+        'Hunter':2,
+        'Civilian':1,
+    },
+    6:{
+        'Shadow':2,
+        'Hunter':2,
+        'Civilian':2,
+    },
+    7:{
+        'Shadow':2,
+        'Hunter':2,
+        'Civilian':3,
+    },
+    8:{
+        'Shadow':3,
+        'Hunter':3,
+        'Civilian':2,
+    },
+}

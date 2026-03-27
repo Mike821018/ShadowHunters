@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>暗影獵人｜遊戲規則</title>
+    <link rel="stylesheet" href="./src/theme.css" />
+  </head>
+  <body data-page="guide">
+    <div id="header">
+      <div class="wrap s_clear">
+        <h2>暗影獵人</h2>
+        <div id="umenu" aria-live="polite">
+          <span id="transportMode" class="pill" data-i18n-title="common.transport.source" title="目前資料來源">AUTO</span>
+          <span id="statusText" class="lighttxt" data-i18n="common.status.init">前端已啟動</span>
+          <div class="lang-switcher">
+            <select class="lang-select" data-lang-select aria-label="Language selector">
+              <option value="zh">ZH</option>
+              <option value="en">EN</option>
+              <option value="jp">JP</option>
+            </select>
+          </div>
+        </div>
+        <div id="menu">
+          <ul class="menu-tabs" role="navigation" aria-label="主功能">
+            <li><a class="tab" href="./lobby.html" data-i18n="common.nav.lobby">大廳</a></li>
+            <li><a class="tab current" href="./guide.html" aria-current="page" data-i18n="common.nav.rules">遊戲規則</a></li>
+            <li><a class="tab" href="./operation.html" data-i18n="common.nav.operation">操作說明</a></li>
+            <li><a class="tab" href="./records.html" data-i18n="common.nav.records">紀錄閱覽</a></li>
+            <li><a class="tab" href="./avatar.html" data-i18n="common.nav.avatars">頭像一覽</a></li>
+            <li><a class="tab" href="./resident_register.html" data-i18n="common.nav.identity">身分登錄</a></li>
+            <li><a class="tab" href="./version.html" data-i18n="common.nav.versions">版本紀錄</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="wrap s_clear" id="wrap">
+      <main class="main guide-page">
+        <div class="guide-container">
+          <!-- Game Overview Section -->
+          <section class="panel guide-section">
+            <h2 data-i18n="guide.section.overview">遊戲概述</h2>
+            <div class="card-body">
+              <h3 data-i18n="guide.overview.title">暗影獵人是什麼？</h3>
+              <p data-i18n="guide.overview.desc">《暗影獵人》是 4-8 人的隱藏身分桌遊。玩家會分屬獵人、暗影或中立角色，在彼此不知道真實身分的情況下，透過移動、區域效果、裝備、攻擊與情報卡逐步確認敵友並完成各自的勝利條件。</p>
+            </div>
+          </section>
+
+          <!-- Game Roles Section -->
+          <section class="panel guide-section">
+            <h2 data-i18n="guide.section.roles">角色與陣營</h2>
+            <div class="card-body">
+              <h3 data-i18n="guide.roles.three_camps">三大陣營</h3>
+              
+              <div class="guide-subsection">
+                <h4 data-i18n="guide.roles.hunters">獵人 (Hunters)</h4>
+                <p data-i18n="guide.roles.hunters_desc">獵人的共同目標是擊倒所有暗影角色。多數獵人能力偏向穩定傷害、定位或控制，但在前期通常還無法確定誰是隊友。</p>
+              </div>
+
+              <div class="guide-subsection">
+                <h4 data-i18n="guide.roles.shadows">暗影 (Shadows)</h4>
+                <p data-i18n="guide.roles.shadows_desc">暗影的共同目標是擊倒所有獵人。暗影角色通常有較強的續戰力或反擊能力，會透過混淆資訊與集中火力尋找獵人。</p>
+              </div>
+
+              <div class="guide-subsection">
+                <h4 data-i18n="guide.roles.civilians">中立 (Neutrals)</h4>
+                <p data-i18n="guide.roles.civilians_desc">中立角色不屬於獵人或暗影，每張角色卡都有自己的專屬勝利條件。有些要求存活，有些要求擊倒特定人物，也可能和其他陣營同時獲勝。</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- Game Flow Section -->
+          <section class="panel guide-section" id="operation">
+            <h2 data-i18n="guide.section.gameplay">遊戲流程</h2>
+            <div class="card-body">
+              <h3 data-i18n="guide.gameplay.turn_structure">標準回合</h3>
+              <p data-i18n="guide.gameplay.turn_desc">每回合大致依照「移動 → 區域效果 → 攻擊」的順序進行：</p>
+              
+              <ol class="guide-steps">
+                <li>
+                  <strong data-i18n="guide.gameplay.step1_title">移動階段 (Move Phase)</strong>
+                  <span data-i18n="guide.gameplay.step1_desc">擲兩顆骰子後，依結果移動到對應區域；若總和為 7，通常可以自行選擇移動到任一其他區域。</span>
+                </li>
+                <li>
+                  <strong data-i18n="guide.gameplay.step2_title">區域效果 (Area Effect)</strong>
+                  <span data-i18n="guide.gameplay.step2_desc">抵達區域後，執行該區域效果，例如抽白卡、抽黑卡、抽隱士卡，或對指定玩家造成 2 傷害 / 回復 1 傷害。</span>
+                </li>
+                <li>
+                  <strong data-i18n="guide.gameplay.step3_title">攻擊階段 (Attack Phase)</strong>
+                  <span data-i18n="guide.gameplay.step3_desc">回合最後可選擇攻擊範圍內的一名玩家。攻擊傷害通常是兩顆骰子的點數差，部分裝備會改變射程或攻擊方式。</span>
+                </li>
+                <li>
+                  <strong data-i18n="guide.gameplay.step4_title">公開能力與結算 (Reveal / Resolve)</strong>
+                  <span data-i18n="guide.gameplay.step4_desc">部分角色可以在合適時機翻開角色卡發動能力；只要有人滿足自己的勝利條件，遊戲就會立即結束並結算所有符合條件的勝者。</span>
+                </li>
+              </ol>
+
+              <div class="guide-subsection">
+                <h4 data-i18n="guide.gameplay.areas_title">六個區域</h4>
+                <p data-i18n="guide.gameplay.areas_desc">六個區域包含 隱士小屋、教堂、墓園、時空之門、希望與絕望的森林、古代祭壇。它們分別對應情報、白卡、黑卡、自由抽牌、傷害/治療、奪取裝備等核心效果。</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- Card System Section -->
+          <section class="panel guide-section">
+            <h2 data-i18n="guide.section.cards">卡牌系統</h2>
+            <div class="card-body">
+              <h3 data-i18n="guide.cards.types">卡牌類型</h3>
+              
+              <div class="guide-subsection">
+                <h4 data-i18n="guide.cards.green_cards">隱士卡 / 情報卡</h4>
+                <p data-i18n="guide.cards.green_desc">隱士卡主要用來測試他人陣營。抽到後會交給一名玩家，由對方依照卡面條件判定是否承受效果，因此也是辨識身分的重要來源。</p>
+              </div>
+
+              <div class="guide-subsection">
+                <h4 data-i18n="guide.cards.white_cards">白卡 (White Cards)</h4>
+                <p data-i18n="guide.cards.white_desc">白卡通常偏向保護、支援與回復，其中包含即時使用的一次性卡與會留在場上的裝備卡。</p>
+              </div>
+
+              <div class="guide-subsection">
+                <h4 data-i18n="guide.cards.black_cards">黑卡 (Black Cards)</h4>
+                <p data-i18n="guide.cards.black_desc">黑卡通常偏向傷害、干擾與進攻，也同樣包含一次性效果與武器裝備。攻擊型裝備常會改變射程或命中規則。</p>
+              </div>
+
+              <div class="guide-subsection">
+                <h4 data-i18n="guide.cards.equipment_rule">裝備規則</h4>
+                <p data-i18n="guide.cards.equipment_rule_desc">裝備卡打出後會留在玩家面前持續生效。角色死亡時，擊殺者通常可以從死者身上拿走 1 張裝備，其餘裝備棄置。</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- Initial Green Card Feature -->
+          <section class="panel guide-section">
+            <h2 data-i18n="guide.section.initial_green">啟用初始綠卡機制</h2>
+            <div class="card-body">
+              <h3 data-i18n="guide.initial_green.title">什麼是初始綠卡？</h3>
+              <p data-i18n="guide.initial_green.desc">初始綠卡是《暗影獵人》額外規則的一部分。啟用後，開局時所有玩家會依序執行同一張初始綠卡，用來增加前期資訊量與局勢波動。</p>
+              
+              <h4 data-i18n="guide.initial_green.flow">執行流程</h4>
+              <ol class="guide-steps">
+                <li data-i18n="guide.initial_green.step1">遊戲開始時系統抽取一張綠卡</li>
+                <li data-i18n="guide.initial_green.step2">按照回合順序，每個玩家依序執行該卡片</li>
+                <li data-i18n="guide.initial_green.step3">所有玩家都執行完後，遊戲進入正常回合</li>
+              </ol>
+              
+              <p data-i18n="guide.initial_green.note" class="guide-note">💡 提示：初始綠卡可能對某些玩家有利，也可能有害。這取決於卡牌的效果和當前局勢。</p>
+            </div>
+          </section>
+
+          <!-- Equipment Section -->
+          <section class="panel guide-section">
+            <h2 data-i18n="guide.section.equipment">裝備與防禦</h2>
+            <div class="card-body">
+              <h3 data-i18n="guide.equipment.basics">裝備</h3>
+              <p data-i18n="guide.equipment.desc">裝備提供持續效果，可能強化攻擊、改變射程、提供防禦，或讓角色更容易完成自己的任務。裝備不是生命值替代品，而是獨立資源，通常沒有嚴格數量上限；角色死亡時會發生裝備轉移或棄置。</p>
+            </div>
+          </section>
+
+          <!-- Win Conditions Section -->
+          <section class="panel guide-section">
+            <h2 data-i18n="guide.section.victory">勝利條件</h2>
+            <div class="card-body">
+              <h3 data-i18n="guide.victory.hunters">獵人陣營勝利</h3>
+              <p data-i18n="guide.victory.hunters_desc">所有暗影角色被擊倒時，所有已滿足條件的獵人角色獲勝。</p>
+              
+              <h3 data-i18n="guide.victory.shadows">暗影陣營勝利</h3>
+              <p data-i18n="guide.victory.shadows_desc">所有獵人角色被擊倒時，所有已滿足條件的暗影角色獲勝。</p>
+              
+              <h3 data-i18n="guide.victory.civilians">中立角色勝利</h3>
+              <p data-i18n="guide.victory.civilians_desc">中立角色是否勝利，完全取決於角色卡上的個人條件。遊戲結束時，可能出現跨陣營同時獲勝，甚至角色已死亡仍算勝利的情況。</p>
+            </div>
+          </section>
+
+          <!-- Tips Section -->
+          <section class="panel guide-section">
+            <h2 data-i18n="guide.section.tips">遊戲技巧</h2>
+            <div class="card-body">
+              <ul class="guide-tips">
+                <li data-i18n="guide.tips.tip1">優先利用隱士卡與傷害軌跡判讀他人陣營，這是暗影獵人最重要的資訊來源。</li>
+                <li data-i18n="guide.tips.tip2">不要過早翻角。公開能力雖強，但也會讓敵人立刻確認你的陣營。</li>
+                <li data-i18n="guide.tips.tip3">記住每個區域的用途，尤其是希望與絕望的森林與古代祭壇，常常直接改變場上節奏。</li>
+                <li data-i18n="guide.tips.tip4">中立角色不一定是路人。若有人行為極端不合常理，可能是在衝自己的個人勝利條件。</li>
+                <li data-i18n="guide.tips.tip5">多名玩家可以同時獲勝，所以結束前要重新確認自己是否也滿足條件。</li>
+              </ul>
+            </div>
+          </section>
+
+          <!-- FAQ Section -->
+          <section class="panel guide-section">
+            <h2 data-i18n="guide.section.faq">常見問答 (FAQ)</h2>
+            <div class="card-body">
+              <details class="guide-faq-item">
+                <summary data-i18n="guide.faq.q1">一開始能知道誰跟我是同陣營嗎？</summary>
+                <p data-i18n="guide.faq.a1">不能。除了自己的角色卡之外，其他玩家的身分一開始都是隱藏的，必須透過卡片、傷害與行為推理判斷。</p>
+              </details>
+
+              <details class="guide-faq-item">
+                <summary data-i18n="guide.faq.q2">可以選擇不攻擊嗎？</summary>
+                <p data-i18n="guide.faq.a2">移動與地區效果後，攻擊通常是可選的。你可以故意保留資訊，不急著暴露自己站位。</p>
+              </details>
+
+              <details class="guide-faq-item">
+                <summary data-i18n="guide.faq.q3">角色死亡後還有可能獲勝嗎？</summary>
+                <p data-i18n="guide.faq.a3">有可能。若某個角色的個人勝利條件在遊戲結束時仍然成立，即使角色已死亡，也可能被算作勝者。</p>
+              </details>
+
+              <details class="guide-faq-item">
+                <summary data-i18n="guide.faq.q4">隱士卡是不是一定會公開真相？</summary>
+                <p data-i18n="guide.faq.a4">不一定。大多數情況下，收到隱士卡的玩家必須如實執行結果，但像謎（Unknown）這類特殊角色可能改變這個資訊規則。</p>
+              </details>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

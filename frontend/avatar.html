@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>暗影獵人｜頭像一覽</title>
+    <link rel="stylesheet" href="./src/theme.css" />
+  </head>
+  <body data-page="avatar-gallery">
+    <div id="header">
+      <div class="wrap s_clear">
+        <h2>暗影獵人</h2>
+        <div id="umenu" aria-live="polite">
+          <span id="transportMode" class="pill" data-i18n-title="common.transport.source" title="目前資料來源">AUTO</span>
+          <span id="statusText" class="lighttxt" data-i18n="common.status.init">前端已啟動</span>
+          <div class="lang-switcher">
+            <select class="lang-select" data-lang-select aria-label="Language selector">
+              <option value="zh">ZH</option>
+              <option value="en">EN</option>
+              <option value="jp">JP</option>
+            </select>
+          </div>
+        </div>
+        <div id="menu">
+          <ul class="menu-tabs" role="navigation" aria-label="主功能">
+            <li><a class="tab" href="./lobby.html" data-i18n="common.nav.lobby">大廳</a></li>
+            <li><a class="tab" href="./guide.html" data-i18n="common.nav.rules">遊戲規則</a></li>
+            <li><a class="tab" href="./operation.html" data-i18n="common.nav.operation">操作說明</a></li>
+            <li><a class="tab" href="./records.html" data-i18n="common.nav.records">紀錄閱覽</a></li>
+            <li><a class="tab current" href="./avatar.html" aria-current="page" data-i18n="common.nav.avatars">頭像一覽</a></li>
+            <li><a class="tab" href="./resident_register.html" data-i18n="common.nav.identity">身分登錄</a></li>
+            <li><a class="tab" href="./version.html" data-i18n="common.nav.versions">版本紀錄</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="wrap s_clear" id="wrap">
+      <main class="main avatar-gallery-page">
+        <section class="panel" tabindex="0">
+          <fieldset>
+            <legend><strong data-i18n="common.nav.avatars">頭像一覽</strong></legend>
+            <div class="card-body">
+              <ul class="menu-tabs identity-page-tabs avatar-page-tabs" role="tablist" aria-label="頭像功能分頁">
+                <li><button id="avatarTabBtnGallery" class="tab current" type="button" role="tab" aria-selected="true" aria-controls="avatarTabGallery" data-tab-target="avatarTabGallery" data-i18n="avatar.gallery_tab">頭像一覽</button></li>
+                <li><button id="avatarTabBtnUpload" class="tab" type="button" role="tab" aria-selected="false" aria-controls="avatarTabUpload" data-tab-target="avatarTabUpload" data-i18n="avatar.upload_tab">上傳頭像</button></li>
+              </ul>
+            </div>
+          </fieldset>
+        </section>
+
+        <section id="avatarTabGallery" class="panel identity-tab-pane current" tabindex="0" role="tabpanel" aria-labelledby="avatarTabBtnGallery">
+          <fieldset>
+            <legend><strong data-i18n="avatar.gallery_title">頭像一覽</strong></legend>
+            <div class="card-body avatar-panel">
+              <div class="avatar-preview-wrap">
+                <span id="avatarGalleryPreview" class="avatar-preview" aria-live="polite"></span>
+                <span class="lighttxt" data-i18n="register.avatar.current">目前頭貼</span>
+                <label for="avatarGalleryNumberInput" class="lighttxt" data-i18n="register.avatar.number_label">頭像編號</label>
+                <input id="avatarGalleryNumberInput" class="txt avatar-number-input" type="number" min="1" value="1" />
+              </div>
+              <div class="avatar-gallery-title" data-i18n="register.avatar.gallery">頭像一覽</div>
+              <div class="avatar-pager" aria-label="頭像分頁控制">
+                <button id="btnAvatarGalleryPrev" class="btn" type="button" data-i18n="register.avatar.prev">上一頁</button>
+                <label for="avatarGalleryPageInput" class="lighttxt" data-i18n="register.avatar.page_prefix">第</label>
+                <input id="avatarGalleryPageInput" class="txt avatar-page-input" type="number" min="1" value="1" />
+                <span id="avatarGalleryPageInfo" class="avatar-page-info">/ 1 頁</span>
+                <button id="btnAvatarGalleryNext" class="btn" type="button" data-i18n="register.avatar.next">下一頁</button>
+              </div>
+              <div id="avatarGalleryGrid" class="avatar-option-grid avatar-gallery-grid" aria-live="polite"></div>
+            </div>
+          </fieldset>
+        </section>
+
+        <section id="avatarTabUpload" class="panel identity-tab-pane" tabindex="0" role="tabpanel" aria-labelledby="avatarTabBtnUpload">
+          <fieldset>
+            <legend><strong data-i18n="avatar.upload_title">上傳頭像</strong></legend>
+            <div class="card-body avatar-panel avatar-upload-panel">
+              <p class="lighttxt" data-i18n="avatar.pixel_hint">遊戲內頭像建議使用 56x56 像素，支援 PNG / JPG / GIF / WEBP。</p>
+              <form id="avatarUploadPreviewForm" class="identity-inline-form" novalidate>
+                <strong data-i18n="avatar.upload_title">上傳頭像</strong>
+                <input id="avatarUploadTrip" class="txt" type="text" placeholder="TRIP" data-i18n-placeholder="identity.col_trip" />
+                <input id="avatarUploadPassword" class="txt" type="password" placeholder="密碼" data-i18n-placeholder="identity.password" />
+                <input id="avatarUploadName" class="txt" type="text" placeholder="頭像名稱" data-i18n-placeholder="avatar.upload_name" />
+                <input id="avatarUploadFile" class="txt" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
+              </form>
+              <div class="avatar-upload-preview-block">
+                <div id="avatarUploadPreview" class="avatar-preview" aria-live="polite"></div>
+                <p id="avatarUploadMeta" class="lighttxt" data-i18n="avatar.upload_meta_idle">選擇圖片後會在這裡顯示預覽與像素大小。</p>
+              </div>
+            </div>
+          </fieldset>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

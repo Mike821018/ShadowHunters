@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>暗影獵人｜村莊</title>
+    <link rel="stylesheet" href="./src/theme.css" />
+  </head>
+  <body data-page="room">
+    <div id="header">
+      <div class="wrap s_clear">
+        <h2>暗影獵人</h2>
+        <div id="umenu" aria-live="polite">
+          <span id="transportMode" class="pill" data-i18n-title="common.transport.source" title="目前資料來源">AUTO</span>
+          <span id="statusText" class="lighttxt" data-i18n="common.status.init">前端已啟動</span>
+          <div class="lang-switcher">
+            <select class="lang-select" data-lang-select aria-label="Language selector">
+              <option value="zh">ZH</option>
+              <option value="en">EN</option>
+              <option value="jp">JP</option>
+            </select>
+          </div>
+        </div>
+        <div id="menu" class="room-menu-bar">
+          <button id="btnRoomBackLobby" class="btn room-back-lobby-btn" type="button" data-i18n="common.nav.lobby">返回大廳</button>
+          <div id="autoRefreshOptions" class="auto-refresh-controls" aria-live="polite"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="wrap s_clear" id="wrap">
+      <main class="main">
+        <section class="panel" tabindex="0">
+          <div class="room-top-row">
+            <fieldset>
+              <legend><strong id="roomTitle" data-i18n="room.info.title">村子資訊</strong></legend>
+              <div class="card-body" id="roomInfo">
+                <ul id="villageInfoList" class="village-info-list">
+                  <li class="lighttxt" data-i18n="room.info.not_joined">尚未加入村子</li>
+                </ul>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend><strong data-i18n="room.cards.title">村民列表</strong></legend>
+              <div class="card-body">
+                <div id="roomCards" class="player-cards" aria-live="polite"></div>
+              </div>
+            </fieldset>
+          </div>
+
+          <div class="room-top-row room-stage-row">
+            <fieldset>
+              <legend><strong>聊天室</strong></legend>
+              <div class="card-body">
+                <div id="chatStage" class="room-stage-surface room-chat-surface" aria-live="polite">
+                  <p class="lighttxt">聊天室區塊（待接入）</p>
+                </div>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend><strong>遊戲桌面</strong></legend>
+              <div class="card-body">
+                <div id="gameStage" class="room-stage-surface room-game-surface" aria-live="polite">
+                  <div class="table-stage" aria-label="遊戲桌面卡片佈局">
+                    <span class="stage-card stage-card-1 stage-card-field" data-field-slot="0" aria-label="場地卡">
+                      <span class="stage-field-order" aria-hidden="true">1</span>
+                      <span class="stage-field-name">未翻開</span>
+                      <span class="stage-field-number-list" aria-label="場地代表數字"></span>
+                      <span class="stage-field-occupants" aria-label="場地玩家"></span>
+                      <span class="stage-card-caption">場地</span>
+                    </span>
+                    <span class="stage-card stage-card-2 stage-card-field" data-field-slot="1" aria-label="場地卡">
+                      <span class="stage-field-order" aria-hidden="true">2</span>
+                      <span class="stage-field-name">未翻開</span>
+                      <span class="stage-field-number-list" aria-label="場地代表數字"></span>
+                      <span class="stage-field-occupants" aria-label="場地玩家"></span>
+                      <span class="stage-card-caption">場地</span>
+                    </span>
+                    <span class="stage-card stage-card-3 stage-card-field" data-field-slot="5" aria-label="場地卡">
+                      <span class="stage-field-order" aria-hidden="true">6</span>
+                      <span class="stage-field-name">未翻開</span>
+                      <span class="stage-field-number-list" aria-label="場地代表數字"></span>
+                      <span class="stage-field-occupants" aria-label="場地玩家"></span>
+                      <span class="stage-card-caption">場地</span>
+                    </span>
+                    <span class="stage-card stage-card-4 stage-card-field" data-field-slot="2" aria-label="場地卡">
+                      <span class="stage-field-order" aria-hidden="true">3</span>
+                      <span class="stage-field-name">未翻開</span>
+                      <span class="stage-field-number-list" aria-label="場地代表數字"></span>
+                      <span class="stage-field-occupants" aria-label="場地玩家"></span>
+                      <span class="stage-card-caption">場地</span>
+                    </span>
+                    <span class="stage-card stage-card-5 stage-card-field" data-field-slot="4" aria-label="場地卡">
+                      <span class="stage-field-order" aria-hidden="true">5</span>
+                      <span class="stage-field-name">未翻開</span>
+                      <span class="stage-field-number-list" aria-label="場地代表數字"></span>
+                      <span class="stage-field-occupants" aria-label="場地玩家"></span>
+                      <span class="stage-card-caption">場地</span>
+                    </span>
+                    <span class="stage-card stage-card-6 stage-card-field" data-field-slot="3" aria-label="場地卡">
+                      <span class="stage-field-order" aria-hidden="true">4</span>
+                      <span class="stage-field-name">未翻開</span>
+                      <span class="stage-field-number-list" aria-label="場地代表數字"></span>
+                      <span class="stage-field-occupants" aria-label="場地玩家"></span>
+                      <span class="stage-card-caption">場地</span>
+                    </span>
+
+                    <span class="stage-pile-title stage-pile-title-deck">牌庫</span>
+                    <span class="stage-pile-title stage-pile-title-discard">棄牌</span>
+
+                    <span class="stage-card stage-card-7 stage-card-pile stage-card-white" data-pile-type="deck" data-card-color="white" aria-label="牌庫 白卡">
+                      <span class="stage-card-caption">白卡</span>
+                      <span class="stage-pile-count" aria-label="牌庫白卡張數">0</span>
+                    </span>
+                    <span class="stage-card stage-card-8 stage-card-pile stage-card-black" data-pile-type="deck" data-card-color="black" aria-label="牌庫 黑卡">
+                      <span class="stage-card-caption">黑卡</span>
+                      <span class="stage-pile-count" aria-label="牌庫黑卡張數">0</span>
+                    </span>
+                    <span class="stage-card stage-card-9 stage-card-pile stage-card-green" data-pile-type="deck" data-card-color="green" aria-label="牌庫 綠卡">
+                      <span class="stage-card-caption">綠卡</span>
+                      <span class="stage-pile-count" aria-label="牌庫綠卡張數">0</span>
+                    </span>
+                    <span class="stage-card stage-card-10 stage-card-pile stage-card-discard stage-card-white" data-pile-type="discard" data-card-color="white" aria-label="棄牌 白卡">
+                      <span class="stage-card-caption">白卡</span>
+                      <span class="stage-pile-count" aria-label="棄牌白卡張數">0</span>
+                    </span>
+                    <span class="stage-card stage-card-11 stage-card-pile stage-card-discard stage-card-black" data-pile-type="discard" data-card-color="black" aria-label="棄牌 黑卡">
+                      <span class="stage-card-caption">黑卡</span>
+                      <span class="stage-pile-count" aria-label="棄牌黑卡張數">0</span>
+                    </span>
+                    <span class="stage-card stage-card-12 stage-card-pile stage-card-discard stage-card-green" data-pile-type="discard" data-card-color="green" aria-label="棄牌 綠卡">
+                      <span class="stage-card-caption">綠卡</span>
+                      <span class="stage-pile-count" aria-label="棄牌綠卡張數">0</span>
+                    </span>
+
+                    <!-- 執行中卡片展示 (場地 4 右側空白處) -->
+                    <span
+                      id="activeCardDisplay"
+                      class="stage-card stage-card-active"
+                      aria-label="執行中的卡片"
+                      hidden
+                    >
+                      <span id="activeCardName" class="stage-active-card-name"></span>
+                      <span class="stage-card-caption" aria-hidden="true">執行中</span>
+                    </span>
+
+                    <div class="stage-center-badges" aria-label="中央徽章">
+                      <span id="stageDiceD6" class="stage-badge stage-badge-square" aria-label="六面骰 1">1</span>
+                      <span class="stage-badge stage-badge-triangle" aria-label="四面骰 1"><span id="stageDiceD4">1</span></span>
+                    </div>
+
+                    <button
+                      id="stageNextStepButton"
+                      class="stage-next-step-button"
+                      type="button"
+                      data-i18n="room.table_next_step.default"
+                      aria-live="polite"
+                    >
+                      下一步
+                    </button>
+                  </div>
+                  <div id="stageFieldDetail" class="stage-field-detail-panel" hidden>
+                    <div class="stage-field-detail-header">
+                      <strong id="stageFieldDetailName">場地資訊</strong>
+                      <button id="stageFieldDetailClose" class="stage-field-detail-close" type="button" aria-label="關閉場地資訊">×</button>
+                    </div>
+                    <div id="stageFieldDetailNumbers" class="stage-field-detail-numbers"></div>
+                    <p id="stageFieldDetailDescription" class="stage-field-detail-description">點選場地卡上的數字即可查看場地名稱與效果說明。</p>
+                  </div>
+                  <dialog id="areaChoiceDialog" class="area-choice-dialog" aria-labelledby="areaChoiceTitle">
+                    <form method="dialog" class="area-choice-form">
+                      <div class="area-choice-header">
+                        <strong id="areaChoiceTitle">選擇場地效果</strong>
+                      </div>
+                      <p id="areaChoiceMessage" class="area-choice-message">請選擇要對該玩家套用的效果。</p>
+                      <div class="area-choice-actions">
+                        <button id="areaChoiceHurtButton" class="btn area-choice-button danger" type="button">傷害</button>
+                        <button id="areaChoiceHealButton" class="btn area-choice-button heal" type="button">治癒</button>
+                        <button id="areaChoiceCancelButton" class="btn area-choice-button neutral" type="button" autofocus>取消</button>
+                      </div>
+                    </form>
+                  </dialog>
+                  <dialog id="equipmentChoiceDialog" class="area-choice-dialog equipment-choice-dialog" aria-labelledby="equipmentChoiceTitle">
+                    <form method="dialog" class="area-choice-form">
+                      <div class="area-choice-header">
+                        <strong id="equipmentChoiceTitle">選擇裝備</strong>
+                      </div>
+                      <p id="equipmentChoiceMessage" class="area-choice-message">請選擇要奪取的裝備。</p>
+                      <div id="equipmentChoiceOptions" class="equipment-choice-options"></div>
+                      <div class="area-choice-actions equipment-choice-actions">
+                        <button id="equipmentChoiceCancelButton" class="btn area-choice-button neutral" type="button" autofocus>取消</button>
+                      </div>
+                    </form>
+                  </dialog>
+                  <dialog id="greenChoiceDialog" class="area-choice-dialog" aria-labelledby="greenChoiceTitle">
+                    <form method="dialog" class="area-choice-form">
+                      <div class="area-choice-header">
+                        <strong id="greenChoiceTitle">綠卡效果選擇</strong>
+                      </div>
+                      <p id="greenChoiceMessage" class="area-choice-message">請選擇要發動或不發動此綠卡效果。</p>
+                      <div class="area-choice-actions">
+                        <button id="greenChoiceActivateButton" class="btn area-choice-button heal" type="button">發動</button>
+                        <button id="greenChoiceSkipButton" class="btn area-choice-button danger" type="button">不發動</button>
+                        <button id="greenChoiceCancelButton" class="btn area-choice-button neutral" type="button" autofocus>取消</button>
+                      </div>
+                    </form>
+                  </dialog>
+                  <dialog id="activeCardDialog" class="active-card-dialog" aria-labelledby="activeCardDialogName">
+                    <form method="dialog" class="active-card-dialog-form">
+                      <div class="area-choice-header">
+                        <strong id="activeCardDialogName">卡片資訊</strong>
+                        <button type="submit" class="stage-field-detail-close" aria-label="關閉" autofocus>×</button>
+                      </div>
+                      <p id="activeCardDialogType" class="active-card-dialog-type"></p>
+                      <p id="activeCardDialogDesc" class="active-card-dialog-desc"></p>
+                    </form>
+                  </dialog>
+                </div>
+              </div>
+            </fieldset>
+          </div>
+
+          <fieldset>
+            <legend><strong data-i18n="room.damage_meter.title">傷害計量表</strong></legend>
+            <div class="card-body">
+              <div id="damageMeter" class="damage-meter" aria-live="polite"></div>
+            </div>
+          </fieldset>
+
+        </section>
+      </main>
+    </div>
+
+    <dialog id="ratingDialog" class="area-choice-dialog" aria-labelledby="ratingDialogTitle">
+      <form method="dialog" class="area-choice-form">
+        <div class="area-choice-header">
+          <strong id="ratingDialogTitle">給予評價</strong>
+        </div>
+        <p id="ratingDialogMessage" class="area-choice-message">請選擇正評或負評，並可填寫原因。</p>
+        <div class="inline-actions" style="justify-content:flex-start; gap:12px; margin-bottom:10px;">
+          <label><input type="radio" name="tripRatingValue" value="1" checked /> 正評</label>
+          <label><input type="radio" name="tripRatingValue" value="-1" /> 負評</label>
+        </div>
+        <textarea id="ratingDialogComment" class="txt" rows="3" maxlength="40" placeholder="原因可留空，最多 40 字"></textarea>
+        <div class="area-choice-actions">
+          <button id="ratingDialogSubmit" class="btn area-choice-button heal" type="button">送出</button>
+          <button id="ratingDialogCancel" class="btn area-choice-button neutral" type="button" autofocus>取消</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

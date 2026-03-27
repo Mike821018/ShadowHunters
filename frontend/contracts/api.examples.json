@@ -1,0 +1,27 @@
+{
+  "create_room": {
+    "request": {
+      "action": "create_room",
+      "payload": { "room_name": "room-A", "hide_trip": true }
+    }
+  },
+  "join_room": {
+    "request": {
+      "action": "join_room",
+      "payload": {
+        "room_id": 1,
+        "player_info": { "trip": "player-1", "name": "Player 1" }
+      }
+    }
+  },
+  "next_step_choose_area": {
+    "request": {
+      "action": "next_step",
+      "payload": {
+        "room_id": 1,
+        "action": false,
+        "target": { "kind": "area", "id": "Church" }
+      }
+    }
+  }
+}

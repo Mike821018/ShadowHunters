@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ShadowHunters Backend API Schemas",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "request": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "create_room",
+            "list_rooms",
+            "join_room",
+            "leave_room",
+            "start_game",
+            "next_step",
+            "card_effect",
+            "loot_from_kill",
+            "steal_equipment",
+            "get_room_state",
+            "change_color",
+            "abolish_room",
+            "toggle_ready"
+          ]
+        },
+        "payload": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "action",
+        "payload"
+      ]
+    },
+    "response": {
+      "$ref": "#/$defs/Envelope"
+    }
+  },
+  "required": [
+    "version",
+    "request",
+    "response"
+  ],
+  "$defs": {
+    "Problem": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "type": "integer"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "instance": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      },
+      "required": [
+        "title",
+        "status",
+        "code"
+      ]
+    },
+    "Envelope": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "event": {
+          "type": "string"
+        },
+        "data": {
+          "type": [
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Problem"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "type": "object",
+          "properties": {
+            "timestamp": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "timestamp",
+            "version"
+          ]
+        }
+      },
+      "required": [
+        "ok",
+        "event",
+        "data",
+        "error",
+        "meta"
+      ]
+    },
+    "TargetRef": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "player",
+            "area",
+            "none"
+          ]
+        },
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    }
+  }
+}

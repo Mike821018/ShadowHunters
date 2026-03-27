@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>暗影獵人｜操作說明</title>
+    <link rel="stylesheet" href="./src/theme.css" />
+  </head>
+  <body data-page="operation">
+    <div id="header">
+      <div class="wrap s_clear">
+        <h2>暗影獵人</h2>
+        <div id="umenu" aria-live="polite">
+          <span id="transportMode" class="pill" data-i18n-title="common.transport.source" title="目前資料來源">AUTO</span>
+          <span id="statusText" class="lighttxt" data-i18n="common.status.init">前端已啟動</span>
+          <div class="lang-switcher">
+            <select class="lang-select" data-lang-select aria-label="Language selector">
+              <option value="zh">ZH</option>
+              <option value="en">EN</option>
+              <option value="jp">JP</option>
+            </select>
+          </div>
+        </div>
+        <div id="menu">
+          <ul class="menu-tabs" role="navigation" aria-label="主功能">
+            <li><a class="tab" href="./lobby.html" data-i18n="common.nav.lobby">大廳</a></li>
+            <li><a class="tab" href="./guide.html" data-i18n="common.nav.rules">遊戲規則</a></li>
+            <li><a class="tab current" href="./operation.html" aria-current="page" data-i18n="common.nav.operation">操作說明</a></li>
+            <li><a class="tab" href="./records.html" data-i18n="common.nav.records">紀錄閱覽</a></li>
+            <li><a class="tab" href="./avatar.html" data-i18n="common.nav.avatars">頭像一覽</a></li>
+            <li><a class="tab" href="./resident_register.html" data-i18n="common.nav.identity">身分登錄</a></li>
+            <li><a class="tab" href="./version.html" data-i18n="common.nav.versions">版本紀錄</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="wrap s_clear" id="wrap">
+      <main class="main guide-page">
+        <div class="guide-container">
+          <section class="panel guide-section">
+            <h2>遊玩操作流程</h2>
+            <div class="card-body">
+              <ol class="guide-steps">
+                <li><strong>進入房間</strong><span>從大廳建立或加入村莊，進入房間頁後可看到村民卡片與遊戲桌面。</span></li>
+                <li><strong>準備與開局</strong><span>招募階段點擊「準備完成」，村長可在條件符合後開始遊戲。</span></li>
+                <li><strong>回合推進</strong><span>點擊桌面中央骰子區可直接擲骰；也可使用「下一步」按鈕推進，依照提示完成移動、抽牌、攻擊或能力施放。</span></li>
+                <li><strong>點擊互動</strong><span>點玩家卡可選擇目標、發動能力、或在終局後提交評價；點場地/牌堆可觸發對應行為。</span></li>
+                <li><strong>互動卡片確認</strong><span>像綠卡（隱士卡）這種需對方選擇的效果，系統會跳出確認視窗，等待對方選擇發動或不發動後才會繼續。</span></li>
+                <li><strong>踢人投票流程</strong><span>招募階段可點擊目標玩家卡發起踢人投票；每位玩家同時只能保有一票，改投時舊票會移除，票數達標後該玩家會被移出房間。</span></li>
+                <li><strong>賽後查詢</strong><span>遊戲結束後可點 TRIP 進入 TRIP 個人紀錄，查看遊玩歷程與評價。</span></li>
+              </ol>
+            </div>
+          </section>
+
+          <section class="panel guide-section">
+            <h2>操作畫面重點</h2>
+            <div class="card-body">
+              <ul class="guide-tips">
+                <li>左上資訊列：返回大廳、語言切換、自動刷新設定。</li>
+                <li>中央桌面：場地卡、牌庫/棄牌堆、執行中卡片、骰子與「下一步」。</li>
+                <li>玩家卡：點擊玩家可選擇目標；終局後可點 TRIP 直接查看該 TRIP 紀錄。</li>
+                <li>提示對話框：綠卡選擇、裝備選擇、區域效果都會以浮窗引導操作。</li>
+              </ul>
+            </div>
+          </section>
+
+          <section class="panel guide-section">
+            <h2>身分登錄頁說明</h2>
+            <div class="card-body">
+              <ol class="guide-steps">
+                <li><strong>TRIP 一覽</strong><span>可搜尋已存在 TRIP、查看場數/勝率/評級，點擊 TRIP 可打開個人紀錄。</span></li>
+                <li><strong>TRIP 個人紀錄</strong><span>可查看過去暱稱、遊玩紀錄、評價紀錄；村莊編號可連到該局最終畫面。</span></li>
+                <li><strong>TRIP 管理功能</strong><span>支援 TRIP 登記、更改、認領紀錄、修改紀錄與刪除紀錄，操作前需完成 TRIP 驗證。</span></li>
+              </ol>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

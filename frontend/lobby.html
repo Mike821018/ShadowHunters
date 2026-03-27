@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>暗影獵人｜大廳</title>
+    <link rel="stylesheet" href="./src/theme.css" />
+  </head>
+  <body data-page="lobby">
+    <div id="header">
+      <div class="wrap s_clear">
+        <h2>暗影獵人</h2>
+        <div id="umenu" aria-live="polite">
+          <span id="transportMode" class="pill" data-i18n-title="common.transport.source" title="目前資料來源">AUTO</span>
+          <span id="statusText" class="lighttxt" data-i18n="common.status.init">前端已啟動</span>
+          <div class="lang-switcher">
+            <select class="lang-select" data-lang-select aria-label="Language selector">
+              <option value="zh">ZH</option>
+              <option value="en">EN</option>
+              <option value="jp">JP</option>
+            </select>
+          </div>
+        </div>
+        <div id="menu">
+          <ul class="menu-tabs" role="navigation" aria-label="主功能">
+            <li><a class="tab current" href="./lobby.html" aria-current="page" data-i18n="common.nav.lobby">大廳</a></li>
+            <li><a class="tab" href="./guide.html" data-i18n="common.nav.rules">遊戲規則</a></li>
+            <li><a class="tab" href="./operation.html" data-i18n="common.nav.operation">操作說明</a></li>
+            <li><a class="tab" href="./records.html" data-i18n="common.nav.records">紀錄閱覽</a></li>
+            <li><a class="tab" href="./avatar.html" data-i18n="common.nav.avatars">頭像一覽</a></li>
+            <li><a class="tab" href="./resident_register.html" data-i18n="common.nav.identity">身分登錄</a></li>
+            <li><a class="tab" href="./version.html" data-i18n="common.nav.versions">版本紀錄</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="wrap s_clear" id="wrap">
+      <main class="main">
+        <section class="panel" tabindex="0">
+          <fieldset>
+            <legend><strong id="lobbyTitle" data-i18n="lobby.announce.title">伺服器公告</strong></legend>
+            <div class="card-body">
+              <p id="announcementText" class="announcement-text" aria-live="polite" data-i18n="lobby.announce.loading">公告載入中...</p>
+              <div class="inline-actions">
+                <button id="btnUseAuto" class="btn" type="button">AUTO</button>
+                <button id="btnUseHttp" class="btn" type="button">HTTP</button>
+                <button id="btnUseDemo" class="btn" type="button">DEMO</button>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend><strong data-i18n="lobby.rooms.title">遊戲列表</strong></legend>
+            <div class="card-body">
+              <button id="btnRefreshRooms" class="btn" data-i18n="lobby.rooms.refresh">重新整理</button>
+              <div class="rooms-table-wrap">
+                <table id="roomsTable" class="data-table" aria-label="房間列表">
+                  <colgroup>
+                    <col class="col-room-id" />
+                    <col class="col-status" />
+                    <col class="col-count" />
+                    <col class="col-name" />
+                    <col class="col-desc" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th data-i18n="lobby.rooms.col_id">房號</th>
+                      <th data-i18n="lobby.rooms.col_status">狀態</th>
+                      <th data-i18n="lobby.rooms.col_count">人數</th>
+                      <th data-i18n="lobby.rooms.col_name">村子名稱</th>
+                      <th data-i18n="lobby.rooms.col_desc">村子說明</th>
+                    </tr>
+                  </thead>
+                  <tbody id="roomsTbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend><strong data-i18n="lobby.create.title">建立村子</strong></legend>
+            <form id="createRoomForm" class="card-body form-grid">
+              <label for="roomName" data-i18n="lobby.create.name_label">村子名稱</label>
+              <div class="input-with-suffix">
+                <input id="roomName" class="txt" type="text" placeholder="輸入村子名稱（英文最多40字）" data-i18n-placeholder="lobby.create.name_placeholder" />
+                <span class="input-suffix" aria-hidden="true" data-i18n="lobby.create.name_suffix">村</span>
+              </div>
+
+              <label for="roomDescription" data-i18n="lobby.create.desc_label">村子說明</label>
+              <textarea id="roomDescription" class="txt" rows="3" placeholder="輸入村子說明（可空白）" data-i18n-placeholder="lobby.create.desc_placeholder"></textarea>
+
+              <label class="option-title" for="managerTrip" data-i18n="lobby.create.manager_trip_label">村長 Trip</label>
+              <div class="stacked-fields">
+                <input id="managerTrip" class="txt" type="text" placeholder="留空代表不設定" data-i18n-placeholder="lobby.create.manager_trip_placeholder" />
+                <label class="checkbox-row checkbox-row-inline">
+                  <input type="checkbox" id="managerTripEncryptedCheck" />
+                  <span data-i18n="lobby.create.manager_trip_encrypted_label">輸入的是加密後 Trip</span>
+                </label>
+              </div>
+
+              <label class="option-title" for="requireTripCheck" data-i18n="lobby.create.require_trip_label">Trip 驗證</label>
+              <div class="stacked-fields">
+                <label class="checkbox-row">
+                  <input type="checkbox" id="requireTripCheck" />
+                  <span class="field-hint" data-i18n="lobby.create.require_trip_hint">（勾選後僅限已登記 Trip 的玩家進入）</span>
+                </label>
+                <label class="trip-verify-inline" for="tripMinGames">
+                  <span data-i18n="lobby.create.trip_min_games_label">最低遊戲數</span>
+                  <input id="tripMinGames" class="txt trip-min-games-input" type="number" min="0" step="1" value="0" aria-label="Trip 最低遊戲數" />
+                  <span data-i18n="lobby.create.trip_min_games_hint">（0 代表只驗證 Trip 登記，不限制場數）</span>
+                </label>
+              </div>
+
+              <label class="option-title" for="hideTripCheck" data-i18n="lobby.create.hide_trip_label">隱藏 Trip</label>
+              <label class="checkbox-row">
+                <input type="checkbox" id="hideTripCheck" checked aria-describedby="hideTripHint" />
+                <span id="hideTripHint" class="field-hint" data-i18n="lobby.create.hide_trip_hint">（遊戲結束後才會顯示 Trip）</span>
+              </label>
+
+              <label class="option-title" for="chatVillageCheck" data-i18n="lobby.create.chat_room_label">聊天村</label>
+              <label class="checkbox-row">
+                <input type="checkbox" id="chatVillageCheck" aria-describedby="chatVillageHint" />
+                <span id="chatVillageHint" class="field-hint" data-i18n="lobby.create.chat_room_hint">（聊天用村莊，最多 50 人，不會開始遊戲，也不會套用閒置自動廢村）</span>
+              </label>
+
+              <label class="option-title" for="expansionModeSelect" data-i18n="lobby.create.expansion_mode_label">擴充形式</label>
+              <select id="expansionModeSelect" class="txt">
+                <option value="all" data-i18n="lobby.create.expansion_mode_all">使用</option>
+                <option value="no_extend" data-i18n="lobby.create.expansion_mode_no_extend">不使用</option>
+              </select>
+
+              <label class="option-title" for="enableInitialGreenCardCheck" data-i18n="lobby.create.initial_green_card_label">初始綠卡</label>
+              <label class="checkbox-row">
+                <input type="checkbox" id="enableInitialGreenCardCheck" aria-describedby="enableInitialGreenCardHint" />
+                <span id="enableInitialGreenCardHint" class="field-hint" data-i18n="lobby.create.initial_green_card_hint">（遊戲開始時所有玩家依序執行一張綠卡）</span>
+              </label>
+
+              <div></div>
+              <button class="btn" type="submit" data-i18n="lobby.create.submit">建立村子</button>
+            </form>
+          </fieldset>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
