@@ -1,0 +1,29 @@
+# Required exclusions
+higu/
+issue_list/
+
+# Python caches/environments
+__pycache__/
+*.py[cod]
+.venv/
+
+# Test files and outputs
+tests/
+test/
+*_test.py
+test_*.py
+
+# Simulation and test result outputs
+simulation_run*.txt
+*.log
+*.out
+*.tmp
+scripts/sim_output*.txt
+
+# Test utility scripts
+scripts/
+scripts/*test*.py
+scripts/*smoke*.py
+
+# Local environment files
+server.env
