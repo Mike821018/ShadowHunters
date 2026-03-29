@@ -19,6 +19,7 @@ simulation_run*.txt
 *.out
 *.tmp
 scripts/sim_output*.txt
+test_artifacts/
 
 # Test utility scripts
 scripts/
@@ -27,3 +28,8 @@ scripts/*smoke*.py
 
 # Local environment files
 server.env
+
+# Runtime-generated assets/data (keep repo clean)
+frontend/assets/avatars/custom/
+backend/data/avatar_catalog.json
+info.py
