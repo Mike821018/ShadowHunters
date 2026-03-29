@@ -42,6 +42,8 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
             return self._handle_room_stats(parsed.query)
         if parsed.path == '/api/avatar_catalog':
             return self._handle_avatar_catalog()
+        if parsed.path == '/api/version_notes':
+            return self._handle_version_notes()
         if parsed.path.startswith('/api/game_record/'):
             record_id = parsed.path.rsplit('/', 1)[-1]
             return self._handle_game_record(record_id)
@@ -254,6 +256,22 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
     def _handle_avatar_catalog(self):
         result = self.server.room_manager.api_get_avatar_catalog()
         self._send_json(HTTPStatus.OK, result)
+
+    def _handle_version_notes(self):
+        try:
+            version_path = self.server.root_dir / 'VERSION.md'
+            content = version_path.read_text(encoding='utf-8')
+            encoded = content.encode('utf-8')
+            self.send_response(HTTPStatus.OK)
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
+            self.send_header('Content-Length', str(len(encoded)))
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(encoded)
+        except Exception:
+            self.send_response(HTTPStatus.NOT_FOUND)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
 
 
 def run_server(host: str = '127.0.0.1', port: int = 5600):

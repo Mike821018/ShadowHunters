@@ -1,25 +1,67 @@
 import { t } from '../i18n.js';
 
-const VERSION_FILES = [
-  { file: '../VERSION.md', label: 'VERSION.md' },
-];
+function escHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function inlineFmt(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, (_, m) => `<strong>${m}</strong>`)
+    .replace(/`(.+?)`/g, (_, m) => `<code>${escHtml(m)}</code>`);
+}
+
+function renderMarkdown(raw) {
+  const lines = raw.split('\n');
+  const parts = [];
+  let inList = false;
+  for (const line of lines) {
+    if (line.startsWith('#### ')) {
+      if (inList) { parts.push('</ul>'); inList = false; }
+      parts.push(`<h4>${inlineFmt(escHtml(line.slice(5)))}</h4>`);
+    } else if (line.startsWith('### ')) {
+      if (inList) { parts.push('</ul>'); inList = false; }
+      parts.push(`<h3>${inlineFmt(escHtml(line.slice(4)))}</h3>`);
+    } else if (line.startsWith('## ')) {
+      if (inList) { parts.push('</ul>'); inList = false; }
+      parts.push(`<h2>${inlineFmt(escHtml(line.slice(3)))}</h2>`);
+    } else if (line.startsWith('# ')) {
+      if (inList) { parts.push('</ul>'); inList = false; }
+      parts.push(`<h1>${inlineFmt(escHtml(line.slice(2)))}</h1>`);
+    } else if (/^- /.test(line)) {
+      if (!inList) { parts.push('<ul>'); inList = true; }
+      parts.push(`<li>${inlineFmt(escHtml(line.slice(2)))}</li>`);
+    } else if (line.trim() === '') {
+      if (inList) { parts.push('</ul>'); inList = false; }
+    } else {
+      if (inList) { parts.push('</ul>'); inList = false; }
+      parts.push(`<p>${inlineFmt(escHtml(line))}</p>`);
+    }
+  }
+  if (inList) parts.push('</ul>');
+  return parts.join('\n');
+}
 
 export async function initVersionPage() {
-  const list = document.getElementById('versionList');
-  if (!list) return;
+  const content = document.getElementById('versionContent');
+  if (!content) return;
 
-  list.innerHTML = '';
-  VERSION_FILES.forEach((item) => {
-    const li = document.createElement('li');
-    li.className = 'version-list-item';
-    li.innerHTML = `<a href="${item.file}" target="_blank" rel="noopener noreferrer">${item.label}</a>`;
-    list.appendChild(li);
-  });
-
-  if (!VERSION_FILES.length) {
-    const li = document.createElement('li');
-    li.className = 'lighttxt';
-    li.textContent = t('version.empty');
-    list.appendChild(li);
+  try {
+    const resp = await fetch('/api/version_notes', { cache: 'no-store' });
+    if (!resp.ok) {
+      content.innerHTML = `<p class="lighttxt">${escHtml(t('version.empty'))}</p>`;
+      return;
+    }
+    const text = (await resp.text()).trim();
+    if (!text) {
+      content.innerHTML = `<p class="lighttxt">${escHtml(t('version.empty'))}</p>`;
+      return;
+    }
+    content.innerHTML = renderMarkdown(text);
+  } catch {
+    content.innerHTML = `<p class="lighttxt">${escHtml(t('version.empty'))}</p>`;
   }
 }

@@ -247,7 +247,8 @@ export default {
   },
   version: {
     title: 'バージョン履歴',
-    desc: '以下に issue_list の更新履歴を表示します。クリックして詳細を確認できます。',
+    desc: 'バージョン履歴の一覧です。',
+    loading: 'バージョン履歴読み込み中…',
     empty: 'バージョン履歴はまだありません。',
   },
   room: {

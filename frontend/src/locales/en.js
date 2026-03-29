@@ -247,7 +247,8 @@ export default {
   },
   version: {
     title: 'Version Notes',
-    desc: 'Issue list updates are listed below. Click to view details.',
+    desc: 'Version history for this project.',
+    loading: 'Loading version notes…',
     empty: 'No version notes yet.',
   },
   room: {

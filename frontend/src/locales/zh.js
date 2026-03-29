@@ -246,7 +246,8 @@ export default {
   },
   version: {
     title: '版本紀錄',
-    desc: '以下列出 issue_list 的更新紀錄，點擊可查看詳細內容。',
+    desc: '以下為此項目的版本紀錄內容。',
+    loading: '版本紀錄載入中…',
     empty: '目前沒有版本紀錄。',
   },
   room: {

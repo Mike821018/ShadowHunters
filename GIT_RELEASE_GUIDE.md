@@ -11,6 +11,11 @@
 ## 準備工作
 確保已安裝 Git，如未安裝請從 https://git-scm.com 下載安裝。
 
+## 🚨 提交鐵則
+
+> **每次 commit 前，必須先更新 `VERSION.md`，寫入本次變更的版本號與修正內容，再執行 `git add / commit`。**
+> 未更新 VERSION.md 的提交視為不完整版本，禁止推送到 master。
+
 ## 操作步驟
 
 ### 1. 打開 Git Bash 或命令提示字元
