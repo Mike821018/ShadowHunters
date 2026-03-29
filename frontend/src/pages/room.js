@@ -35,14 +35,54 @@ function formatReplayDateTime(value) {
 
 function buildReplayRoomState(record) {
   const finalState = record && typeof record.final_state === 'object' ? record.final_state : null;
-  if (finalState && finalState.room && finalState.players && typeof finalState.players === 'object') {
+  const legacyPlayers = Array.isArray(record?.players) ? record.players : [];
+  const legacyRoleByAccount = {};
+  const legacyRoleByJoinOrder = {};
+  const replayRoleByName = {};
+  const replayRoleByAccount = {};
+  legacyPlayers.forEach((p, idx) => {
+    const account = String(p?.player_id || `player_${idx + 1}`).trim();
+    const playerName = String(p?.player_name || '').trim();
+    const roleName = String(p?.character_name || '').trim();
+    const roleCamp = String(p?.character_camp || '').trim().toLowerCase();
+    if (!account) return;
+    legacyRoleByAccount[account] = {
+      character: roleName,
+      camp: roleCamp,
+    };
+    if (roleName) {
+      replayRoleByAccount[account] = roleName;
+    }
+    if (playerName && roleName) {
+      replayRoleByName[playerName] = roleName;
+    }
+    legacyRoleByJoinOrder[idx + 1] = {
+      character: roleName,
+      camp: roleCamp,
+    };
+  });
+  const finalStatePlayers = finalState?.players;
+  const hasStructuredFinalStatePlayers = (
+    finalState
+    && finalState.room
+    && finalStatePlayers
+    && typeof finalStatePlayers === 'object'
+    && !Array.isArray(finalStatePlayers)
+    && Object.keys(finalStatePlayers).length > 0
+  );
+
+  if (hasStructuredFinalStatePlayers) {
     const replayWinners = Array.isArray(record?.winner_players) && record.winner_players.length
       ? record.winner_players
       : (Array.isArray(finalState?.winners) ? finalState.winners : []);
     const winnerSet = new Set(replayWinners.map((value) => String(value || '').trim()).filter(Boolean));
     const serializedPlayers = {};
-    Object.entries(finalState.players || {}).forEach(([account, p], idx) => {
+    Object.entries(finalStatePlayers || {}).forEach(([account, p], idx) => {
       const key = String(account || '').trim() || `player_${idx + 1}`;
+      const joinOrder = Number(p?.join_order || idx + 1);
+      const legacyRole = legacyRoleByAccount[key] || legacyRoleByJoinOrder[joinOrder] || legacyRoleByJoinOrder[idx + 1] || {};
+      const resolvedCharacter = String(p?.character || p?.character_name || legacyRole.character || '').trim();
+      const resolvedCamp = String(p?.character_camp || p?.camp || legacyRole.camp || '').trim().toLowerCase();
       serializedPlayers[key] = {
         account: key,
         trip_display: String(p?.trip_display || '-'),
@@ -59,9 +99,11 @@ function buildReplayRoomState(record) {
         zone: Number(p?.zone || 0),
         area: p?.area ? String(p.area) : null,
         is_village_manager: false,
-        character_reveal: Boolean(p?.character_reveal),
-        character: String(p?.character || ''),
-        character_camp: String(p?.character_camp || '').toLowerCase(),
+        // Replay should reveal final roles even if they were hidden mid-game.
+        character_reveal: true,
+        character: resolvedCharacter,
+        character_name: resolvedCharacter,
+        character_camp: resolvedCamp,
         can_use_ability: p?.can_use_ability == null ? null : Boolean(p.can_use_ability),
         ability_status: String(p?.ability_status || ''),
         character_ability_timing: Number(p?.character_ability_timing || 0),
@@ -113,6 +155,8 @@ function buildReplayRoomState(record) {
       },
       fields: Array.isArray(finalState?.fields) ? finalState.fields : [],
       card_piles: finalState?.card_piles && typeof finalState.card_piles === 'object' ? finalState.card_piles : {},
+      replay_role_by_name: replayRoleByName,
+      replay_role_by_account: replayRoleByAccount,
       players: serializedPlayers,
       chat_messages: Array.isArray(finalState?.chat_messages)
         ? finalState.chat_messages
@@ -120,7 +164,7 @@ function buildReplayRoomState(record) {
     };
   }
 
-  const players = Array.isArray(record?.players) ? record.players : [];
+  const players = legacyPlayers;
   const winnerSet = new Set(Array.isArray(record?.winner_players) ? record.winner_players.map((value) => String(value || '').trim()) : []);
   const colorPool = ['red', 'blue', 'green', 'yellow', 'black', 'white', 'purple', 'orange'];
 
@@ -145,6 +189,7 @@ function buildReplayRoomState(record) {
       is_village_manager: false,
       character_reveal: true,
       character: String(p?.character_name || ''),
+      character_name: String(p?.character_name || ''),
       character_camp: String(p?.character_camp || '').toLowerCase(),
       self_character: null,
       self_character_camp: null,
@@ -190,6 +235,8 @@ function buildReplayRoomState(record) {
     dice: { D6: 1, D4: 1 },
     fields: [],
     card_piles: {},
+    replay_role_by_name: replayRoleByName,
+    replay_role_by_account: replayRoleByAccount,
     players: serializedPlayers,
     chat_messages: Array.isArray(record?.chat_messages) ? record.chat_messages : [],
   };
@@ -909,6 +956,17 @@ function clampDamageValue(value) {
   return Math.max(0, Math.min(14, Math.round(numericValue)));
 }
 
+function jumpToPlayerCard(account) {
+  const normalized = String(account || '').trim();
+  if (!normalized) return;
+  const card = document.querySelector(`#roomCards [data-player-account="${CSS.escape(normalized)}"]`);
+  if (!(card instanceof HTMLElement)) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+  card.classList.remove('jump-highlight');
+  void card.offsetWidth;
+  card.classList.add('jump-highlight');
+}
+
 function renderDamageMeter({ el, esc }, data) {
   if (!el.damageMeter) return;
 
@@ -973,7 +1031,7 @@ function renderDamageMeter({ el, esc }, data) {
               ${players.map((player) => {
                 const fill = PLAYER_COLOR_HEX[player.color] || '#cccccc';
                 const outline = player.color === 'White' ? '#9aa7b2' : 'rgba(0, 0, 0, 0.25)';
-                return `<span class="damage-meter-player-chip" title="${esc(`${player.name} / ${player.color || '-'} / ${player.exactDamage}`)}" style="background:${fill}; border-color:${outline};"></span>`;
+                return `<button class="damage-meter-player-chip" type="button" data-player-account="${esc(player.account)}" title="${esc(`${player.name} / ${player.color || '-'} / ${player.exactDamage}`)}" aria-label="${esc(t('ui.player_label', { name: player.name || player.account }))}" style="background:${fill}; border-color:${outline};"></button>`;
               }).join('')}
             </div>
           `;
@@ -981,6 +1039,12 @@ function renderDamageMeter({ el, esc }, data) {
       `).join('')}
     </div>
   `;
+
+  el.damageMeter.querySelectorAll('.damage-meter-player-chip[data-player-account]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      jumpToPlayerCard(chip.getAttribute('data-player-account'));
+    });
+  });
 }
 
 export function setVillageInfoMessage({ el, esc }, message) {
@@ -1028,7 +1092,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
     ? `<li class="room-timeout-warning"><strong>${esc(t('room.info.turn_timeout'))}</strong>${esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-', n: Math.max(0, timeoutRemain) }))}</li>`
     : '';
   const boomedNotice = data?.boomed_notice || null;
-  const boomedName = String(boomedNotice?.name || boomedNotice?.account || boomedNotice?.trip_display || '').trim();
+  const boomedName = String(boomedNotice?.name || boomedNotice?.trip_display || '').trim();
   const boomedNoticeRow = (status === 2 && boomedName)
     ? `<li class="room-timeout-warning"><strong>${esc(t('room.info.boomed_notice'))}</strong>${esc(t('room.info.boomed_notice_fmt', { name: boomedName }))}</li>`
     : '';
@@ -1079,7 +1143,7 @@ function renderChatStage({ el, esc }, data, state) {
 
   const messages = Array.isArray(data?.chat_messages) ? data.chat_messages : [];
   if (!messages.length) {
-    el.chatMessages.innerHTML = '<p class="lighttxt">尚無訊息</p>';
+    el.chatMessages.innerHTML = `<p class="lighttxt">${esc(t('room.chat.empty'))}</p>`;
     el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
     return;
   }
@@ -1117,23 +1181,25 @@ function renderChatStage({ el, esc }, data, state) {
     return text.value;
   };
 
-  const getDisplayNameByLabel = (label) => {
-    const rawLabel = String(label || '').trim();
-    const account = resolveAccountByLabel(rawLabel);
-    if (!account) return rawLabel;
-    const mappedName = String(data?.players?.[account]?.name || '').trim();
-    return mappedName || rawLabel;
-  };
+  const getDisplayNameByLabel = (label) => String(label || '').trim();
 
-  // Wrap player name in blue
-  const pid = (name) => {
-    const rawName = decodeHtml(name);
-    return `<span class="chat-pid">${esc(getDisplayNameByLabel(rawName))}</span>`;
-  };
   const playerEntries = Object.entries(data?.players || {});
   const viewerAccount = String(state?.account || '').trim();
   const roomStatus = Number(data?.room?.room_status || 0);
   const isGameFinished = roomStatus === 3;
+  const showRoleInSystemMessages = isGameFinished || isReplayView;
+  const replayRoleByName = data?.replay_role_by_name && typeof data.replay_role_by_name === 'object'
+    ? data.replay_role_by_name
+    : {};
+  const replayRoleByAccount = data?.replay_role_by_account && typeof data.replay_role_by_account === 'object'
+    ? data.replay_role_by_account
+    : {};
+
+  // Wrap player name in blue (plain text only)
+  const pidPlain = (name) => {
+    const rawName = decodeHtml(name);
+    return `<span class="chat-pid">${esc(getDisplayNameByLabel(rawName))}</span>`;
+  };
 
   const resolveAccountByLabel = (label) => {
     const normalized = String(label || '').trim();
@@ -1146,21 +1212,42 @@ function renderChatStage({ el, esc }, data, state) {
 
   const getVisibleRoleName = (label, accountHint = '') => {
     const account = String(accountHint || resolveAccountByLabel(label) || '').trim();
-    if (!account) return '';
+    if (!account) {
+      const replayRole = String(replayRoleByName[String(label || '').trim()] || '').trim();
+      if (!replayRole) return '';
+      return getCharacterLocalizedName(replayRole, getCurrentUiLang());
+    }
     const player = data?.players?.[account];
-    if (!player) return '';
+    if (!player) {
+      const replayRole = String(replayRoleByAccount[account] || replayRoleByName[String(label || '').trim()] || '').trim();
+      if (!replayRole) return '';
+      return getCharacterLocalizedName(replayRole, getCurrentUiLang());
+    }
     const selfRole = account === viewerAccount ? String(player?.self_character || '').trim() : '';
-    const publicRole = String(player?.character || '').trim();
+    const publicRole = String(player?.character || player?.character_name || '').trim();
     const roleName = publicRole || selfRole;
-    if (!roleName) return '';
+    if (!roleName) {
+      const replayRole = String(replayRoleByAccount[account] || replayRoleByName[String(label || '').trim()] || '').trim();
+      if (!replayRole) return '';
+      return getCharacterLocalizedName(replayRole, getCurrentUiLang());
+    }
     return getCharacterLocalizedName(roleName, getCurrentUiLang());
   };
 
-  const pidRole = (name, accountHint = '') => {
+  const pidRole = (name, accountHint = '', explicitRoleName = '') => {
     const rawName = decodeHtml(name);
+    const normalizedName = String(rawName || '').trim();
+    if (!normalizedName || normalizedName === '-') {
+      return pidPlain(rawName || '-');
+    }
     const rawHint = decodeHtml(accountHint);
-    const roleName = getVisibleRoleName(rawName, rawHint);
-    return `${pid(rawName)}<span class="chat-role">(${esc(roleName || '???')})</span>`;
+    const roleName = String(explicitRoleName || '').trim() || getVisibleRoleName(rawName, rawHint);
+    return `${pidPlain(rawName)}<span class="chat-role">(${esc(roleName || '???')})</span>`;
+  };
+
+  const pid = (name, accountHint = '') => {
+    if (showRoleInSystemMessages) return pidRole(name, accountHint || name);
+    return pidPlain(name);
   };
 
   const canRevealGreenCardName = (sourceLabel = '', targetLabel = '') => {
@@ -1204,16 +1291,16 @@ function renderChatStage({ el, esc }, data, state) {
     if (/^村莊已建立：/.test(text)) return `村莊建立於 ${fmtDate(ts)}`;
 
     // -- Join / Leave --
-    if ((m = text.match(/^\[(.+)\] 進入了村莊$/))) return `${pid(esc(m[1]))} 來到村莊大廳`;
-    if ((m = text.match(/^\[(.+)\] 離開了村莊$/))) return `${pid(esc(m[1]))} 離開村莊大廳`;
+    if ((m = text.match(/^\[(.+)\] 進入了村莊$/))) return `${pid(esc(m[1]), m[1])} 來到村莊大廳`;
+    if ((m = text.match(/^\[(.+)\] 離開了村莊$/))) return `${pid(esc(m[1]), m[1])} 離開村莊大廳`;
 
     // -- Kick votes --
     if ((m = text.match(/^\[(.+)\] 投票剔除 \[(.+)\]/)))
-      return `${pid(esc(m[1]))} 投票剔除 ${pid(esc(m[2]))}`;
+      return `${pid(esc(m[1]), m[1])} 投票剔除 ${pid(esc(m[2]), m[2])}`;
     if ((m = text.match(/^\[(.+)\] 已被投票剔除$/)))
-      return `${pid(esc(m[1]))} 已被投票剔除`;
+      return `${pid(esc(m[1]), m[1])} 已被投票剔除`;
     if ((m = text.match(/^村長 \[(.+)\] 剔除了 \[(.+)\]$/)))
-      return `村長 ${pid(esc(m[1]))} 剔除了 ${pid(esc(m[2]))}`;
+      return `村長 ${pid(esc(m[1]), m[1])} 剔除了 ${pid(esc(m[2]), m[2])}`;
     if ((m = text.match(/^村長 \[(.+)\] 發起點名/)))
       return '村長發起點名，請盡速準備完成';
 
@@ -1270,10 +1357,10 @@ function renderChatStage({ el, esc }, data, state) {
 
     // -- Ability effect damage with attacker: [受傷者] 因為 [攻擊者](CharName) 角色能力效果受到 N 點傷害 --
     if ((m = text.match(/^\[(.+?)\] 因為 \[(.+?)\]\((.+?)\) 角色能力效果受到 (\d+) 點傷害$/))) {
-      return `${pidRole(esc(m[1]), m[1])} 因為 ${pidRole(esc(m[2]), m[2])} 角色能力效果受到 ${esc(m[4])} 傷害`;
+      return `${pidRole(esc(m[1]), m[1])} 因為 ${pidRole(esc(m[2]), m[2], getCharacterLocalizedName(m[3], lang))} 角色能力效果受到 ${esc(m[4])} 傷害`;
     }
     if ((m = text.match(/^\[(.+?)\] 因為 \[(.+?)\]\((.+?)\) 角色能力效果恢復 (\d+) 點傷害$/))) {
-      return `${pidRole(esc(m[1]), m[1])} 因為 ${pidRole(esc(m[2]), m[2])} 角色能力效果治癒 ${esc(m[4])} 傷害`;
+      return `${pidRole(esc(m[1]), m[1])} 因為 ${pidRole(esc(m[2]), m[2], getCharacterLocalizedName(m[3], lang))} 角色能力效果治癒 ${esc(m[4])} 傷害`;
     }
 
     // -- Area/card effect result messages (generated by backend) --
@@ -1293,7 +1380,7 @@ function renderChatStage({ el, esc }, data, state) {
 
     // -- Declare attack --
     if ((m = text.match(/^\[(.+)\] 宣告攻擊 \[(.+)\]$/)))
-      return `${pid(esc(m[1]))} 對 ${pid(esc(m[2]))} 發動攻擊`;
+      return `${pid(esc(m[1]), m[1])} 對 ${pid(esc(m[2]), m[2])} 發動攻擊`;
 
     // -- Attack roll (hide damage value, show dice only) --
     if ((m = text.match(/^\[(.+)\] 攻擊擲骰：(.+?)，傷害=\d+$/)))
@@ -1301,7 +1388,7 @@ function renderChatStage({ el, esc }, data, state) {
 
     // -- Deal damage from attack --
     if ((m = text.match(/^\[(.+)\] 對 \[(.+)\] 造成 (\d+) 點傷害$/)))
-      return `${pid(esc(m[2]))} 被 ${pid(esc(m[1]))} 攻擊受到 ${esc(m[3])} 傷害`;
+      return `${pid(esc(m[2]), m[2])} 被 ${pid(esc(m[1]), m[1])} 攻擊受到 ${esc(m[3])} 傷害`;
 
     // -- Equipment --
     if ((m = text.match(/^\[(.+)\] 裝備了 (.+)$/)))
@@ -1319,9 +1406,9 @@ function renderChatStage({ el, esc }, data, state) {
 
     // -- Character / death --
     if ((m = text.match(/^\[(.+)\] 死亡，身份揭示為 (.+)$/)))
-      return `${pid(esc(m[1]))} 死亡，身份揭示為 ${esc(getCharacterLocalizedName(m[2], lang))}`;
+      return `${pid(esc(m[1]), m[1])} 死亡，身份揭示為 ${esc(getCharacterLocalizedName(m[2], lang))}`;
     if ((m = text.match(/^\[(.+)\] 回合超時，判定暴斃$/)))
-      return `${pid(esc(m[1]))} 回合超時暴斃`;
+      return `${pid(esc(m[1]), m[1])} 回合超時暴斃`;
     if ((m = text.match(/^\[(.+)\] 主動揭示身份：(.+)$/)))
       return `${pidRole(esc(m[1]), m[1])} 揭示身份：${esc(getCharacterLocalizedName(m[2], lang))}`;
 
@@ -1330,17 +1417,36 @@ function renderChatStage({ el, esc }, data, state) {
 
     // -- Game end winners --
     if ((m = text.match(/^遊戲結束，勝利者：(.+)$/))) {
+      const winnerAccounts = Array.isArray(data?.winners)
+        ? data.winners.map((value) => String(value || '').trim()).filter(Boolean)
+        : [];
+
+      if (winnerAccounts.length > 0) {
+        const winnerTokens = winnerAccounts.map((account) => {
+          const player = data?.players?.[account] || {};
+          const label = String(player?.name || account || '').trim() || account;
+          return pidRole(label, account);
+        });
+        return `遊戲結束，勝利者：${winnerTokens.join('、')}`;
+      }
+
       const labels = String(m[1] || '')
         .split(/[、,，]/)
         .map((label) => String(label || '').trim())
         .filter(Boolean);
-      const winners = labels.map((label) => pidRole(label, label));
+      const winners = labels.map((label) => {
+        const match = label.match(/^(.+?)\(([^()]+)\)$/);
+        if (match) {
+          return pidRole(match[1], match[1], getCharacterLocalizedName(match[2], lang));
+        }
+        return pidRole(label, label);
+      });
       return `遊戲結束，勝利者：${winners.join('、')}`;
     }
 
     // -- Default: escape text and highlight [name] patterns in blue --
     const safeText = esc(text);
-    return safeText.replace(/\[([^\]]+)\]/g, (_, n) => `<span class="chat-pid">${n}</span>`);
+    return safeText.replace(/\[([^\]]+)\]/g, (_, n) => showRoleInSystemMessages ? pidRole(n, n) : `<span class="chat-pid">${n}</span>`);
   };
 
   el.chatMessages.innerHTML = messages.map((message) => {
@@ -1360,7 +1466,8 @@ function renderChatStage({ el, esc }, data, state) {
     const timeStr = fmtTime(ts);
     const isSelf = Boolean(state?.account) && account === String(state.account || '');
     const cls = isSelf ? 'chat-line chat-line-self' : 'chat-line';
-    return `<div class="${cls}"><div class="chat-sender">${esc(name || '-')}<span class="chat-time">(${timeStr})</span>:</div><div class="chat-text">${esc(text)}</div></div>`;
+    const chatTextHtml = esc(text).replace(/\r\n|\r|\n/g, '<br>');
+    return `<div class="${cls}"><div class="chat-sender">${esc(name || '-')}<span class="chat-time">(${timeStr})</span>:</div><div class="chat-text">${chatTextHtml}</div></div>`;
   }).join('');
 
   el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
@@ -2782,10 +2889,19 @@ export function bindRoomEvents({
     }, seconds * 1000);
   };
 
-  const applyAutoRefreshSetting = (seconds) => {
+  const applyAutoRefreshSetting = async (seconds) => {
     state.autoRefreshSeconds = AUTO_REFRESH_OPTIONS.includes(seconds) ? seconds : 0;
     persistSession(state);
     renderAutoRefreshControls({ el, state, onSelect: applyAutoRefreshSetting });
+    if (state.autoRefreshSeconds > 0) {
+      // Issue 35.3: 點擊設定時立即刷新一次
+      try {
+        const data = await dispatch('get_room_state', { room_id: state.roomId, account: state.account || undefined }, { silent: true });
+        renderState(data);
+      } catch (error) {
+        console.error('Immediate refresh failed:', error);
+      }
+    }
     syncAutoRefreshTimer();
     toast(state.autoRefreshSeconds === 0 ? t('toast.auto_off') : t('toast.auto_on', { n: state.autoRefreshSeconds }));
   };
