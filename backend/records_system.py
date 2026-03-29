@@ -755,6 +755,7 @@ class GameRecordStore:
                 if not only_unassigned and not has_trip:
                     continue
                 player_record.trip_display = trip_key
+                self._sync_final_state_trip_for_account(game_record, account_key, trip_key)
                 updated += 1
 
         if updated:
@@ -778,12 +779,32 @@ class GameRecordStore:
                 if str(player_record.trip_display or '').strip() != trip_key:
                     continue
                 player_record.trip_display = ''
+                self._sync_final_state_trip_for_account(game_record, str(player_record.player_id or '').strip(), '')
                 updated += 1
 
         if updated:
             self._persist_all_game_records()
             self.rebuild_player_stats()
         return updated
+
+    def _sync_final_state_trip_for_account(self, game_record: GameRecord, account: str, trip_display: str) -> None:
+        final_state = getattr(game_record, 'final_state', None)
+        if not isinstance(final_state, dict):
+            return
+        players_map = final_state.get('players')
+        if not isinstance(players_map, dict):
+            return
+
+        account_key = str(account or '').strip()
+        if not account_key:
+            return
+
+        target_row = players_map.get(account_key)
+        if isinstance(target_row, dict):
+            target_row['trip_display'] = str(trip_display or '')
+            players_map[account_key] = target_row
+            final_state['players'] = players_map
+            game_record.final_state = final_state
 
     def rebuild_player_stats(self):
         self.player_stats.clear()

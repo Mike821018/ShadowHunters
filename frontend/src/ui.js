@@ -164,12 +164,14 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       const canUseAbility = p.can_use_ability == null
         ? (isSelf ? Boolean(p.self_can_use_ability) : false)
         : Boolean(p.can_use_ability);
-      const hasAbilityIndicator = ![0, 10].includes(abilityTiming) && abilityStatus !== 'used';
+      const showsReady = abilityStatus === 'ready' || (!abilityStatus && canUseAbility);
+      const showsDisabled = abilityStatus === 'disabled';
+      const hasAbilityIndicator = showsReady || showsDisabled;
       let abilityBadge = '';
       if (hasAbilityIndicator) {
-        if (canUseAbility) {
+        if (showsReady) {
           abilityBadge = `<span class="player-ability-chip ready" aria-label="${esc(t('ui.ability_ready'))}" title="${esc(t('ui.ability_ready'))}">⚡</span>`;
-        } else {
+        } else if (showsDisabled) {
           abilityBadge = `<span class="player-ability-chip disabled" aria-label="${esc(t('ui.ability_disabled'))}" title="${esc(t('ui.ability_disabled'))}">🚫</span>`;
         }
       }
