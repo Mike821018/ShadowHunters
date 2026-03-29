@@ -10,6 +10,9 @@ from backend.room_manager import RoomManager
 
 
 class ShadowHuntersHTTPServer(ThreadingHTTPServer):
+    # Browsers open many parallel connections for JS/CSS; default backlog (~5) can drop bursts behind ngrok.
+    request_queue_size = 128
+
     def __init__(self, server_address: Tuple[str, int], handler_class, *, root_dir: Path):
         super().__init__(server_address, handler_class)
         self.root_dir = root_dir
@@ -44,6 +47,8 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
             return self._handle_avatar_catalog()
         if parsed.path == '/api/version_notes':
             return self._handle_version_notes()
+        if parsed.path == '/api/announcement':
+            return self._handle_announcement()
         if parsed.path.startswith('/api/game_record/'):
             record_id = parsed.path.rsplit('/', 1)[-1]
             return self._handle_game_record(record_id)
@@ -261,6 +266,22 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
         try:
             version_path = self.server.root_dir / 'VERSION.md'
             content = version_path.read_text(encoding='utf-8')
+            encoded = content.encode('utf-8')
+            self.send_response(HTTPStatus.OK)
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
+            self.send_header('Content-Length', str(len(encoded)))
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(encoded)
+        except Exception:
+            self.send_response(HTTPStatus.NOT_FOUND)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+
+    def _handle_announcement(self):
+        try:
+            announcement_path = self.server.root_dir / 'announcement.txt'
+            content = announcement_path.read_text(encoding='utf-8')
             encoded = content.encode('utf-8')
             self.send_response(HTTPStatus.OK)
             self.send_header('Content-Type', 'text/plain; charset=utf-8')

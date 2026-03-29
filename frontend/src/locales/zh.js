@@ -547,7 +547,7 @@ export default {
     winner_crown: '獲勝玩家',
     ability_ready: '可使用能力',
     ability_disabled: '能力已禁用',
-    announce_empty: '目前無公告，請建立或更新 frontend/announcement.txt。',
+    announce_empty: '目前無公告，請建立或更新 announcement.txt。',
   },
   status: {
     0: '等待',

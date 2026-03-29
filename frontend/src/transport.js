@@ -1,5 +1,6 @@
 import { t } from './i18n.js';
 import { PLAYER_COLORS } from './constants.js';
+import { apiFetch } from './utils.js';
 
 const APP_VERSION = '1.1.0';
 const DEMO_STORE_KEY = 'sh.demoStore.v1';
@@ -836,7 +837,7 @@ export function createDispatch({ state, setStatus, pushLog, toast, withVillageSu
   }
 
   async function transportHttp(req) {
-    const resp = await fetch('/api/dispatch', {
+    const resp = await apiFetch('/api/dispatch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),

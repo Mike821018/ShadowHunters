@@ -2,6 +2,7 @@ import { t } from './i18n.js';
 import { PLAYER_COLORS, PLAYER_COLOR_HEX } from './constants.js';
 import { getCharacterLocalizedName, getCharacterTooltipInfo, getCurrentUiLang } from './characterInfo.js';
 import { getAvatarColorById, getAvatarImageSrcById } from './avatarConfig.js';
+import { apiFetch } from './utils.js';
 
 function colorHex(color) {
   return PLAYER_COLOR_HEX[color] || '#cccccc';
@@ -345,13 +346,17 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
 export async function loadAnnouncement(el) {
   if (!el.announcementText) return;
   try {
-    const resp = await fetch('./announcement.txt', { cache: 'no-store' });
+    const resp = await apiFetch('/api/announcement', { cache: 'no-store' });
     if (!resp.ok) {
       el.announcementText.textContent = t('ui.announce_empty');
       return;
     }
 
     const text = (await resp.text()).trim();
+    if (text.includes('ERR_NGROK_6024')) {
+      el.announcementText.textContent = t('ui.announce_empty');
+      return;
+    }
     el.announcementText.textContent = text || t('ui.announce_empty');
   } catch {
     el.announcementText.textContent = t('ui.announce_empty');

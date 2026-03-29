@@ -3,6 +3,7 @@ import { bindAvatarPicker } from '../components/avatarPicker.js';
 import { getCharacterLocalizedName, getCurrentUiLang } from '../characterInfo.js';
 import { resolveLang, t } from '../i18n.js';
 import { setRoomAccount } from '../session.js';
+import { apiFetch } from '../utils.js';
 
 /** 防止在表單輸入框按 Enter 意外送出，按鈕本身仍可用 Enter 觸發 */
 function preventEnterSubmit(form) {
@@ -617,7 +618,7 @@ function bindIdentityTools({ el, toast, dispatch }) {
     if (!normalizedTrip) {
       throw new Error('trip profile requires trip');
     }
-    const response = await fetch(`/api/trip_profile?trip=${encodeURIComponent(normalizedTrip)}&limit=300&page_size=20&nickname_page=${identityState.nicknamePage}&game_page=${identityState.gamePage}&rating_page=${identityState.ratingPage}`, { cache: 'no-store' });
+    const response = await apiFetch(`/api/trip_profile?trip=${encodeURIComponent(normalizedTrip)}&limit=300&page_size=20&nickname_page=${identityState.nicknamePage}&game_page=${identityState.gamePage}&rating_page=${identityState.ratingPage}`, { cache: 'no-store' });
     if (!response.ok) throw new Error('trip profile failed');
     const data = await response.json();
     identityState.profileTrip = normalizedTrip;
@@ -727,7 +728,7 @@ function bindIdentityTools({ el, toast, dispatch }) {
       params.set('limit', '500');
       params.set('page', String(identityState.directoryPage));
       params.set('page_size', '20');
-      const response = await fetch(`/api/trip_directory?${params.toString()}`, { cache: 'no-store' });
+      const response = await apiFetch(`/api/trip_directory?${params.toString()}`, { cache: 'no-store' });
       if (!response.ok) throw new Error('trip directory failed');
       const data = await response.json();
       renderTripDirectory(data.entries || [], data.pagination || { page: 1, page_size: 20, total: 0 });

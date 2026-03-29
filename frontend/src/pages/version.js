@@ -1,4 +1,5 @@
 import { t } from '../i18n.js';
+import { apiFetch } from '../utils.js';
 
 function escHtml(value) {
   return String(value ?? '')
@@ -50,7 +51,7 @@ export async function initVersionPage() {
   if (!content) return;
 
   try {
-    const resp = await fetch('/api/version_notes', { cache: 'no-store' });
+    const resp = await apiFetch('/api/version_notes', { cache: 'no-store' });
     if (!resp.ok) {
       content.innerHTML = `<p class="lighttxt">${escHtml(t('version.empty'))}</p>`;
       return;

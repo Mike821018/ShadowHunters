@@ -1,4 +1,5 @@
 import { t } from '../i18n.js';
+import { apiFetch } from '../utils.js';
 
 function winnerBadge(camp, tokenLabel) {
   if (camp === 'hunter') {
@@ -101,7 +102,7 @@ function updatePager(pagination, onPrev, onNext) {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url, { cache: 'no-store' });
+  const response = await apiFetch(url, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }

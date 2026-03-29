@@ -541,7 +541,7 @@ export default {
     role_ability: '能力：',
     color_picker_label: '色を選択',
     ready_done: '準備完了',
-    announce_empty: 'お知らせはありません。frontend/announcement.txtを作成または更新してください。',
+    announce_empty: 'お知らせはありません。announcement.txtを作成または更新してください。',
     winner_crown: '勝者',
     ability_ready: '能力使用可能',
     ability_disabled: '能力使用不可',

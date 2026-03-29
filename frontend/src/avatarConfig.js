@@ -1,3 +1,5 @@
+import { apiFetch } from './utils.js';
+
 export const AVATAR_NAMES = [
   '明灰',
   '暗灰',
@@ -82,7 +84,7 @@ export function getAvatarImageSrcById(id) {
 
 export async function loadAvatarCatalog() {
   try {
-    const response = await fetch('/api/avatar_catalog', { cache: 'no-store' });
+    const response = await apiFetch('/api/avatar_catalog', { cache: 'no-store' });
     if (!response.ok) throw new Error(`avatar catalog http ${response.status}`);
     const data = await response.json();
     avatarCatalog = mergeCatalog(Array.isArray(data?.avatars) ? data.avatars : []);

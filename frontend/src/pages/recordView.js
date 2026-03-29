@@ -1,5 +1,6 @@
 import { t } from '../i18n.js';
 import { getCharacterLocalizedName, getCurrentUiLang } from '../characterInfo.js';
+import { apiFetch } from '../utils.js';
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -71,7 +72,7 @@ function renderPlayers(rows) {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url, { cache: 'no-store' });
+  const response = await apiFetch(url, { cache: 'no-store' });
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
   return response.json();
 }

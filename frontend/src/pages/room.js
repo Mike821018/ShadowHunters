@@ -2,6 +2,7 @@ import { AUTO_REFRESH_OPTIONS, DAMAGE_ROLE_MARKERS, DAMAGE_TRACK_VALUES, PLAYER_
 import { getCharacterLocalizedName, getCurrentUiLang } from '../characterInfo.js';
 import { t } from '../i18n.js';
 import { clearRoomAccount } from '../session.js';
+import { apiFetch } from '../utils.js';
 
 let roomAutoRefreshTimer = null;
 let activeFieldSlot = null;
@@ -3286,7 +3287,7 @@ export async function initRoomPage({ state, dispatch, renderState, setVillageInf
       return;
     }
     try {
-      const response = await fetch(`/api/game_record_by_room?room_id=${encodeURIComponent(roomIdRaw)}`, { cache: 'no-store' });
+      const response = await apiFetch(`/api/game_record_by_room?room_id=${encodeURIComponent(roomIdRaw)}`, { cache: 'no-store' });
       if (!response.ok) throw new Error('record_view_not_found');
       const record = await response.json();
       const replayState = buildReplayRoomState(record);
@@ -3303,7 +3304,7 @@ export async function initRoomPage({ state, dispatch, renderState, setVillageInf
   const recordId = String(search.get('recordId') || '').trim();
   if (recordId) {
     try {
-      const response = await fetch(`/api/game_record/${encodeURIComponent(recordId)}`, { cache: 'no-store' });
+      const response = await apiFetch(`/api/game_record/${encodeURIComponent(recordId)}`, { cache: 'no-store' });
       if (!response.ok) throw new Error('record_view_not_found');
       const record = await response.json();
       const replayState = buildReplayRoomState(record);

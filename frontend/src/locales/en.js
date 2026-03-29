@@ -541,7 +541,7 @@ export default {
     role_ability: 'Ability:',
     color_picker_label: 'Choose Color',
     ready_done: 'Ready',
-    announce_empty: 'No announcement. Create or update frontend/announcement.txt.',
+    announce_empty: 'No announcement. Create or update announcement.txt.',
     winner_crown: 'Winner',
     ability_ready: 'Ability available',
     ability_disabled: 'Ability disabled',

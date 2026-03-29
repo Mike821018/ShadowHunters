@@ -26,6 +26,20 @@ export function countChars(text) {
   return Array.from(String(text || '')).length;
 }
 
+export function buildApiFetchOptions(options = {}) {
+  const merged = { ...options };
+  const headers = new Headers(options?.headers || {});
+  if (!headers.has('ngrok-skip-browser-warning')) {
+    headers.set('ngrok-skip-browser-warning', 'true');
+  }
+  merged.headers = headers;
+  return merged;
+}
+
+export function apiFetch(input, options = {}) {
+  return fetch(input, buildApiFetchOptions(options));
+}
+
 export function isValidAsciiCredential(text, { allowEmpty = false } = {}) {
   const value = String(text || '');
   if (!value) return allowEmpty;
