@@ -160,12 +160,11 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
         ? `<button class="player-shield-chip" type="button" data-shield-source="${esc(invulnerabilitySource)}" aria-label="${esc(t('room.invulnerability_source.aria_label'))}" title="${esc(t('room.invulnerability_source.title'))}">🛡️</button>`
         : '';
       const crownBadge = isWinner ? `<span class="avatar-crown" aria-label="${esc(t('ui.winner_crown'))}" title="${esc(t('ui.winner_crown'))}">👑</span>` : '';
-      const abilityTiming = Number(p.character_ability_timing || (isSelf ? p.self_character_ability_timing : 0) || 0);
       const abilityStatus = String(p.ability_status || '').trim().toLowerCase();
       const canUseAbility = p.can_use_ability == null
         ? (isSelf ? Boolean(p.self_can_use_ability) : false)
         : Boolean(p.can_use_ability);
-      const showsReady = abilityStatus === 'ready' || (!abilityStatus && canUseAbility);
+      const showsReady = canUseAbility && abilityStatus !== 'disabled' && abilityStatus !== 'used';
       const showsDisabled = abilityStatus === 'disabled';
       const hasAbilityIndicator = showsReady || showsDisabled;
       let abilityBadge = '';

@@ -26,9 +26,9 @@ class Character():
     def assign(self, user):
         user.camp = self.camp
         user.hp = self.hp
-        # 無需揭露即可使用的能力（例如 Unknown）在配角時就可用。
-        if not getattr(self, 'ability_requires_reveal', True):
-            user.can_use_ability = bool(self.can_use_ability)
+        # UI 與狀態同步規則：開場皆視為可用（除非後續被禁用或已用盡）。
+        # ability_requires_reveal 僅影響「可否主動發動」，不影響可用顯示。
+        user.can_use_ability = bool(self.can_use_ability)
 
     def reveal(self, user):
         user.character_name = self.name

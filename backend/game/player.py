@@ -67,14 +67,7 @@ class player():
     def assign_character(self, character):
         self.character = character
         character.assign(self)
-        ability_timing = int(getattr(character, 'ability_timing', 0) or 0)
-        if ability_timing in (0, 10):
-            self.ability_status = 'ready' if bool(self.can_use_ability) else 'disabled'
-        else:
-            if bool(getattr(character, 'ability_requires_reveal', True)) and not bool(self.character_reveal):
-                self.ability_status = 'locked'
-            else:
-                self.ability_status = 'ready' if bool(self.can_use_ability) else 'none'
+        self.ability_status = 'ready' if bool(self.can_use_ability) else 'disabled'
         # update
 
     ####################
@@ -85,11 +78,8 @@ class player():
         if not self.character:
             return
         self.character.reveal(self)
-        ability_timing = int(getattr(getattr(self, 'character', None), 'ability_timing', 0) or 0)
-        if ability_timing in (0, 10):
+        if self.ability_status not in ('used', 'disabled'):
             self.ability_status = 'ready' if bool(self.can_use_ability) else 'disabled'
-        elif self.ability_status not in ('used', 'disabled'):
-            self.ability_status = 'ready' if bool(self.can_use_ability) else 'none'
         # update
 
     def use_ability(self, target):
