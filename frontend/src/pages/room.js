@@ -610,6 +610,41 @@ function getMoveAreaPromptState(state, dataSnapshot = latestRoomSnapshot) {
   };
 }
 
+function getAbilityAreaPromptState(state, dataSnapshot = latestRoomSnapshot) {
+  if (!pendingAbilityActivation || pendingAbilityActivation.targetType !== 'area') {
+    return { active: false, areaNames: [] };
+  }
+
+  const selfAccount = String(state?.account || '').trim();
+  const player = dataSnapshot?.players?.[selfAccount] || null;
+  const roomStatus = Number(dataSnapshot?.room?.room_status || 0);
+  if (!selfAccount || !player || roomStatus !== 2) {
+    return { active: false, areaNames: [] };
+  }
+
+  const fields = Array.isArray(dataSnapshot?.fields) ? dataSnapshot.fields : [];
+  const allFieldAreaNames = fields
+    .map((field) => String(field?.name || '').trim())
+    .filter(Boolean);
+  const characterName = String(pendingAbilityActivation.character || '').trim();
+
+  // Emi ability can only target adjacent areas.
+  if (characterName === 'Emi') {
+    const currentArea = String(player?.area || '').trim();
+    const currentIndex = fields.findIndex((field) => String(field?.name || '').trim() === currentArea);
+    if (currentIndex < 0) {
+      return { active: true, areaNames: [] };
+    }
+    const areaNames = [currentIndex - 1, currentIndex + 1]
+      .filter((index) => index >= 0 && index < fields.length)
+      .map((index) => String(fields[index]?.name || '').trim())
+      .filter(Boolean);
+    return { active: true, areaNames };
+  }
+
+  return { active: true, areaNames: allFieldAreaNames };
+}
+
 function getCardPromptState(state, dataSnapshot = latestRoomSnapshot) {
   const selfAccount = String(state?.account || '').trim();
   const currentAccount = String(dataSnapshot?.turn?.current_account || '').trim();
@@ -1181,6 +1216,14 @@ function renderChatStage({ el, esc }, data, state) {
     if ((m = text.match(/^村長 \[(.+)\] 發起點名/)))
       return '村長發起點名，請盡速準備完成';
 
+    // -- Initial green card --
+    if ((m = text.match(/^\[(.+)\]\s*初始綠卡：(.+)$/))) {
+      return `初始綠卡：${esc(getLocalizedCardName(String(m[2] || '').trim()))}`;
+    }
+    if ((m = text.match(/^初始綠卡：(.+)$/))) {
+      return `初始綠卡：${esc(getLocalizedCardName(String(m[1] || '').trim()))}`;
+    }
+
     // -- Move dice --
     if ((m = text.match(/^\[(.+)\] 擲移動骰：(.+)$/))) return `${pidRole(esc(m[1]), m[1])} 擲出 ${esc(m[2])}`;
     if ((m = text.match(/^\[(.+)\] 擲出 7，可任選區域$/))) return null;
@@ -1509,6 +1552,8 @@ function renderFieldCards(data, state = null) {
   const fields = Array.isArray(data?.fields) ? data.fields : [];
   const movePrompt = state ? getMoveAreaPromptState(state, data) : { active: false, areaNames: [] };
   const movePromptSet = new Set((movePrompt.areaNames || []).map((value) => String(value || '').trim()));
+  const abilityAreaPrompt = state ? getAbilityAreaPromptState(state, data) : { active: false, areaNames: [] };
+  const abilityAreaPromptSet = new Set((abilityAreaPrompt.areaNames || []).map((value) => String(value || '').trim()));
   const occupantsByFieldName = new Map();
 
   Object.entries(data?.players || {}).forEach(([account, player]) => {
@@ -1607,17 +1652,24 @@ function renderFieldCards(data, state = null) {
     const displayName = field?.display_name || field?.name || '未翻開';
     const numbers = Array.isArray(field?.numbers) ? field.numbers : [];
     const occupants = field ? (occupantsByFieldName.get(field.name) || []).slice(0, 8) : [];
-    const isMoveTargetPrompt = Boolean(movePrompt.active && field?.name && movePromptSet.has(String(field.name).trim()));
+    const normalizedAreaName = String(field?.name || '').trim();
+    const isMoveTargetPrompt = Boolean(movePrompt.active && normalizedAreaName && movePromptSet.has(normalizedAreaName));
+    const isAbilityTargetPrompt = Boolean(abilityAreaPrompt.active && normalizedAreaName && abilityAreaPromptSet.has(normalizedAreaName));
+    const isTargetPrompt = isMoveTargetPrompt || isAbilityTargetPrompt;
 
     cardEl.classList.toggle('is-empty', !field);
     cardEl.classList.toggle('is-active', field && activeFieldSlot === slot);
-    cardEl.classList.toggle('move-target-prompt', isMoveTargetPrompt);
+    cardEl.classList.toggle('move-target-prompt', isTargetPrompt);
     cardEl.setAttribute('aria-label', field ? `場地卡 ${displayName}` : '場地卡 未翻開');
 
-    if (isMoveTargetPrompt) {
+    if (isTargetPrompt) {
       cardEl.setAttribute('role', 'button');
       cardEl.setAttribute('tabindex', '0');
-      cardEl.setAttribute('aria-label', `可移動到 ${displayName}`);
+      if (isMoveTargetPrompt) {
+        cardEl.setAttribute('aria-label', `可移動到 ${displayName}`);
+      } else {
+        cardEl.setAttribute('aria-label', `可選擇能力目標 ${displayName}`);
+      }
     } else {
       cardEl.removeAttribute('role');
       cardEl.removeAttribute('tabindex');
@@ -3160,7 +3212,8 @@ export function bindRoomEvents({
       const slot = Number(abilityFieldCard.getAttribute('data-field-slot'));
       const field = Array.isArray(latestRoomSnapshot?.fields) ? latestRoomSnapshot.fields[slot] : null;
       const areaName = String(field?.name || '').trim();
-      if (areaName) {
+      const abilityAreaPrompt = getAbilityAreaPromptState(state);
+      if (areaName && abilityAreaPrompt.active && abilityAreaPrompt.areaNames.includes(areaName)) {
         selectAbilityAreaTarget(areaName);
       }
     }, true);
@@ -3181,6 +3234,15 @@ export function bindRoomEvents({
           event.stopPropagation();
           moveToPromptArea(areaName);
           return;
+        }
+        if (pendingAbilityActivation && pendingAbilityActivation.targetType === 'area') {
+          const abilityAreaPrompt = getAbilityAreaPromptState(state);
+          if (areaName && abilityAreaPrompt.active && abilityAreaPrompt.areaNames.includes(areaName)) {
+            event.preventDefault();
+            event.stopPropagation();
+            selectAbilityAreaTarget(areaName);
+            return;
+          }
         }
       }
 

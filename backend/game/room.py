@@ -321,7 +321,7 @@ class room(Thread):
                 self.current_player.status = 3
                 self.active_card = self._initial_green_card
                 if self.active_card:
-                    self.add_system_message(f"[{self.current_player.name or self.current_player.account}] 初始綠卡：{str(getattr(self.active_card, 'name', '') or '未知卡')}")
+                    self.add_system_message(f"初始綠卡：{str(getattr(self.active_card, 'name', '') or '未知卡')}")
                     return
             self._initial_green_card_executed = False
             self._initial_green_card = None
@@ -405,7 +405,7 @@ class room(Thread):
             for account, player in self.players.items()
         }
 
-    def _emit_effect_delta_messages(self, before_snapshot, source_kind, source_name, source_player=None):
+    def _emit_effect_delta_messages(self, before_snapshot, source_kind, source_name, source_player=None, suppress_damage=False):
         source_kind_text = str(source_kind or '').strip()
         source_name_text = str(source_name or '').strip()
         if not source_kind_text or not source_name_text:
@@ -417,6 +417,8 @@ class room(Thread):
             next_damage = int(getattr(player, 'damage', 0) or 0)
             delta = next_damage - prev_damage
             if delta > 0:
+                if suppress_damage:
+                    continue
                 if source_player_text:
                     self.add_system_message(f"[{player.name or player.account}] 因為 [{source_player_text}]({source_name_text}) 角色能力效果受到 {delta} 點傷害")
                 else:
@@ -521,8 +523,6 @@ class room(Thread):
                 if self.current_player:
                     self.current_player.status = 3
                     self.active_card = self._initial_green_card
-                    if self.active_card:
-                        self.add_system_message(f"[{self.current_player.name or self.current_player.account}] 初始綠卡：{str(getattr(self.active_card, 'name', '') or '未知卡')}")
                     return
             else:
                 # 所有玩家都執行了初始綠卡，回到常規回合流程
@@ -564,7 +564,13 @@ class room(Thread):
         self.active_card = card
         snapshot = self._capture_effect_snapshot()
         ret, extra = self._run_active_card_action(target=to_player, force_effect=force_effect)
-        self._emit_effect_delta_messages(snapshot, '卡片', str(getattr(card, 'name', '') or '-'))
+        card_name = str(getattr(card, 'name', '') or '-').strip()
+        self._emit_effect_delta_messages(
+            snapshot,
+            '卡片',
+            card_name,
+            suppress_damage=(card_name == 'First Aid'),
+        )
         self._pending_green_card = None
         self._finish_active_card_resolution(to_player, ret, extra)
         return True
