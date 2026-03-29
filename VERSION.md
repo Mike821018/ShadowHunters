@@ -1,5 +1,23 @@
 # ShadowHunters 版本紀錄
 
+## v0.1.5-test (2026-03-30)
+
+### 修正項目
+
+#### Issue 36 - 遊戲後聊天持久化 & 綠卡訊息遮罩修正
+- `backend/game/room.py`：修正後遊戲聊天時序問題，`is_chat_archived` 旗標改在 `on_game_end()` 前設定；`add_chat_message` 同時檢查 `room_status==3`；`steal_equipment` 系統訊息改為帶上綠卡來源名稱（格式：`因為 卡片 X 效果 從 [Y] 取得裝備 Z`）
+- `frontend/src/pages/room.js`：
+  - 將 `maskedGreenCardEffectSource` 重構為 `resolveCardEffectSource(sourceName, targetLabel)`：受影響玩家本人及遊戲結束後顯示翻譯真名，其他人顯示 `卡片 (?)`；非綠卡（如 Bloodthirsty Spider）一律翻譯不遮罩
+  - `效果(治癒|恢復)` 共用同一處理分支
+  - 新增綠卡搶奪裝備訊息 handler
+  - First Aid 中間效果訊息（`效果受到/恢復 N 點傷害`）改為隱藏；`傷害變為` 統一格式為 `卡片 急救箱 傷害變為N`
+
+### 驗證數據
+- random-http 20 局 + eight-player-http 20 局：全部完成，post_game_chat_sent random=22 / eight-player=12，boomed=0
+
+### 備註
+- 本版本為 `v0.1.4-test` 後續修正版本，仍屬測試階段
+
 ## v0.1.4-test (2026-03-29)
 
 ### 修正項目
