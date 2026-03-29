@@ -343,6 +343,8 @@ class Agnes(Character):
     def ability(self, user, target, rooms):
         ret = False
         if user.can_use_ability:
+            # 只有實際發動能力時才切換為追隨下家。
+            user.agnes_supports_next_player = True
             user.can_use_ability = False
             ret = True
         return ret
@@ -355,8 +357,8 @@ class Agnes(Character):
         my_account = user.account
         if my_account in room.action_order:
             my_index = room.action_order.index(my_account)
-
-            target_index = (my_index - 1) % len(room.action_order) if user.can_use_ability else (my_index + 1) % len(room.action_order)
+            supports_next_player = bool(getattr(user, 'agnes_supports_next_player', False))
+            target_index = (my_index + 1) % len(room.action_order) if supports_next_player else (my_index - 1) % len(room.action_order)
             target_account = room.action_order[target_index]
             target_player = room.players.get(target_account)
             if target_player and target_player.character and hasattr(target_player.character, 'win_check'):
