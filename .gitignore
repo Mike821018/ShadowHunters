@@ -32,4 +32,5 @@ server.env
 # Runtime-generated assets/data (keep repo clean)
 frontend/assets/avatars/custom/
 backend/data/avatar_catalog.json
+backend/data/*.db
 info.py
