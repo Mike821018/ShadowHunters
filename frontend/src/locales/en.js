@@ -1,5 +1,6 @@
 export default {
   common: {
+    brand: 'Shadow Hunters',
     alive: 'Alive',
     dead: 'Dead',
     unknown: 'Unknown',
@@ -136,6 +137,9 @@ export default {
     tip2: 'Center table: field cards, deck or discard pile, active card, dice, and Next Step.',
     tip3: 'Player cards: click a player to target them; after the game you can click TRIP to open that TRIP record directly.',
     tip4: 'Dialogs: green-card choices, equipment choices, and area effects are guided through popups.',
+    tip5: 'Ability icons: ⚡ means ability ready, and 🚫 means ability unavailable right now.',
+    tip6: 'Invulnerability icon: 🛡️ means an active invulnerability effect; click it to inspect the source.',
+    tip7: 'Pre-game color: during recruitment, click your color chip to choose your color for this match.',
     identity_page_title: 'Identity Page Guide',
     identity_step1_title: 'TRIP Directory',
     identity_step1_desc: 'Search existing TRIPs, review games played, win rate, and rank, then click a TRIP to open its personal record.',
@@ -284,6 +288,16 @@ export default {
       unready: 'Cancel Ready',
     },
     cards: { title: 'Villager List' },
+    stage: {
+      chat: 'Chat Room',
+      table: 'Game Table',
+    },
+    chat: {
+      messages_aria: 'Chat messages',
+      placeholder: 'Type a message (max 200 chars)',
+      send: 'Send',
+      empty: 'No messages yet',
+    },
     damage_meter: {
       title: 'Damage Meter',
       damage: 'Damage',
@@ -652,6 +666,7 @@ export default {
       roles: 'Roles & Factions',
       gameplay: 'Game Flow',
       cards: 'Card System',
+      card_catalog: 'Full Card Catalog',
       initial_green: 'Initial Green Card Feature',
       equipment: 'Equipment & Defense',
       victory: 'Victory Conditions',
@@ -695,6 +710,18 @@ export default {
       black_desc: 'Black cards are generally offensive, disruptive, or aggressive. This deck also includes both one-shot effects and weapon-type equipment.',
       equipment_rule: 'Equipment Rule',
       equipment_rule_desc: 'Equipment stays in front of a player and remains active. When a character dies, the killer normally takes one equipment card from the defeated player and the rest are discarded.',
+    },
+    catalog: {
+      characters: 'Character Cards',
+      green: 'Green Cards',
+      white: 'White Cards',
+      black: 'Black Cards',
+      character_name: 'Character',
+      camp: 'Camp',
+      win: 'Win Condition',
+      ability: 'Ability',
+      card_name: 'Card',
+      effect: 'Effect',
     },
     initial_green: {
       title: 'What is Initial Green Card?',

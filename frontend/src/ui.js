@@ -130,8 +130,9 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       const isSelf = Boolean(selfAccount && account === selfAccount);
       const isWinner = winnerSet.has(String(account || '').trim());
       const canPickColor = isSelf && roomStatus === 1 && !p.is_ready && typeof onColorChange === 'function';
-      const hasKnownRole = Boolean(p.character);
-      const roleNameEn = hasKnownRole ? p.character : (isSelf ? p.self_character : null);
+      const resolvedCharacter = String(p.character || p.character_name || '').trim();
+      const hasKnownRole = Boolean(resolvedCharacter);
+      const roleNameEn = hasKnownRole ? resolvedCharacter : (isSelf ? p.self_character : null);
       const roleCamp = hasKnownRole ? p.character_camp : (isSelf ? p.self_character_camp : null);
       const hpVisible = isSelf || hasKnownRole;
       const lang = getCurrentUiLang();

@@ -1,5 +1,6 @@
 import { bindTransportModeEvents } from './bootstrap.js';
 import { loadAvatarCatalog } from './avatarConfig.js';
+import { getAllCharacterInfos, getCurrentUiLang, getCharacterLocalizedName } from './characterInfo.js';
 import { AREA_NAMES } from './constants.js';
 import { initAvatarGalleryPage } from './pages/avatarGallery.js';
 import { initRegisterPage } from './pages/register.js';
@@ -92,10 +93,117 @@ const renderState = (data) => renderRoomState({
   areaNames: AREA_NAMES,
 }, data);
 
+const GUIDE_GREEN_CARDS = ['Aid', 'Anger', 'Blackmail', 'Bully', 'Exorcism', 'Greed', 'Huddle', 'Nurturance', 'Prediction', 'Slap', 'Spell', 'Tough Lesson'];
+const GUIDE_WHITE_CARDS = ['Talisman', 'Fortune Brooch', 'Mystic Compass', 'Holy Robe', 'Silver Rosary', 'Spear of Longinus', 'Holy Water of Healing', 'Advent', 'Chocolate', 'Blessing', 'Concealed Knowledge', 'Guardian Angel', 'Flare of Judgement', 'Disenchant Mirror', 'First Aid'];
+const GUIDE_BLACK_CARDS = ['Chainsaw', 'Butcher Knife', 'Rusted Broad Axe', 'Masamune', 'Machine Gun', 'Handgun', 'Vampire Bat', 'Bloodthirsty Spider', 'Moody Goblin', 'Spiritual Doll', 'Dynamite', 'Diabolic Ritual', 'Banana Peel'];
+
+function setLocalizedPageTitle() {
+  const brand = t('common.brand');
+  const titleMap = {
+    lobby: t('common.nav.lobby'),
+    room: t('room.info.title'),
+    'replay-room': t('room.info.title'),
+    guide: t('common.nav.rules'),
+    operation: t('common.nav.operation'),
+    records: t('common.nav.records'),
+    'avatar-gallery': t('common.nav.avatars'),
+    register: t('common.nav.identity'),
+    'version-notes': t('common.nav.versions'),
+  };
+  const pageTitle = titleMap[state.page] || '';
+  document.title = pageTitle ? `${brand}｜${pageTitle}` : brand;
+  const headerBrand = document.querySelector('#header h2');
+  if (headerBrand) headerBrand.textContent = brand;
+}
+
+function renderGuideCardCatalogs() {
+  if (state.page !== 'guide') return;
+
+  const characterHost = document.getElementById('guideCharacterCatalog');
+  const greenHost = document.getElementById('guideGreenCardCatalog');
+  const whiteHost = document.getElementById('guideWhiteCardCatalog');
+  const blackHost = document.getElementById('guideBlackCardCatalog');
+  if (!characterHost || !greenHost || !whiteHost || !blackHost) return;
+
+  const lang = getCurrentUiLang();
+  const cardName = (card) => {
+    const key = `room.active_card.names.${card}`;
+    const localized = t(key);
+    return localized === key ? card : localized;
+  };
+  const cardDesc = (card) => {
+    const key = `room.active_card.desc.${card}`;
+    const localized = t(key);
+    return localized === key ? '-' : localized;
+  };
+
+  const renderCharacterTable = () => {
+    const rows = getAllCharacterInfos()
+      .map(({ key, info }) => {
+        const camp = info?.camp?.[lang] || info?.camp?.en || '-';
+        const campClass = String(info?.camp?.en || '').trim().toLowerCase() || 'civilian';
+        const badge = String(key || '?').trim().charAt(0).toUpperCase() || '?';
+        const win = info?.win?.[lang] || info?.win?.en || '-';
+        const ability = info?.ability?.[lang] || info?.ability?.en || '-';
+        return `
+          <tr>
+            <td><span class="damage-meter-badge ${esc(campClass)}">${esc(badge)}</span> ${esc(getCharacterLocalizedName(key, lang))}</td>
+            <td>${esc(camp)}</td>
+            <td>${esc(win)}</td>
+            <td>${esc(ability)}</td>
+          </tr>
+        `;
+      })
+      .join('');
+    return `
+      <table class="data-table" aria-label="${esc(t('guide.catalog.characters'))}">
+        <thead>
+          <tr>
+            <th>${esc(t('guide.catalog.character_name'))}</th>
+            <th>${esc(t('guide.catalog.camp'))}</th>
+            <th>${esc(t('guide.catalog.win'))}</th>
+            <th>${esc(t('guide.catalog.ability'))}</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  };
+
+  const renderCardTable = (cards, ariaLabel) => {
+    const rows = cards
+      .map((card) => `
+        <tr>
+          <td>${esc(cardName(card))}</td>
+          <td>${esc(cardDesc(card))}</td>
+        </tr>
+      `)
+      .join('');
+    return `
+      <table class="data-table" aria-label="${esc(ariaLabel)}">
+        <thead>
+          <tr>
+            <th>${esc(t('guide.catalog.card_name'))}</th>
+            <th>${esc(t('guide.catalog.effect'))}</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  };
+
+  characterHost.innerHTML = renderCharacterTable();
+  greenHost.innerHTML = renderCardTable(GUIDE_GREEN_CARDS, t('guide.catalog.green'));
+  whiteHost.innerHTML = renderCardTable(GUIDE_WHITE_CARDS, t('guide.catalog.white'));
+  blackHost.innerHTML = renderCardTable(GUIDE_BLACK_CARDS, t('guide.catalog.black'));
+}
+
 async function boot() {
   const currentLang = initI18n();
   await loadAvatarCatalog();
   applyI18n();
+  setLocalizedPageTitle();
+  renderGuideCardCatalogs();
   bindLangSwitcher(currentLang);
 
   restoreSession(state);

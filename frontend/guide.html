@@ -9,7 +9,7 @@
   <body data-page="guide">
     <div id="header">
       <div class="wrap s_clear">
-        <h2>暗影獵人</h2>
+        <h2 data-i18n="common.brand">暗影獵人</h2>
         <div id="umenu" aria-live="polite">
           <div class="lang-switcher">
             <select class="lang-select" data-lang-select aria-label="Language selector">
@@ -160,6 +160,28 @@
             </div>
           </section>
 
+          <section class="panel guide-section">
+            <h2 data-i18n="guide.section.card_catalog">完整卡表</h2>
+            <div class="card-body">
+              <div class="guide-subsection">
+                <h4 data-i18n="guide.catalog.characters">角色卡一覽</h4>
+                <div class="rooms-table-wrap" id="guideCharacterCatalog"></div>
+              </div>
+              <div class="guide-subsection">
+                <h4 data-i18n="guide.catalog.green">綠卡一覽</h4>
+                <div class="rooms-table-wrap" id="guideGreenCardCatalog"></div>
+              </div>
+              <div class="guide-subsection">
+                <h4 data-i18n="guide.catalog.white">白卡一覽</h4>
+                <div class="rooms-table-wrap" id="guideWhiteCardCatalog"></div>
+              </div>
+              <div class="guide-subsection">
+                <h4 data-i18n="guide.catalog.black">黑卡一覽</h4>
+                <div class="rooms-table-wrap" id="guideBlackCardCatalog"></div>
+              </div>
+            </div>
+          </section>
+
           <!-- Initial Green Card Feature -->
           <section class="panel guide-section">
             <h2 data-i18n="guide.section.initial_green">啟用初始綠卡機制</h2>
@@ -246,6 +268,6 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./src/app.js"></script>
+    <script type="module" src="./src/app.js?v=20260329-issue35-replayfix3"></script>
   </body>
 </html>

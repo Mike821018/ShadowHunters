@@ -33,8 +33,42 @@ function formatReplayDateTime(value) {
   return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
 }
 
+function mergeReplayChatMessages(finalState, record) {
+  const finalStateMessages = Array.isArray(finalState?.chat_messages) ? finalState.chat_messages : [];
+  const recordMessages = Array.isArray(record?.chat_messages) ? record.chat_messages : [];
+  const merged = [];
+  const seen = new Set();
+
+  [...finalStateMessages, ...recordMessages].forEach((row) => {
+    if (!row || typeof row !== 'object') return;
+    const key = [
+      String(row.id || ''),
+      String(row.type || ''),
+      String(row.account || ''),
+      String(row.name || ''),
+      String(row.text || ''),
+      String(row.timestamp || ''),
+    ].join('|');
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(row);
+  });
+
+  merged.sort((a, b) => {
+    const ta = Number(a?.timestamp || 0);
+    const tb = Number(b?.timestamp || 0);
+    if (ta !== tb) return ta - tb;
+    const ia = Number(a?.id || 0);
+    const ib = Number(b?.id || 0);
+    return ia - ib;
+  });
+
+  return merged;
+}
+
 function buildReplayRoomState(record) {
   const finalState = record && typeof record.final_state === 'object' ? record.final_state : null;
+  const mergedReplayMessages = mergeReplayChatMessages(finalState, record);
   const legacyPlayers = Array.isArray(record?.players) ? record.players : [];
   const legacyRoleByAccount = {};
   const legacyRoleByJoinOrder = {};
@@ -158,9 +192,7 @@ function buildReplayRoomState(record) {
       replay_role_by_name: replayRoleByName,
       replay_role_by_account: replayRoleByAccount,
       players: serializedPlayers,
-      chat_messages: Array.isArray(finalState?.chat_messages)
-        ? finalState.chat_messages
-        : (Array.isArray(record?.chat_messages) ? record.chat_messages : []),
+      chat_messages: mergedReplayMessages,
     };
   }
 
@@ -238,7 +270,7 @@ function buildReplayRoomState(record) {
     replay_role_by_name: replayRoleByName,
     replay_role_by_account: replayRoleByAccount,
     players: serializedPlayers,
-    chat_messages: Array.isArray(record?.chat_messages) ? record.chat_messages : [],
+    chat_messages: mergedReplayMessages,
   };
 }
 
@@ -1165,6 +1197,11 @@ function renderChatStage({ el, esc }, data, state) {
     Black: { zh: '黑卡', en: 'Black', jp: '黒カード' },
   };
 
+  const GREEN_CARD_SOURCE_NAMES = new Set([
+    'Aid', 'Anger', 'Blackmail', 'Bully', 'Exorcism', 'Greed', 'Huddle',
+    'Nurturance', 'Prediction', 'Slap', 'Spell', 'Tough Lesson',
+  ]);
+
   const fmtTime = (ts) => {
     const d = new Date((ts || 0) * 1000);
     return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
@@ -1253,8 +1290,11 @@ function renderChatStage({ el, esc }, data, state) {
   const canRevealGreenCardName = (sourceLabel = '', targetLabel = '') => {
     if (isGameFinished) return true;
     if (!viewerAccount) return false;
-    const sourceAccount = resolveAccountByLabel(sourceLabel);
-    const targetAccount = resolveAccountByLabel(targetLabel);
+    const viewerName = String(data?.players?.[viewerAccount]?.name || '').trim();
+    const normalizedSource = String(decodeHtml(sourceLabel || '') || '').trim();
+    const normalizedTarget = String(decodeHtml(targetLabel || '') || '').trim();
+    const sourceAccount = resolveAccountByLabel(normalizedSource) || (viewerName && normalizedSource === viewerName ? viewerAccount : '');
+    const targetAccount = resolveAccountByLabel(normalizedTarget) || (viewerName && normalizedTarget === viewerName ? viewerAccount : '');
     return viewerAccount === sourceAccount || viewerAccount === targetAccount;
   };
 
@@ -1273,6 +1313,29 @@ function renderChatStage({ el, esc }, data, state) {
     return canRevealGreenCardName(sourceLabel, targetLabel) ? esc(getLocalizedCardName(cardName)) : '???';
   };
 
+  // Resolve a "卡片 X" or "card X" source string for display.
+  // Green cards are masked during the game (only target or after game-end can see the real name).
+  // Non-green cards are always shown with a translated name.
+  // Returns '' if the source is not a card prefix (falls through to areaLabel).
+  const resolveCardEffectSource = (sourceName, targetLabel = '') => {
+    const normalized = String(sourceName || '').trim();
+    if (!normalized) return '';
+    const hasCardPrefix = /^卡片\s+/.test(normalized) || /^card\s+/i.test(normalized);
+    if (!hasCardPrefix) return '';
+    const plainCardName = normalized
+      .replace(/^卡片\s+/, '')
+      .replace(/^card\s+/i, '')
+      .trim();
+    if (!plainCardName) return '';
+    if (GREEN_CARD_SOURCE_NAMES.has(plainCardName)) {
+      if (canRevealGreenCardName('', targetLabel)) {
+        return `卡片 ${esc(getLocalizedCardName(plainCardName))}`;
+      }
+      return '卡片 (???)';
+    }
+    return `卡片 ${esc(getLocalizedCardName(plainCardName))}`;
+  };
+
   // Transform a system message text for display.
   // Returns null to suppress the message, or an HTML string.
   const formatSystem = (text, ts) => {
@@ -1281,6 +1344,8 @@ function renderChatStage({ el, esc }, data, state) {
     // -- Messages to HIDE --
     if (/已準備$|未準備$|取消準備$/.test(text)) return null;
     if (/^首位行動玩家：/.test(text)) return null;
+    // First Aid 的中間效果數值訊息（實際傷害由下方「傷害變為」統一顯示）
+    if (/^\[.+\] 因為 卡片 First Aid 效果(?:受到|恢復) \d+ 點傷害$/.test(text)) return null;
     if (/對綠卡.+選擇：/.test(text)) return null;
     if (/^\[.+\] 更換顏色為 /.test(text)) return null;
     if (/^\[.+\] 放棄掠奪 \[.+\] 的裝備/.test(text)) return null;
@@ -1364,19 +1429,19 @@ function renderChatStage({ el, esc }, data, state) {
     }
 
     // -- Area/card effect result messages (generated by backend) --
-    if ((m = text.match(/^\[(.+)\] 因為 (.+) 效果治癒 (\d+) 點傷害$/))) {
-      const area = areaLabel(m[2]);
-      return `${pidRole(esc(m[1]), m[1])} 因為 ${area} 效果治癒 ${esc(m[3])} 傷害`;
+    if ((m = text.match(/^\[(.+)\] 因為 (.+) 效果(治癒|恢復) (\d+) 點傷害$/))) {
+      const sourceLabel = resolveCardEffectSource(m[2], m[1]) || areaLabel(m[2]);
+      return `${pidRole(esc(m[1]), m[1])} 因為 ${sourceLabel} 效果${esc(m[3])} ${esc(m[4])} 傷害`;
     }
     if ((m = text.match(/^\[(.+)\] 因為 (.+) 效果受到 (\d+) 點傷害$/))) {
-      const area = areaLabel(m[2]);
-      return `${pidRole(esc(m[1]), m[1])} 因為 ${area} 效果受到 ${esc(m[3])} 傷害`;
+      const sourceLabel = resolveCardEffectSource(m[2], m[1]) || areaLabel(m[2]);
+      return `${pidRole(esc(m[1]), m[1])} 因為 ${sourceLabel} 效果受到 ${esc(m[3])} 傷害`;
     }
 
     if ((m = text.match(/^\[(.+)\] 因為 白卡\(Blessing\) 恢復 (\d+) 點傷害$/)))
       return `${pidRole(esc(m[1]), m[1])} 因為 ${cardColorLabel('White')}(${esc(getLocalizedCardName('Blessing'))}) 恢復 ${esc(m[2])} 點傷害`;
     if ((m = text.match(/^\[(.+)\] 因為 白卡\(First Aid\) 傷害變為 (\d+)$/)))
-      return `${pidRole(esc(m[1]), m[1])} 因為 ${cardColorLabel('White')}(${esc(getLocalizedCardName('First Aid'))}) 傷害變為 ${esc(m[2])}`;
+      return `${pidRole(esc(m[1]), m[1])} 因為 卡片 ${esc(getLocalizedCardName('First Aid'))} 傷害變為${esc(m[2])}`;
 
     // -- Declare attack --
     if ((m = text.match(/^\[(.+)\] 宣告攻擊 \[(.+)\]$/)))
@@ -1393,6 +1458,13 @@ function renderChatStage({ el, esc }, data, state) {
     // -- Equipment --
     if ((m = text.match(/^\[(.+)\] 裝備了 (.+)$/)))
       return `${pidRole(esc(m[1]), m[1])} 裝備了 ${esc(getLocalizedCardName(m[2]))}`;
+        // -- Green-card steal: [to] 因為 卡片 X 效果 從 [from] 取得裝備 Y --
+        if ((m = text.match(/^\[(.+)\] 因為 卡片 (.+) 效果 從 \[(.+)\] 取得裝備 (.+)$/))) {
+          const cardLabel = GREEN_CARD_SOURCE_NAMES.has(m[2])
+            ? (canRevealGreenCardName(m[3], m[1]) ? `卡片 ${esc(getLocalizedCardName(m[2]))}` : '卡片 (???)')
+            : `卡片 ${esc(getLocalizedCardName(m[2]))}`;
+          return `${pidRole(esc(m[1]), m[1])} 因為 ${cardLabel} 效果 從 ${pidRole(esc(m[3]), m[3])} 取得裝備 ${esc(getLocalizedCardName(m[4]))}`;
+        }
     if ((m = text.match(/^\[(.+)\] 從 \[(.+)\] 取得裝備 (.+)$/)))
       return `${pidRole(esc(m[1]), m[1])} 從 ${pidRole(esc(m[2]), m[2])} 取得裝備 ${esc(getLocalizedCardName(m[3]))}`;
     if ((m = text.match(/^\[(.+)\] 掠奪了 \[(.+)\] 的全部裝備$/)))

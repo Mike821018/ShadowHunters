@@ -1,5 +1,6 @@
 export default {
   common: {
+    brand: '暗影獵人',
     alive: '生存',
     dead: '死亡',
     unknown: 'Unknown',
@@ -135,6 +136,9 @@ export default {
     tip2: '中央桌面：場地卡、牌庫或棄牌堆、執行中卡片、骰子與「下一步」。',
     tip3: '玩家卡：點擊玩家可選擇目標；終局後可點 TRIP 直接查看該 TRIP 紀錄。',
     tip4: '提示對話框：綠卡選擇、裝備選擇、區域效果都會以浮窗引導操作。',
+    tip5: '能力圖示：⚡ 代表能力可用，🚫 代表能力目前不可用。',
+    tip6: '無敵圖示：🛡️ 代表當前有無敵效果，點擊可查看來源。',
+    tip7: '開局前配色：招募階段可點自己的色塊，挑選本局代表顏色。',
     identity_page_title: '身分登錄頁說明',
     identity_step1_title: 'TRIP 一覽',
     identity_step1_desc: '可檢索已存在 TRIP、查看場數、勝率與評級，點擊 TRIP 可打開個人紀錄。',
@@ -283,6 +287,16 @@ export default {
       unready: '取消準備',
     },
     cards: { title: '村民列表' },
+    stage: {
+      chat: '聊天室',
+      table: '遊戲桌面',
+    },
+    chat: {
+      messages_aria: '聊天室訊息',
+      placeholder: '輸入訊息（最多 200 字）',
+      send: '送出',
+      empty: '尚無訊息',
+    },
     damage_meter: {
       title: '傷害計量表',
       damage: '傷害',
@@ -655,6 +669,7 @@ export default {
       roles: '角色與陣營',
       gameplay: '遊戲流程',
       cards: '卡牌系統',
+      card_catalog: '完整卡表',
       initial_green: '啟用初始綠卡機制',
       equipment: '裝備',
       victory: '勝利條件',
@@ -702,6 +717,18 @@ export default {
       black_desc: '黑卡通常偏向傷害、干擾與進攻，也同樣包含一次性效果與武器裝備。攻擊型裝備常會改變射程或命中規則。',
       equipment_rule: '裝備規則',
       equipment_rule_desc: '裝備卡打出後會留在玩家面前持續生效。角色死亡時，擊殺者通常可以從死者身上拿走 1 張裝備，其餘裝備棄置。',
+    },
+    catalog: {
+      characters: '角色卡一覽',
+      green: '綠卡一覽',
+      white: '白卡一覽',
+      black: '黑卡一覽',
+      character_name: '角色',
+      camp: '陣營',
+      win: '勝利條件',
+      ability: '能力',
+      card_name: '卡片',
+      effect: '效果',
     },
     initial_green: {
       title: '什麼是初始綠卡？',

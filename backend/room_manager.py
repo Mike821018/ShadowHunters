@@ -182,7 +182,12 @@ class RoomManager:
         if not game_room:
             return False
         leaving_player = game_room.players.get(account)
-        leaving_name = str(getattr(leaving_player, 'name', '') or getattr(leaving_player, 'account', '') or account).strip() or account
+        profile = getattr(leaving_player, 'profile', {}) or {}
+        leaving_name = str(
+            getattr(leaving_player, 'name', '')
+            or profile.get('name', '')
+            or '未知'
+        ).strip() or '未知'
         ret = game_room.kick(account)
         if ret:
             game_room.add_system_message(f"[{leaving_name}] 離開了村莊")
@@ -1125,7 +1130,9 @@ class RoomManager:
         if len(message) > 200:
             return self._error('send_chat', 'MESSAGE_TOO_LONG', '訊息最多 200 字', 400)
 
-        game_room.add_chat_message(account=account, name=str(sender.name or account), text=message)
+        profile = getattr(sender, 'profile', {}) or {}
+        sender_name = str(profile.get('name') or getattr(sender, 'name', '') or '未知').strip() or '未知'
+        game_room.add_chat_message(account=account, name=sender_name, text=message)
         game_room.touch_activity()
         return self._success('send_chat', self._serialize_room_state(game_room, viewer_account=account))
 

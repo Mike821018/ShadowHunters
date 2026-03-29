@@ -296,6 +296,10 @@ export function getCharacterInfo(characterEnName) {
   return CHARACTER_INFO[String(characterEnName || '').trim()] || null;
 }
 
+export function getAllCharacterInfos() {
+  return Object.entries(CHARACTER_INFO).map(([key, info]) => ({ key, info }));
+}
+
 export function getCharacterLocalizedName(characterEnName, langHint = 'zh') {
   const info = getCharacterInfo(characterEnName);
   const lang = normalizeLang(langHint);

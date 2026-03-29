@@ -10,7 +10,8 @@ class player():
         self.trip = self.account
         self.trip_display = profile.get('trip_display', profile.get('trip', ''))
 
-        self.name = ''
+        # Keep a stable display nickname for chat/system message/record snapshots.
+        self.name = str(profile.get('name', '') or '').strip()
         self.color = '' # White, Black, Red, Blue, Yellow, Green, Purple, Orange
 
         self.is_alive = True

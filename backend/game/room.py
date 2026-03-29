@@ -62,6 +62,7 @@ class room(Thread):
         self._initial_green_card_players_executed: set = set()  # 已執行初始綠卡的玩家帳號集合
         self.chat_messages = []
         self._chat_seq = 0
+        self.is_chat_archived: bool = False  # Issue 35.2: 遊戲是否已完成歸檔（結束&存檔），聊天可直接入資料庫
 
     def touch_activity(self):
         self.last_activity_at = time.time()
@@ -108,6 +109,14 @@ class room(Thread):
         if not current or not bool(getattr(current, 'is_alive', False)):
             return False
 
+        profile = getattr(current, 'profile', {}) or {}
+        display_name = str(
+            getattr(current, 'name', '')
+            or profile.get('name', '')
+            or getattr(current, 'trip_display', '')
+            or '匿名玩家'
+        ).strip() or '匿名玩家'
+
         current.is_alive = False
         current.is_boomed = True
         current.hp = 0
@@ -117,11 +126,10 @@ class room(Thread):
 
         self.latest_boom_notice = {
             'account': str(getattr(current, 'account', '') or ''),
-            'trip_display': str(getattr(current, 'trip_display', '') or ''),
-            'name': str(getattr(current, 'name', '') or ''),
+            'name': display_name,
             'timestamp': int(time.time()),
         }
-        self.add_system_message(f"[{current.name or current.account}] 回合超時，判定暴斃")
+        self.add_system_message(f"[{display_name}] 回合超時，判定暴斃")
 
         self.active_card = None
         self._attack_target = None
@@ -191,6 +199,16 @@ class room(Thread):
 
     def add_chat_message(self, account, name, text):
         self._push_message('chat', text=text, account=account, name=name)
+        # 遊戲結束後的聊天要盡量同步進最新戰報，避免回放只停在勝利宣告。
+        should_archive_chat = bool(self.is_chat_archived) or int(getattr(self, 'room_status', 0) or 0) == 3
+        if should_archive_chat and self.manager_ref and hasattr(self.manager_ref, 'records_api'):
+            try:
+                latest_msg = self.chat_messages[-1] if self.chat_messages else None
+                if latest_msg:
+                    self.manager_ref.records_api.on_chat_message(self, latest_msg)
+            except Exception as e:
+                # 日誌記錄，但不中斷遊戲流程
+                pass
 
     def add_system_message(self, text):
         self._push_message('system', text=text)
@@ -691,6 +709,8 @@ class room(Thread):
             # 規則：僅「暴斃」玩家不可獲勝；一般死亡玩家仍可依角色條件判定勝利。
             if bool(getattr(p, 'is_boomed', False)) or not p.character:
                 continue
+            if bool(getattr(p.character, 'defer_win_check_until_game_end', False)):
+                continue
             if dead_trigger and p.check_win_timing == 1:
                 if p.character.win_check(self, p, dead_trigger):
                     winners.append(p)
@@ -698,11 +718,57 @@ class room(Thread):
                 if p.character.win_check(self, p, None):
                     winners.append(p)
         if winners:
+            # 角色旗標化的「遊戲結束時」勝利條件統一在此檢查，避免硬編碼角色名稱。
+            winner_accounts_snapshot = {
+                str(getattr(w, 'account', '') or '')
+                for w in winners
+                if w
+            }
+            for p in self.players.values():
+                if not p or not getattr(p, 'character', None):
+                    continue
+                if bool(getattr(p, 'is_boomed', False)):
+                    continue
+                if not bool(getattr(p.character, 'has_end_game_win_check', False)):
+                    continue
+                if not bool(p.character.win_check(self, p, None)):
+                    continue
+                account_key = str(getattr(p, 'account', '') or '')
+                if account_key and account_key not in winner_accounts_snapshot:
+                    winners.append(p)
+                    winner_accounts_snapshot.add(account_key)
+
             self.room_status = 3
-            self.winner_accounts = [str(getattr(w, 'account', '') or '') for w in winners if w]
-            winner_names = [str(getattr(w, 'name', '') or getattr(w, 'account', '') or '').strip() for w in winners if w]
-            if winner_names:
-                self.add_system_message(f"遊戲結束，勝利者：{'、'.join(winner_names)}")
+            self.winner_accounts = []
+            seen_accounts = set()
+            for w in winners:
+                account_key = str(getattr(w, 'account', '') or '')
+                if not account_key or account_key in seen_accounts:
+                    continue
+                seen_accounts.add(account_key)
+                self.winner_accounts.append(account_key)
+            winner_tokens = []
+            for winner in winners:
+                if not winner:
+                    continue
+                profile = getattr(winner, 'profile', {}) or {}
+                display_name = str(
+                    getattr(winner, 'name', '')
+                    or profile.get('name', '')
+                    or '未知'
+                ).strip() or '未知'
+                character_obj = getattr(winner, 'character', None)
+                if isinstance(character_obj, str):
+                    role_name = str(character_obj or '').strip()
+                else:
+                    role_name = str(getattr(character_obj, 'name', '') or '').strip()
+                if not role_name:
+                    role_name = str(getattr(winner, 'character_name', '') or '').strip()
+                winner_tokens.append(f"{display_name}({role_name})" if role_name else display_name)
+            if winner_tokens:
+                self.add_system_message(f"遊戲結束，勝利者：{'、'.join(winner_tokens)}")
+            # 一旦進入結算完成狀態，先開啟聊天歸檔旗標，避免極短時間窗漏記聊天。
+            self.is_chat_archived = True
             if self.manager_ref and hasattr(self.manager_ref, 'records_api'):
                 self.manager_ref.records_api.on_game_end(self)
             # update → 通知前端 winners 獲勝，遊戲結束
@@ -1345,7 +1411,14 @@ class room(Thread):
         self.touch_turn_action()
         from_player.divest(equipment)
         to_player.equip(equipment)
-        self.add_system_message(f"[{to_player.name or to_player.account}] 從 [{from_player.name or from_player.account}] 取得裝備 {str(getattr(equipment, 'name', '') or '-')}")
+        _green_card_names = frozenset({'Aid', 'Anger', 'Blackmail', 'Bully', 'Exorcism', 'Greed', 'Huddle',
+                                        'Nurturance', 'Prediction', 'Slap', 'Spell', 'Tough Lesson'})
+        pending_src = str((self._pending_steal or {}).get('source', '') or '')
+        equipment_name = str(getattr(equipment, 'name', '') or '-')
+        if pending_src in _green_card_names:
+            self.add_system_message(f"[{to_player.name or to_player.account}] 因為 卡片 {pending_src} 效果 從 [{from_player.name or from_player.account}] 取得裝備 {equipment_name}")
+        else:
+            self.add_system_message(f"[{to_player.name or to_player.account}] 從 [{from_player.name or from_player.account}] 取得裝備 {equipment_name}")
         # 檢查裝備取得後勝利條件（如 Franklin）
         if to_player.check_win_timing == 2:
             self._check_all_victory(equip_trigger=to_player)

@@ -9,7 +9,7 @@
   <body data-page="room">
     <div id="header">
       <div class="wrap s_clear">
-        <h2>暗影獵人</h2>
+        <h2 data-i18n="common.brand">暗影獵人</h2>
         <div id="umenu" aria-live="polite">
           <div class="lang-switcher">
             <select class="lang-select" data-lang-select aria-label="Language selector">
@@ -49,20 +49,20 @@
 
           <div class="room-top-row room-stage-row">
             <fieldset class="room-chat-fieldset">
-              <legend><strong>聊天室</strong></legend>
+              <legend><strong data-i18n="room.stage.chat">聊天室</strong></legend>
               <div class="card-body">
                 <div id="chatStage" class="room-stage-surface room-chat-surface" aria-live="polite">
-                  <div id="chatMessages" class="chat-messages" aria-label="聊天室訊息"></div>
+                  <div id="chatMessages" class="chat-messages" data-i18n-aria="room.chat.messages_aria" aria-label="聊天室訊息"></div>
                   <div class="chat-input-row">
-                    <textarea id="chatInput" class="txt chat-input" maxlength="200" rows="3" placeholder="輸入訊息（最多 200 字）"></textarea>
-                    <button id="chatSendButton" class="btn" type="button">送出</button>
+                    <textarea id="chatInput" class="txt chat-input" maxlength="200" rows="3" data-i18n-placeholder="room.chat.placeholder" placeholder="輸入訊息（最多 200 字）"></textarea>
+                    <button id="chatSendButton" class="btn" type="button" data-i18n="room.chat.send">送出</button>
                   </div>
                 </div>
               </div>
             </fieldset>
 
             <fieldset>
-              <legend><strong>遊戲桌面</strong></legend>
+              <legend><strong data-i18n="room.stage.table">遊戲桌面</strong></legend>
               <div class="card-body">
                 <div id="gameStage" class="room-stage-surface room-game-surface" aria-live="polite">
                   <div class="table-stage" aria-label="遊戲桌面卡片佈局">
@@ -254,6 +254,6 @@
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./src/app.js"></script>
+    <script type="module" src="./src/app.js?v=20260329-issue35-replayfix3"></script>
   </body>
 </html>

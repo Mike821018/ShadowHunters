@@ -1,5 +1,6 @@
 export default {
   common: {
+    brand: 'シャドウハンターズ',
     alive: '生存',
     dead: '死亡',
     unknown: '不明',
@@ -136,6 +137,9 @@ export default {
     tip2: '中央卓面: 場札、山札または捨て札、実行中カード、サイコロ、「次の手順」。',
     tip3: 'プレイヤーカード: 押すと対象選択。終了後は TRIP を押してその TRIP 記録を直接開けます。',
     tip4: 'ダイアログ: グリーンカード選択、装備選択、エリア効果はポップアップで案内されます。',
+    tip5: '能力アイコン: ⚡ は能力使用可、🚫 は現在使用不可を示します。',
+    tip6: '無敵アイコン: 🛡️ は無敵効果中です。押すと由来を確認できます。',
+    tip7: '開局前カラー: 募集中に自分の色チップを押して、この試合の代表色を選べます。',
     identity_page_title: '身分登録ページの説明',
     identity_step1_title: 'TRIP 一覧',
     identity_step1_desc: '既存 TRIP を検索し、試合数、勝率、評価を確認し、TRIP を押して個人記録を開きます。',
@@ -284,6 +288,16 @@ export default {
       unready: '準備解除',
     },
     cards: { title: '村民リスト' },
+    stage: {
+      chat: 'チャット',
+      table: 'ゲームフィールド',
+    },
+    chat: {
+      messages_aria: 'チャットメッセージ',
+      placeholder: 'メッセージを入力（最大 200 文字）',
+      send: '送信',
+      empty: 'メッセージはまだありません',
+    },
     damage_meter: {
       title: 'ダメージメーター',
       damage: 'ダメージ',
@@ -652,6 +666,7 @@ export default {
       roles: 'キャラクターと陣営',
       gameplay: 'ゲームフロー',
       cards: 'カードシステム',
+      card_catalog: '完全カード一覧',
       initial_green: '初期グリーンカード機能',
       equipment: '装備',
       victory: '勝利条件',
@@ -695,6 +710,18 @@ export default {
       black_desc: 'ブラックカードは攻撃、妨害、圧力寄りです。こちらも一回限りの効果と、武器系装備の両方を含みます。',
       equipment_rule: '装備ルール',
       equipment_rule_desc: '装備はプレイヤーの前に残り、継続して効果を発揮します。キャラクターが死亡した場合、通常は撃破した側が装備を 1 枚取り、残りは捨て札になります。',
+    },
+    catalog: {
+      characters: '役職カード一覧',
+      green: 'グリーンカード一覧',
+      white: 'ホワイトカード一覧',
+      black: 'ブラックカード一覧',
+      character_name: '役職',
+      camp: '陣営',
+      win: '勝利条件',
+      ability: '能力',
+      card_name: 'カード',
+      effect: '効果',
     },
     initial_green: {
       title: '初期グリーンカードとは？',

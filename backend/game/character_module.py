@@ -13,6 +13,11 @@ class Character():
         self.can_take_all_kill_loot = False
         self.take_all_kill_loot_requires_ability = False
         self.intercepts_green_cards = False
+        # End-game victory flags:
+        # - has_end_game_win_check: character has extra victory check at settlement phase.
+        # - defer_win_check_until_game_end: skip regular timing checks, only evaluate at settlement.
+        self.has_end_game_win_check = False
+        self.defer_win_check_until_game_end = False
 
         self.hp = 0
         self.force_atk = False
@@ -376,6 +381,8 @@ class Allie(Character):
         self.hp = 8
         self.ability_timing = 8 # any
         self.target = "self"
+        self.has_end_game_win_check = True
+        self.defer_win_check_until_game_end = True
 
     def ability(self, user, target, rooms):
         ret = False
@@ -388,9 +395,8 @@ class Allie(Character):
     def win_check(self, room, user, dead):
         ret = False
         # 勝利條件: 當遊戲結束時，你仍然存活
-        # 遊戲結束的條件是room_status == 3 (after game)
-        if room.room_status == 3:
-            ret = user.is_alive
+        # 實際觸發時機由 room._check_all_victory 的結算階段旗標控制。
+        ret = user.is_alive
         return ret
 
 class Charles(Character):
@@ -436,6 +442,7 @@ class Bryan(Character):
         self.ability_timing = 9 # dead
         self.target = "self"
         self.ability_requires_reveal = False
+        self.has_end_game_win_check = True
 
     def ability(self, user, target, rooms):
         ret = False
@@ -462,10 +469,12 @@ class Bryan(Character):
                 if dead_player and not dead_player.is_alive and dead_player.hp > 13:
                     ret = True
                     break
-        
-        # 條件2: 遊戲結束時身處於「古代祭壇」
-        if not ret and room.room_status == 3:
-            if user.area_name == "Erstwhile Altar":
+
+        # 條件2: 結算階段（dead is None）若身處古代祭壇則獲勝。
+        if not ret and dead is None:
+            area_obj = getattr(user, 'area', None)
+            area_name = str(getattr(area_obj, 'name', '') or getattr(user, 'area_name', '') or '').strip()
+            if area_name == "Erstwhile Altar":
                 ret = True
         
         return ret

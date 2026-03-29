@@ -171,6 +171,16 @@ class GameRecordsAPI:
         except Exception as e:
             print(f"Error recording game: {e}")
             return None
+
+    def on_chat_message(self, room: 'room', message: Dict[str, Any]) -> bool:
+        """Called when a post-game chat message should be persisted into the latest room record."""
+        try:
+            room_id = int(getattr(room, 'room_id', 0) or 0)
+        except Exception:
+            room_id = 0
+        if room_id <= 0:
+            return False
+        return bool(self.record_store.append_chat_message_to_latest_room_record(room_id, dict(message or {})))
     
     # ===== API Endpoints (HTTP handlers) =====
     

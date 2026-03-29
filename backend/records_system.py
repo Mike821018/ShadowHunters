@@ -833,6 +833,51 @@ class GameRecordStore:
     def get_room_games(self, room_id: int) -> List[GameRecord]:
         """Get all games in a room"""
         return [r for r in self.game_records.values() if r.room_id == room_id]
+
+    def append_chat_message_to_latest_room_record(self, room_id: int, message: Dict[str, Any]) -> bool:
+        """Append a chat/system message to the latest saved record of a room and persist it."""
+        rid = int(room_id or 0)
+        if rid <= 0 or not isinstance(message, dict):
+            return False
+
+        room_records = [r for r in self.game_records.values() if int(getattr(r, 'room_id', 0) or 0) == rid]
+        if not room_records:
+            return False
+
+        latest_record = max(room_records, key=lambda row: str(getattr(row, 'game_date', '') or ''))
+
+        normalized_message = {
+            'id': int(message.get('id', 0) or 0),
+            'type': str(message.get('type', 'chat') or 'chat'),
+            'account': str(message.get('account', '') or ''),
+            'name': str(message.get('name', '') or ''),
+            'text': str(message.get('text', '') or ''),
+            'timestamp': int(message.get('timestamp', 0) or 0),
+        }
+        if not normalized_message['text']:
+            return False
+
+        latest_messages = list(getattr(latest_record, 'chat_messages', []) or [])
+        if any(
+            int(row.get('id', 0) or 0) == normalized_message['id']
+            and int(row.get('timestamp', 0) or 0) == normalized_message['timestamp']
+            for row in latest_messages
+            if isinstance(row, dict)
+        ):
+            return True
+
+        latest_messages.append(normalized_message)
+        latest_record.chat_messages = latest_messages
+
+        final_state = getattr(latest_record, 'final_state', None)
+        if isinstance(final_state, dict):
+            fs_messages = list(final_state.get('chat_messages') or [])
+            fs_messages.append(dict(normalized_message))
+            final_state['chat_messages'] = fs_messages
+            latest_record.final_state = final_state
+
+        self._persist_game_record(latest_record)
+        return True
     
     # ===== Player Stats Methods =====
     
