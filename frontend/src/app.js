@@ -100,7 +100,7 @@ async function boot() {
 
   restoreSession(state);
   bindTransportModeEvents({ el, setTransportMode, persistCurrentSession });
-  setTransportMode(state.transportMode || 'auto');
+  setTransportMode('http');
 
   bindLobbyEvents({
     el,

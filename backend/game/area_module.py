@@ -7,7 +7,7 @@ class area():
         self.draw_type = '' # Green, White, Black, Any
         self.is_action = False
         self.target = '' # all, others, area, one, other, self
-        self.attitional_choose = False
+        self.additional_choose = False
 
     def action(self, user, target, action_type):
         ret = 0 # 0: no effect, 1: death, 2: steal
@@ -53,7 +53,7 @@ class Woods(area):
         self.number = [9]
         self.is_action = True
         self.target = 'one'
-        self.attitional_choose = True
+        self.additional_choose = True
         self.options = ['Heal', 'Hurt']
     
     def action(self, user, target, action_type):

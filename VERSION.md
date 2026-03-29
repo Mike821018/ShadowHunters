@@ -1,12 +1,18 @@
 # ShadowHunters 版本紀錄
 
-## v0.1.3-test (2026-03-29)
+## v0.1.4-test (2026-03-29)
 
 ### 修正項目
 
-#### Issue 32 - 艾妮絲勝利條件修正
-- 修正艾妮絲（Agnes）追隨方向判斷錯誤：原本用 `can_use_ability` 判斷，導致未揭露時就誤判為「已切換支持下家」
-- 改以 `agnes_supports_next_player` 獨立旗標記錄「是否實際發動過能力」，預設永遠支持上家
+#### Issue 32 - 修正 character_module / card_module / area_module 錯誤
+- `card_module.py` Greed、Prediction 卡片：將上家查找邏輯中錯用的 `target.trip` 改為正確的 `target.account`（`action_order` 儲存 account，非 trip）
+- `area_module.py`：將拼字錯誤屬性 `attitional_choose` 正名為 `additional_choose`
+- 大庁移除開發用模式切換按鈕（AUTO/HTTP/DEMO）及右上角狀態文字，固定為 HTTP 模式
+
+#### 安全修復 (2026-03-29)
+- 修復 Demo 模式 `buildRoomState` 展開玩家物件時將密碼包含在連線回應中的問題
+- `server.env` 改為 `HOST=0.0.0.0` 支援 ngrok 公網測試
+
 
 #### Issue 31 - Emi 場地技能與訊息修正
 - Emi 場地技能只允許點選相鄰兩格，不再可以點選任意場地

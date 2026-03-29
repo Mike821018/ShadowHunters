@@ -218,14 +218,14 @@ class Greed(Card):
                 ret = 2
                 # 利用rooms找到上家資訊回傳，讓前端知道要將裝備卡給哪位玩家
                 if rooms and hasattr(rooms, 'action_order') and hasattr(rooms, 'players'):
-                    my_trip = target.trip
-                    if my_trip in rooms.action_order:
-                        my_index = rooms.action_order.index(my_trip)
+                    my_account = target.account
+                    if my_account in rooms.action_order:
+                        my_index = rooms.action_order.index(my_account)
                         # 從上家開始找活著的玩家
                         for i in range(1, len(rooms.action_order)):
                             prev_index = (my_index - i) % len(rooms.action_order)
-                            prev_trip = rooms.action_order[prev_index]
-                            prev_player = rooms.players.get(prev_trip)
+                            prev_account = rooms.action_order[prev_index]
+                            prev_player = rooms.players.get(prev_account)
                             if prev_player and prev_player.is_alive and prev_player != target:
                                 extra = [target, prev_player]
                                 break
@@ -312,14 +312,14 @@ class Prediction(Card):
         effect = True
         if effect:
             if rooms and hasattr(rooms, 'action_order') and hasattr(rooms, 'players'):
-                my_trip = target.trip
-                if my_trip in rooms.action_order:
-                    my_index = rooms.action_order.index(my_trip)
+                my_account = target.account
+                if my_account in rooms.action_order:
+                    my_index = rooms.action_order.index(my_account)
                     # 從上家開始找活著的玩家
                     for i in range(1, len(rooms.action_order)):
                         prev_index = (my_index - i) % len(rooms.action_order)
-                        prev_trip = rooms.action_order[prev_index]
-                        prev_player = rooms.players.get(prev_trip)
+                        prev_account = rooms.action_order[prev_index]
+                        prev_player = rooms.players.get(prev_account)
                         if prev_player and prev_player.is_alive and prev_player != target:
                             extra = [prev_player]
                             break
