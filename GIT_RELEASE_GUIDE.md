@@ -1,7 +1,12 @@
-# Git 提交指南 - v0.1.0-test (2026-03-29)
+# Git 提交與發版指南（含版號管控）
 
 ## 說明
-本指南用於將 ShadowHunters v0.1.0-test 版本提交到 git 並建立標籤。
+本指南用於將 ShadowHunters 版本提交到 git，並確保每次推送都完成：
+- 版號更新（SemVer）
+- 版本紀錄（VERSION.md）
+- Git Tag
+
+> 規範：凡是功能修正、行為變更、驗證結果更新，都必須更新版號與版本紀錄後再 push。
 
 ## 準備工作
 確保已安裝 Git，如未安裝請從 https://git-scm.com 下載安裝。
@@ -18,7 +23,17 @@ cd d:\Game\ShadowHunters
 git status
 ```
 
-### 3. 暫存所有變更
+### 3. 版號管控（必做）
+先決定本次版本號（建議遵守 SemVer）：
+- Patch（`x.y.Z`）：錯誤修復、相容性修正
+- Minor（`x.Y.z`）：新增功能且向下相容
+- Major（`X.y.z`）：破壞性變更
+
+同步更新：
+- `VERSION.md`：新增一節新版本（日期、修正項目、驗證結果）
+- 若有額外發版說明檔，也一併更新
+
+### 4. 暫存所有變更
 ```bash
 git add .
 ```
@@ -28,53 +43,54 @@ git add VERSION.md
 git add issue_list/issue_list_29_final.md
 ```
 
-### 4. 提交變更
+### 5. 提交變更
 ```bash
-git commit -m "Release v0.1.0-test
+git commit -m "Release vX.Y.Z
 
 已完成工作：
-- Issue 27：回放路由修正
-- Issue 28：聊天 UI 改進與驗證
-- Issue 29：13 項遊戲流程與 UI 修正
+- <重點修正 1>
+- <重點修正 2>
 
 驗證結果：
-- 40 局遊戲（20 隨機 + 20 八玩家）
-- 0 暴斃事件
-- 180 評價提交成功
+- <測試摘要>
 
-技術棧：Python 3.9 + Flask + Vanilla JS
-版本狀態：測試階段（未推至生產）"
+版本狀態：<test/stable>"
 ```
 
-### 5. 建立版本標籤
+### 6. 建立版本標籤（必做）
 ```bash
-git tag -a v0.1.0-test -m "v0.1.0-test: Initial test release with issue 27-29 fixes
+git tag -a vX.Y.Z[-suffix] -m "vX.Y.Z[-suffix]: release note summary
 
 Completed:
-- Issue 27: Replay route validation
-- Issue 28: Chat UI improvements with 20+20 validation
-- Issue 29: 13 game flow and UI fixes
+- <key change 1>
+- <key change 2>
 
 Test Results:
-- 40 games completed (20 random + 20 eight-player)
-- 0 boomed events
-- 180 ratings submitted
-- avg_steps: 277.2 (random) / 398.85 (eight-player)
+- <validation summary>
 
-Status: Testing phase, not production ready"
+Status: <test/stable>"
 ```
 
-### 6. 查看提交日誌
+### 7. 查看提交日誌
 ```bash
 git log --oneline -5
 git tag -l
 ```
 
-### 7.（可選）推送到遠端倉庫
+### 8. 推送到遠端倉庫
 ```bash
-git push origin main
-git push origin v0.1.0-test
+git push origin master
+git push origin vX.Y.Z[-suffix]
 ```
+
+### 9. 推送後驗證（必做）
+```bash
+git log -1 --oneline
+git ls-remote --heads origin master
+git ls-remote --tags origin vX.Y.Z[-suffix]
+```
+
+確認遠端分支與標籤皆可查到新 hash 才算完成。
 
 ## 提交内容説明
 
@@ -93,12 +109,12 @@ git push origin v0.1.0-test
 - `frontend/replay_room.html`：回放頁面改進
 - `scripts/http_random_game_validator.py`：頭像驗證更新
 
-## 版本標籤説明
+## 版本標籤說明
 
-`v0.1.0-test` 方案：
+`vX.Y.Z[-suffix]` 規則：
 - `v` - 版本前綴
 - `0.1.0` - 語義版本 (Major.Minor.Patch)
-- `-test` - 預發佈標籤，表示測試階段
+- `-test` / `-rc` - 預發佈標籤（可選）
 
 ## 提交後驗證
 
@@ -110,7 +126,7 @@ git show v0.1.0-test
 
 ## 注意事項
 
-- 本版本標記為測試階段 (`-test`)，未推至生產環境
+- 禁止只 push 程式碼而不更新版號與 VERSION.md
 - 建議在上傳前本地驗證所有測試通過
 - 如需修改提交訊息，使用 `git commit --amend`
 - 標籤推送需要明確的 `git push origin <tag-name>` 指令
