@@ -330,9 +330,11 @@ function buildRoomState(room, viewerAccount = null) {
     Object.entries(room.players).map(([account, p]) => [
       account,
       (() => {
+        // eslint-disable-next-line no-unused-vars
+        const { password: _omit, ...pSafe } = p;
         const canViewCharacter = Boolean(p.character_reveal || (viewerAccount && account === viewerAccount));
         return {
-          ...p,
+          ...pSafe,
           trip_display: (viewerAccount && account === viewerAccount) ? (p.trip_display || '') : maskTrip(p.trip_display),
           hp: canViewCharacter ? p.hp : null,
           character: canViewCharacter ? p.character : null,
