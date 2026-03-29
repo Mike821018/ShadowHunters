@@ -1,4 +1,5 @@
 import { AUTO_REFRESH_OPTIONS, DAMAGE_ROLE_MARKERS, DAMAGE_TRACK_VALUES, PLAYER_COLOR_HEX } from '../constants.js';
+import { getCharacterLocalizedName, getCurrentUiLang } from '../characterInfo.js';
 import { t } from '../i18n.js';
 import { clearRoomAccount } from '../session.js';
 
@@ -17,7 +18,107 @@ let pendingDiceAction = null;
 let diceRollInterval = null;
 let diceRollTimeout = null;
 
+function formatReplayDateTime(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '-';
+  const parsed = new Date(raw.replace(' ', 'T'));
+  if (Number.isNaN(parsed.getTime())) return raw;
+  const y = parsed.getFullYear();
+  const m = String(parsed.getMonth() + 1).padStart(2, '0');
+  const d = String(parsed.getDate()).padStart(2, '0');
+  const hh = String(parsed.getHours()).padStart(2, '0');
+  const mm = String(parsed.getMinutes()).padStart(2, '0');
+  const ss = String(parsed.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+}
+
 function buildReplayRoomState(record) {
+  const finalState = record && typeof record.final_state === 'object' ? record.final_state : null;
+  if (finalState && finalState.room && finalState.players && typeof finalState.players === 'object') {
+    const replayWinners = Array.isArray(record?.winner_players) && record.winner_players.length
+      ? record.winner_players
+      : (Array.isArray(finalState?.winners) ? finalState.winners : []);
+    const winnerSet = new Set(replayWinners.map((value) => String(value || '').trim()).filter(Boolean));
+    const serializedPlayers = {};
+    Object.entries(finalState.players || {}).forEach(([account, p], idx) => {
+      const key = String(account || '').trim() || `player_${idx + 1}`;
+      serializedPlayers[key] = {
+        account: key,
+        trip_display: String(p?.trip_display || '-'),
+        name: String(p?.name || key),
+        join_order: Number(p?.join_order || idx + 1),
+        avatar_no: Number(p?.avatar_no || 1),
+        color: String(p?.color || 'white'),
+        is_ready: Boolean(p?.is_ready),
+        alive: Boolean(p?.alive),
+        status: Number(p?.status || 0),
+        damage: Number(p?.damage ?? 0),
+        hp: Number(p?.hp ?? 0),
+        invulnerability_source: String(p?.invulnerability_source || ''),
+        zone: Number(p?.zone || 0),
+        area: p?.area ? String(p.area) : null,
+        is_village_manager: false,
+        character_reveal: Boolean(p?.character_reveal),
+        character: String(p?.character || ''),
+        character_camp: String(p?.character_camp || '').toLowerCase(),
+        can_use_ability: p?.can_use_ability == null ? null : Boolean(p.can_use_ability),
+        ability_status: String(p?.ability_status || ''),
+        character_ability_timing: Number(p?.character_ability_timing || 0),
+        character_ability_target: String(p?.character_ability_target || ''),
+        self_character: null,
+        self_character_camp: null,
+        self_can_use_ability: null,
+        self_character_ability_timing: null,
+        self_character_ability_target: null,
+        is_invulnerable: Boolean(p?.is_invulnerable),
+        invulnerability_sources: [],
+        equipment: Array.isArray(p?.equipment) ? p.equipment : [],
+        replay_winner: winnerSet.has(key),
+        boomed: Boolean(p?.boomed),
+      };
+    });
+
+    return {
+      room: {
+        room_id: Number(finalState?.room?.room_id || record?.room_id || 0),
+        room_name: String(finalState?.room?.room_name || record?.game_settings?.room_name || `${Number(record?.room_id || 0)}村`),
+        room_status: 3,
+        player_count: Object.keys(serializedPlayers).length,
+        max_players: Number(finalState?.room?.max_players || 8),
+        room_comment: String(finalState?.room?.room_comment || record?.game_settings?.room_comment || '-'),
+        replay_notice: `歷史回放：${formatReplayDateTime(record?.game_date)}`,
+        is_chat_room: false,
+      },
+      turn: {
+        current_trip_display: String(finalState?.turn?.current_trip_display || '-'),
+        current_account: finalState?.turn?.current_account ? String(finalState.turn.current_account) : null,
+        status: Number(finalState?.turn?.status || 0),
+      },
+      action_order: Array.isArray(finalState?.action_order) ? finalState.action_order : Object.keys(serializedPlayers),
+      move_options: [],
+      compass_options: [],
+      pending_kill_loot: null,
+      pending_steal: null,
+      winners: replayWinners,
+      area_prompt: null,
+      card_prompt: null,
+      green_confirm_prompt: null,
+      attack_prompt: null,
+      active_card_display: null,
+      active_card: null,
+      dice: {
+        D6: Number(finalState?.dice?.D6 || 1),
+        D4: Number(finalState?.dice?.D4 || 1),
+      },
+      fields: Array.isArray(finalState?.fields) ? finalState.fields : [],
+      card_piles: finalState?.card_piles && typeof finalState.card_piles === 'object' ? finalState.card_piles : {},
+      players: serializedPlayers,
+      chat_messages: Array.isArray(finalState?.chat_messages)
+        ? finalState.chat_messages
+        : (Array.isArray(record?.chat_messages) ? record.chat_messages : []),
+    };
+  }
+
   const players = Array.isArray(record?.players) ? record.players : [];
   const winnerSet = new Set(Array.isArray(record?.winner_players) ? record.winner_players.map((value) => String(value || '').trim()) : []);
   const colorPool = ['red', 'blue', 'green', 'yellow', 'black', 'white', 'purple', 'orange'];
@@ -27,16 +128,16 @@ function buildReplayRoomState(record) {
     const account = String(p?.player_id || `player_${idx + 1}`).trim();
     serializedPlayers[account] = {
       account,
-      trip_display: '-',
+      trip_display: String(p?.trip_display || '-'),
       name: String(p?.player_name || account),
       join_order: idx + 1,
-      avatar_no: 1,
+      avatar_no: Number(p?.avatar_no || 1),
       color: colorPool[idx % colorPool.length],
       is_ready: false,
       alive: Boolean(p?.is_alive),
       status: 0,
-      damage: 0,
-      hp: Number(p?.final_hp ?? 0),
+      damage: Number(p?.damage_taken ?? 0),
+      hp: Number((Number(p?.final_hp ?? 0) || 0) + (Number(p?.damage_taken ?? 0) || 0)),
       invulnerability_source: '',
       zone: 0,
       area: null,
@@ -53,17 +154,19 @@ function buildReplayRoomState(record) {
       invulnerability_sources: [],
       equipment: Array.isArray(p?.cards_equipped) ? p.cards_equipped : [],
       replay_winner: winnerSet.has(account),
+      boomed: Boolean(p?.boomed),
     };
   });
 
   return {
     room: {
       room_id: Number(record?.room_id || 0),
-      room_name: `${Number(record?.room_id || 0)}村`,
+      room_name: String(record?.game_settings?.room_name || `${Number(record?.room_id || 0)}村`),
       room_status: 3,
       player_count: players.length,
       max_players: 8,
-      room_comment: `歷史回放：${record?.game_date || '-'}`,
+      room_comment: String(record?.game_settings?.room_comment || '-'),
+      replay_notice: `歷史回放：${formatReplayDateTime(record?.game_date)}`,
       is_chat_room: false,
     },
     turn: {
@@ -87,6 +190,7 @@ function buildReplayRoomState(record) {
     fields: [],
     card_piles: {},
     players: serializedPlayers,
+    chat_messages: Array.isArray(record?.chat_messages) ? record.chat_messages : [],
   };
 }
 
@@ -182,6 +286,9 @@ function getCardDiceAnimationMeta(cardName) {
   const normalized = String(cardName || '').trim();
   if (normalized === 'Blessing') {
     return { labelKey: 'room.table_next_step.roll_heal_dice', mode: 'd6' };
+  }
+  if (normalized === 'Spiritual Doll') {
+    return { labelKey: 'room.table_next_step.roll_damage_dice', mode: 'd6' };
   }
   if (normalized === 'Dynamite') {
     return { labelKey: 'room.table_next_step.roll_area_dice', mode: 'both' };
@@ -387,8 +494,16 @@ function canActivateSelfAbilityFromCard(state, dataSnapshot = latestRoomSnapshot
   if (abilityState.roomStatus !== 2) return false;
   if (abilityState.currentAccount !== abilityState.account) return false;
   if (!abilityState.revealed || !abilityState.canUseAbility) return false;
-  if (![1, 2, 6].includes(abilityState.timing)) return false;
-  return abilityState.status === abilityState.timing;
+
+  if ([1, 2, 6].includes(abilityState.timing)) {
+    return abilityState.status === abilityState.timing;
+  }
+
+  if (abilityState.timing === 8) {
+    return abilityState.status === 1 || abilityState.status === 6;
+  }
+
+  return false;
 }
 
 function getCurrentTurnPlayer(dataSnapshot = latestRoomSnapshot) {
@@ -399,7 +514,29 @@ function getCurrentTurnPlayer(dataSnapshot = latestRoomSnapshot) {
   return { account: currentAccount, ...player };
 }
 
-function getDrawablePileColors(dataSnapshot = latestRoomSnapshot) {
+function isReplayViewState(state, dataSnapshot = latestRoomSnapshot) {
+  return String(state?.page || '') === 'replay-room' || Boolean(String(dataSnapshot?.room?.replay_notice || '').trim());
+}
+
+function getDiscardEquipmentOptions(dataSnapshot = latestRoomSnapshot) {
+  const piles = dataSnapshot?.card_piles || {};
+  return Object.entries(piles).flatMap(([color, pileInfo]) => {
+    const discardCards = Array.isArray(pileInfo?.discard_cards) ? pileInfo.discard_cards : [];
+    return discardCards
+      .filter((card) => String(card?.type || '').trim() === 'Equipment')
+      .map((card) => ({
+        value: String(card?.id || '').trim(),
+        label: `${getLocalizedCardName(String(card?.name || '').trim())} (${String(color || '').trim()})`,
+      }))
+      .filter((option) => option.value);
+  });
+}
+
+function getDrawablePileColors(dataSnapshot = latestRoomSnapshot, state = null) {
+  const roomStatus = Number(dataSnapshot?.room?.room_status || 0);
+  if (roomStatus !== 2) return [];
+  if (isReplayViewState(state, dataSnapshot)) return [];
+  if (dataSnapshot?.pending_steal || dataSnapshot?.green_confirm_prompt) return [];
   const currentPlayer = getCurrentTurnPlayer(dataSnapshot);
   if (!currentPlayer || Number(currentPlayer.status || 0) !== 3) return [];
   if (dataSnapshot?.active_card) return [];
@@ -555,7 +692,7 @@ function getGreenConfirmPromptState(state, dataSnapshot = latestRoomSnapshot) {
 
 function updateStagePilePromptState(dataSnapshot = latestRoomSnapshot) {
   const root = document;
-  const drawableColors = new Set(getDrawablePileColors(dataSnapshot).map((value) => String(value || '').toLowerCase()));
+  const drawableColors = new Set(getDrawablePileColors(dataSnapshot, null).map((value) => String(value || '').toLowerCase()));
   root.querySelectorAll('.table-stage [data-pile-type][data-card-color]').forEach((cardEl) => {
     const pileType = String(cardEl.getAttribute('data-pile-type') || '').toLowerCase();
     const colorKey = String(cardEl.getAttribute('data-card-color') || '').toLowerCase();
@@ -582,7 +719,7 @@ function updateStageNextStepButtonState(state, dataSnapshot = latestRoomSnapshot
   const roomStatus = Number(dataSnapshot?.room?.room_status || 0);
   const currentAccount = String(dataSnapshot?.turn?.current_account || '').trim();
   const selfStatus = Number(dataSnapshot?.players?.[selfAccount]?.status || 0);
-  const drawablePileColors = getDrawablePileColors(dataSnapshot);
+  const drawablePileColors = getDrawablePileColors(dataSnapshot, state);
   const pendingSteal = getPendingStealState(state, dataSnapshot);
   const equipmentConfirm = getEquipmentConfirmPromptState(state, dataSnapshot);
   const greenConfirm = getGreenConfirmPromptState(state, dataSnapshot);
@@ -622,8 +759,13 @@ function updateStageNextStepButtonState(state, dataSnapshot = latestRoomSnapshot
     disabled = true;
     label = greenConfirm.needsChoice ? t('room.table_next_step.choose_effect') : t('room.table_next_step.wait_target_confirm');
   } else if (selfStatus === 1) {
-    label = t('room.table_next_step.turn_start');
-    phase = 'turn-start';
+    if (pendingAbilityActivation) {
+      disabled = true;
+      label = t('room.table_next_step.choose_target');
+    } else {
+      label = t('room.table_next_step.turn_start');
+      phase = 'turn-start';
+    }
   } else if (selfStatus === 2) {
     disabled = true;
     label = t('room.table_next_step.roll_move_dice');
@@ -839,8 +981,21 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
   const isSelfReady = Boolean(selfPlayer?.is_ready);
   const canToggleReady = Boolean(selfPlayer) && status === 1 && !isChatRoom;
   const canAbolish = isVillageManager && status === 1;
+  const canRollCall = isVillageManager && status === 1 && !isChatRoom;
   const villageName = withVillageSuffix(room.room_name || '');
   const villageDescription = room.room_comment || room.village_description || room.description || '-';
+  const replayNotice = String(room.replay_notice || '').trim();
+  const turnTimeout = data?.turn_timeout || null;
+  const timeoutRemain = Number(turnTimeout?.remaining_seconds);
+  const timeoutCurrent = String(turnTimeout?.current_name || turnTimeout?.current_account || turnTimeout?.current_trip_display || '-').trim();
+  const timeoutWarnRow = (status === 2 && Number.isFinite(timeoutRemain))
+    ? `<li class="room-timeout-warning"><strong>${esc(t('room.info.turn_timeout'))}</strong>${esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-', n: Math.max(0, timeoutRemain) }))}</li>`
+    : '';
+  const boomedNotice = data?.boomed_notice || null;
+  const boomedName = String(boomedNotice?.name || boomedNotice?.account || boomedNotice?.trip_display || '').trim();
+  const boomedNoticeRow = (status === 2 && boomedName)
+    ? `<li class="room-timeout-warning"><strong>${esc(t('room.info.boomed_notice'))}</strong>${esc(t('room.info.boomed_notice_fmt', { name: boomedName }))}</li>`
+    : '';
 
   el.villageInfoList.innerHTML = `
     <li>
@@ -854,15 +1009,317 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
     <li>
       <strong>${esc(t('room.info.count'))}</strong>(${Number(room.player_count || 0)}/${maxPlayers})
       ${canToggleReady ? `<button id="btnToggleReadyInline" class="btn btn-inline" type="button">${esc(isSelfReady ? t('room.ops.unready') : t('room.ops.ready'))}</button>` : ''}
+      ${canRollCall ? `<button id="btnRollCallInline" class="btn btn-inline" type="button">${esc(t('room.ops.roll_call'))}</button>` : ''}
     </li>
     <li><strong>${esc(t('room.info.name'))}</strong>${esc(villageName || '-')}</li>
     <li><strong>${esc(t('room.info.desc'))}</strong>${esc(villageDescription)}</li>
+    ${replayNotice ? `<li><strong>${esc(t('room.info.replay_notice'))}</strong>${esc(replayNotice)}</li>` : ''}
+    ${timeoutWarnRow}
+    ${boomedNoticeRow}
   `;
 
   if (canRegister && !hasJoined) {
     const btn = el.villageInfoList.querySelector('#btnOpenResidentRegister');
     btn?.addEventListener('click', () => goToRegisterPage(room.room_id));
   }
+}
+
+function renderChatStage({ el, esc }, data, state) {
+  if (!el.chatMessages) return;
+  const isReplayView = isReplayViewState(state, data);
+  const canChat = Boolean(String(state?.account || '').trim()) && !isReplayView;
+  const chatInputRow = el.chatInput?.closest('.chat-input-row')
+    || el.chatSendButton?.closest('.chat-input-row')
+    || document.querySelector('#chatStage .chat-input-row');
+  if (chatInputRow instanceof HTMLElement) {
+    chatInputRow.style.display = canChat ? 'flex' : 'none';
+  }
+  if (el.chatInput) {
+    el.chatInput.disabled = !canChat;
+  }
+  if (el.chatSendButton) {
+    el.chatSendButton.disabled = !canChat;
+  }
+
+  const messages = Array.isArray(data?.chat_messages) ? data.chat_messages : [];
+  if (!messages.length) {
+    el.chatMessages.innerHTML = '<p class="lighttxt">尚無訊息</p>';
+    el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+    return;
+  }
+
+  const lang = getCurrentUiLang();
+  const AREA_NAMES = {
+    "Hermit's Cabin": { zh: '隱士小屋', en: "Hermit's Cabin", jp: '隠者の庵' },
+    'Church': { zh: '教堂', en: 'Church', jp: '教会' },
+    'Cemetery': { zh: '墓園', en: 'Cemetery', jp: '墓地' },
+    'Underworld Gate': { zh: '時空之門', en: 'Underworld Gate', jp: '冥界の門' },
+    'Weird Woods': { zh: '希望與絕望的森林', en: 'Weird Woods', jp: '希望と絶望の森' },
+    'Erstwhile Altar': { zh: '古代祭壇', en: 'Erstwhile Altar', jp: '古の祭壇' },
+  };
+
+  // Card color translations
+  const CARD_COLORS = {
+    Green: { zh: '綠卡', en: 'Green', jp: '緑カード' },
+    White: { zh: '白卡', en: 'White', jp: '白カード' },
+    Black: { zh: '黑卡', en: 'Black', jp: '黒カード' },
+  };
+
+  const fmtTime = (ts) => {
+    const d = new Date((ts || 0) * 1000);
+    return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
+  };
+
+  const fmtDate = (ts) => {
+    const d = new Date((ts || 0) * 1000);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${fmtTime(ts)}`;
+  };
+
+  const decodeHtml = (value) => {
+    const text = document.createElement('textarea');
+    text.innerHTML = String(value || '');
+    return text.value;
+  };
+
+  const getDisplayNameByLabel = (label) => {
+    const rawLabel = String(label || '').trim();
+    const account = resolveAccountByLabel(rawLabel);
+    if (!account) return rawLabel;
+    const mappedName = String(data?.players?.[account]?.name || '').trim();
+    return mappedName || rawLabel;
+  };
+
+  // Wrap player name in blue
+  const pid = (name) => {
+    const rawName = decodeHtml(name);
+    return `<span class="chat-pid">${esc(getDisplayNameByLabel(rawName))}</span>`;
+  };
+  const playerEntries = Object.entries(data?.players || {});
+  const viewerAccount = String(state?.account || '').trim();
+  const roomStatus = Number(data?.room?.room_status || 0);
+  const isGameFinished = roomStatus === 3;
+
+  const resolveAccountByLabel = (label) => {
+    const normalized = String(label || '').trim();
+    if (!normalized) return '';
+    const byAccount = playerEntries.find(([account]) => account === normalized);
+    if (byAccount) return String(byAccount[0] || '');
+    const byName = playerEntries.find(([, player]) => String(player?.name || '').trim() === normalized);
+    return byName ? String(byName[0] || '') : '';
+  };
+
+  const getVisibleRoleName = (label, accountHint = '') => {
+    const account = String(accountHint || resolveAccountByLabel(label) || '').trim();
+    if (!account) return '';
+    const player = data?.players?.[account];
+    if (!player) return '';
+    const selfRole = account === viewerAccount ? String(player?.self_character || '').trim() : '';
+    const publicRole = String(player?.character || '').trim();
+    const roleName = publicRole || selfRole;
+    if (!roleName) return '';
+    return getCharacterLocalizedName(roleName, getCurrentUiLang());
+  };
+
+  const pidRole = (name, accountHint = '') => {
+    const rawName = decodeHtml(name);
+    const rawHint = decodeHtml(accountHint);
+    const roleName = getVisibleRoleName(rawName, rawHint);
+    return `${pid(rawName)}<span class="chat-role">(${esc(roleName || '???')})</span>`;
+  };
+
+  const canRevealGreenCardName = (sourceLabel = '', targetLabel = '') => {
+    if (isGameFinished) return true;
+    if (!viewerAccount) return false;
+    const sourceAccount = resolveAccountByLabel(sourceLabel);
+    const targetAccount = resolveAccountByLabel(targetLabel);
+    return viewerAccount === sourceAccount || viewerAccount === targetAccount;
+  };
+
+  const areaLabel = (rawAreaName) => {
+    const normalized = String(rawAreaName || '').trim();
+    const mapped = AREA_NAMES[normalized];
+    return mapped?.[lang] || mapped?.zh || esc(normalized);
+  };
+
+  const cardColorLabel = (rawColor) => {
+    const key = String(rawColor || '').trim();
+    return CARD_COLORS[key]?.[lang] || CARD_COLORS[key]?.zh || esc(key);
+  };
+
+  const greenCardLabel = (cardName, sourceLabel = '', targetLabel = '') => {
+    return canRevealGreenCardName(sourceLabel, targetLabel) ? esc(getLocalizedCardName(cardName)) : '???';
+  };
+
+  // Transform a system message text for display.
+  // Returns null to suppress the message, or an HTML string.
+  const formatSystem = (text, ts) => {
+    let m;
+
+    // -- Messages to HIDE --
+    if (/已準備$|未準備$|取消準備$/.test(text)) return null;
+    if (/^首位行動玩家：/.test(text)) return null;
+    if (/對綠卡.+選擇：/.test(text)) return null;
+    if (/^\[.+\] 更換顏色為 /.test(text)) return null;
+    if (/^\[.+\] 放棄掠奪 \[.+\] 的裝備/.test(text)) return null;
+    // Hide the raw area-effect trigger for Weird/Hurt (result msg shown instead)
+    if (/^\[.+\] 在 .+ 對 \[.+\] 執行效果：(?:Heal|Hurt)$/.test(text)) return null;
+
+    // -- Room creation --
+    if (/^村莊已建立：/.test(text)) return `村莊建立於 ${fmtDate(ts)}`;
+
+    // -- Join / Leave --
+    if ((m = text.match(/^\[(.+)\] 進入了村莊$/))) return `${pid(esc(m[1]))} 來到村莊大廳`;
+    if ((m = text.match(/^\[(.+)\] 離開了村莊$/))) return `${pid(esc(m[1]))} 離開村莊大廳`;
+
+    // -- Kick votes --
+    if ((m = text.match(/^\[(.+)\] 投票剔除 \[(.+)\]/)))
+      return `${pid(esc(m[1]))} 投票剔除 ${pid(esc(m[2]))}`;
+    if ((m = text.match(/^\[(.+)\] 已被投票剔除$/)))
+      return `${pid(esc(m[1]))} 已被投票剔除`;
+    if ((m = text.match(/^村長 \[(.+)\] 剔除了 \[(.+)\]$/)))
+      return `村長 ${pid(esc(m[1]))} 剔除了 ${pid(esc(m[2]))}`;
+    if ((m = text.match(/^村長 \[(.+)\] 發起點名/)))
+      return '村長發起點名，請盡速準備完成';
+
+    // -- Move dice --
+    if ((m = text.match(/^\[(.+)\] 擲移動骰：(.+)$/))) return `${pidRole(esc(m[1]), m[1])} 擲出 ${esc(m[2])}`;
+    if ((m = text.match(/^\[(.+)\] 擲出 7，可任選區域$/))) return null;
+
+    // -- Compass roll --
+    if ((m = text.match(/^\[(.+)\] 羅盤擲骰：(.+)$/))) return `${pidRole(esc(m[1]), m[1])} 羅盤擲出 ${esc(m[2])}`;
+    if ((m = text.match(/^\[(.+)\] 羅盤擲出 7，可任選區域$/))) return null;
+    if ((m = text.match(/^\[(.+)\] 羅盤擲到區域：(.+)$/))) {
+      const area = areaLabel(m[2]);
+      return `${pidRole(esc(m[1]), m[1])} 羅盤擲到 ${area}`;
+    }
+
+    // -- Move to area (normal / choice / compass / ability) --
+    if ((m = text.match(/^\[(.+)\] (?:移動到|選擇移動到|使用神祕羅盤移動到|發動能力並移動到) (.+)$/))) {
+      const area = areaLabel(m[2]);
+      return `${pidRole(esc(m[1]), m[1])} 移動至 ${area}`;
+    }
+
+    // -- Draw card --
+    if ((m = text.match(/^\[(.+)\] 在 .+ 抽到 (.+?)（(.+)\)$/))) {
+      const colorStr = cardColorLabel(m[3]);
+      const cardName = String(m[3] || '') === 'Green' ? greenCardLabel(m[2], m[1], '') : esc(getLocalizedCardName(m[2]));
+      return `${pidRole(esc(m[1]), m[1])} 抽取 ${colorStr}(${cardName})`;
+    }
+
+    // -- Green card: assign to target --
+    if ((m = text.match(/^\[(.+)\] 指定 \[(.+)\] 接收綠卡 (.+)$/)))
+      return `${pidRole(esc(m[2]), m[2])} 執行 綠卡(${greenCardLabel(m[3], m[1], m[2])})`;
+
+    // -- Use action card (with color embedded by backend) --
+    if ((m = text.match(/^\[(.+)\] 使用卡片 (.+?)（(.+?)），目標：\[(.+)\]$/))) {
+      const colorStr = cardColorLabel(m[3]);
+      const cardName = String(m[3] || '') === 'Green' ? greenCardLabel(m[2], m[1], m[4]) : esc(getLocalizedCardName(m[2]));
+      if (m[4] === '-') return `${pidRole(esc(m[1]), m[1])} 使用 ${colorStr}(${cardName})`;
+      return `${pidRole(esc(m[4]), m[4])} 執行 ${colorStr}(${cardName})`;
+    }
+
+    // -- Area action effect (Erstwhile Altar "use", or unknown effects) --
+    if ((m = text.match(/^\[(.+)\] 在 (.+) 對 \[(.+)\] 執行效果：(.+)$/))) {
+      const area = areaLabel(m[2]);
+      return `${pidRole(esc(m[1]), m[1])} 對 ${pidRole(esc(m[3]), m[3])} 發動 ${area} 效果`;
+    }
+
+    // -- Ability effect damage with attacker: [受傷者] 因為 [攻擊者](CharName) 角色能力效果受到 N 點傷害 --
+    if ((m = text.match(/^\[(.+?)\] 因為 \[(.+?)\]\((.+?)\) 角色能力效果受到 (\d+) 點傷害$/))) {
+      return `${pidRole(esc(m[1]), m[1])} 因為 ${pidRole(esc(m[2]), m[2])} 角色能力效果受到 ${esc(m[4])} 傷害`;
+    }
+    if ((m = text.match(/^\[(.+?)\] 因為 \[(.+?)\]\((.+?)\) 角色能力效果恢復 (\d+) 點傷害$/))) {
+      return `${pidRole(esc(m[1]), m[1])} 因為 ${pidRole(esc(m[2]), m[2])} 角色能力效果治癒 ${esc(m[4])} 傷害`;
+    }
+
+    // -- Area/card effect result messages (generated by backend) --
+    if ((m = text.match(/^\[(.+)\] 因為 (.+) 效果治癒 (\d+) 點傷害$/))) {
+      const area = areaLabel(m[2]);
+      return `${pidRole(esc(m[1]), m[1])} 因為 ${area} 效果治癒 ${esc(m[3])} 傷害`;
+    }
+    if ((m = text.match(/^\[(.+)\] 因為 (.+) 效果受到 (\d+) 點傷害$/))) {
+      const area = areaLabel(m[2]);
+      return `${pidRole(esc(m[1]), m[1])} 因為 ${area} 效果受到 ${esc(m[3])} 傷害`;
+    }
+
+    if ((m = text.match(/^\[(.+)\] 因為 白卡\(Blessing\) 恢復 (\d+) 點傷害$/)))
+      return `${pidRole(esc(m[1]), m[1])} 因為 ${cardColorLabel('White')}(${esc(getLocalizedCardName('Blessing'))}) 恢復 ${esc(m[2])} 點傷害`;
+    if ((m = text.match(/^\[(.+)\] 因為 白卡\(First Aid\) 傷害變為 (\d+)$/)))
+      return `${pidRole(esc(m[1]), m[1])} 因為 ${cardColorLabel('White')}(${esc(getLocalizedCardName('First Aid'))}) 傷害變為 ${esc(m[2])}`;
+
+    // -- Declare attack --
+    if ((m = text.match(/^\[(.+)\] 宣告攻擊 \[(.+)\]$/)))
+      return `${pid(esc(m[1]))} 對 ${pid(esc(m[2]))} 發動攻擊`;
+
+    // -- Attack roll (hide damage value, show dice only) --
+    if ((m = text.match(/^\[(.+)\] 攻擊擲骰：(.+?)，傷害=\d+$/)))
+      return `${pidRole(esc(m[1]), m[1])} 擲出 ${esc(m[2])}`;
+
+    // -- Deal damage from attack --
+    if ((m = text.match(/^\[(.+)\] 對 \[(.+)\] 造成 (\d+) 點傷害$/)))
+      return `${pid(esc(m[2]))} 被 ${pid(esc(m[1]))} 攻擊受到 ${esc(m[3])} 傷害`;
+
+    // -- Equipment --
+    if ((m = text.match(/^\[(.+)\] 裝備了 (.+)$/)))
+      return `${pidRole(esc(m[1]), m[1])} 裝備了 ${esc(getLocalizedCardName(m[2]))}`;
+    if ((m = text.match(/^\[(.+)\] 從 \[(.+)\] 取得裝備 (.+)$/)))
+      return `${pidRole(esc(m[1]), m[1])} 從 ${pidRole(esc(m[2]), m[2])} 取得裝備 ${esc(getLocalizedCardName(m[3]))}`;
+    if ((m = text.match(/^\[(.+)\] 掠奪了 \[(.+)\] 的全部裝備$/)))
+      return `${pidRole(esc(m[1]), m[1])} 掠奪了 ${pidRole(esc(m[2]), m[2])} 的全部裝備`;
+    if ((m = text.match(/^\[(.+)\] 掠奪 \[(.+)\] 的裝備 (.+)$/)))
+      return `${pidRole(esc(m[1]), m[1])} 掠奪了 ${pidRole(esc(m[2]), m[2])} 的裝備 ${esc(getLocalizedCardName(m[3]))}`;
+
+    // -- Skip attack --
+    if ((m = text.match(/^\[(.+)\] 本回合放棄攻擊$/)))
+      return `${pidRole(esc(m[1]), m[1])} 本回合跳過攻擊`;
+
+    // -- Character / death --
+    if ((m = text.match(/^\[(.+)\] 死亡，身份揭示為 (.+)$/)))
+      return `${pid(esc(m[1]))} 死亡，身份揭示為 ${esc(getCharacterLocalizedName(m[2], lang))}`;
+    if ((m = text.match(/^\[(.+)\] 回合超時，判定暴斃$/)))
+      return `${pid(esc(m[1]))} 回合超時暴斃`;
+    if ((m = text.match(/^\[(.+)\] 主動揭示身份：(.+)$/)))
+      return `${pidRole(esc(m[1]), m[1])} 揭示身份：${esc(getCharacterLocalizedName(m[2], lang))}`;
+
+    // -- Game start --
+    if (/^遊戲開始，/.test(text)) return '遊戲開始';
+
+    // -- Game end winners --
+    if ((m = text.match(/^遊戲結束，勝利者：(.+)$/))) {
+      const labels = String(m[1] || '')
+        .split(/[、,，]/)
+        .map((label) => String(label || '').trim())
+        .filter(Boolean);
+      const winners = labels.map((label) => pidRole(label, label));
+      return `遊戲結束，勝利者：${winners.join('、')}`;
+    }
+
+    // -- Default: escape text and highlight [name] patterns in blue --
+    const safeText = esc(text);
+    return safeText.replace(/\[([^\]]+)\]/g, (_, n) => `<span class="chat-pid">${n}</span>`);
+  };
+
+  el.chatMessages.innerHTML = messages.map((message) => {
+    const msgType = String(message?.type || 'chat').toLowerCase();
+    const ts = Number(message?.timestamp || 0);
+    const text = String(message?.text || '').trim();
+    if (msgType === 'system') {
+      const formatted = formatSystem(text, ts);
+      if (!formatted) return '';
+      return `<div class="chat-line chat-line-system">${formatted}</div>`;
+    }
+    const account = String(message?.account || '').trim();
+    const mappedName = String(data?.players?.[account]?.name || '').trim();
+    const rawMessageName = String(message?.name || '').trim();
+    const resolvedFromName = String(data?.players?.[rawMessageName]?.name || '').trim();
+    const name = mappedName || resolvedFromName || rawMessageName || account || '';
+    const timeStr = fmtTime(ts);
+    const isSelf = Boolean(state?.account) && account === String(state.account || '');
+    const cls = isSelf ? 'chat-line chat-line-self' : 'chat-line';
+    return `<div class="${cls}"><div class="chat-sender">${esc(name || '-')}<span class="chat-time">(${timeStr})</span>:</div><div class="chat-text">${esc(text)}</div></div>`;
+  }).join('');
+
+  el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
 }
 
 function setSelectOptions(selectEl, values, placeholder) {
@@ -1268,6 +1725,7 @@ export function renderState({
   }
 
   renderVillageInfo(data);
+  renderChatStage({ el, esc }, data, state);
   renderSummary({ el, statusText }, data);
   renderPlayersTable({ el, statusText }, data);
   const areaPrompt = getAreaPromptState(state, data);
@@ -1294,7 +1752,9 @@ export function renderState({
             })
             .map(([account]) => String(account || '').trim())
             .filter(Boolean)
-        : attackPrompt.targetAccounts;
+        : attackPrompt.active
+          ? attackPrompt.targetAccounts
+          : [];
   const playerPromptClass = (pendingSteal.active || areaPrompt.active || cardPrompt.active) ? 'area-target-prompt' : 'attack-target-prompt';
   const handleEquipmentChipClick = ({ equipmentName, anchorEl }) => {
     openEquipmentCardDialog(equipmentName, anchorEl);
@@ -1343,6 +1803,29 @@ export function bindRoomEvents({
   goToLobbyPage,
 }) {
   if (el.roomInfo?.dataset.bound === 'true') return;
+
+  const sendChatMessage = async () => {
+    if (String(state?.page || '') === 'replay-room') return;
+    const roomId = Number(state.roomId || latestRoomSnapshot?.room?.room_id || 0);
+    const account = String(state.account || '').trim();
+    const text = String(el.chatInput?.value || '').trim();
+    if (!roomId || !account || !text) return;
+    try {
+      const data = await dispatch('send_chat', {
+        room_id: roomId,
+        account,
+        message: text,
+      });
+      if (el.chatInput) el.chatInput.value = '';
+      renderState(data);
+    } catch (error) {
+      if (error?.code === 'ROOM_NOT_FOUND') {
+        goToLobbyPage();
+        return;
+      }
+      console.error(error);
+    }
+  };
 
   const showAreaChoiceDialog = ({ title, message, hurtLabel, healLabel, cancelLabel }) => new Promise((resolve) => {
     const dialog = el.areaChoiceDialog;
@@ -1595,7 +2078,8 @@ export function bindRoomEvents({
       const selfEquipment = Array.isArray(dataSnapshot?.players?.[selfAccount]?.equipment)
         ? dataSnapshot.players[selfAccount].equipment
         : [];
-      const rollMode = selfStatus === 5 && selfEquipment.includes('Masamune') ? 'd4' : 'both';
+      const selfAtkType = Number(dataSnapshot?.players?.[selfAccount]?.self_atk_type || 1);
+      const rollMode = selfStatus === 5 && (selfEquipment.includes('Masamune') || selfAtkType === 2) ? 'd4' : 'both';
       const data = await dispatch('next_step', {
         room_id: state.roomId,
         account: state.account || undefined,
@@ -2107,6 +2591,34 @@ export function bindRoomEvents({
       return;
     }
 
+    if (abilityState.targetType === 'discard') {
+      const discardOptions = getDiscardEquipmentOptions(latestRoomSnapshot);
+      if (!discardOptions.length) {
+        toast(t('toast.character_ability_not_supported'), 'error');
+        return;
+      }
+      const discardChoice = await showEquipmentChoiceDialog({
+        title: t('ui.role_ability'),
+        message: t('room.equipment_choice.message', { name: t('room.active_card.type_equipment') }),
+        options: discardOptions,
+        cancelLabel: t('room.area_choice.cancel'),
+      });
+      if (!discardChoice) {
+        toast(t('toast.character_ability_cancelled'));
+        return;
+      }
+      try {
+        await activateSelfAbility({ kind: 'discard', id: discardChoice });
+      } catch (error) {
+        if (error?.code === 'ROOM_NOT_FOUND') {
+          goToLobbyPage();
+          return;
+        }
+        console.error(error);
+      }
+      return;
+    }
+
     if (isAbilityPlayerTarget(abilityState.targetType)) {
       pendingAbilityActivation = {
         account: abilityState.account,
@@ -2139,7 +2651,7 @@ export function bindRoomEvents({
           target: selectedTarget,
         }),
       });
-      updateStageNextStepButtonState(state, latestRoomSnapshot);
+      renderState(latestRoomSnapshot);
       return;
     }
     try {
@@ -2225,8 +2737,14 @@ export function bindRoomEvents({
     toast(state.autoRefreshSeconds === 0 ? t('toast.auto_off') : t('toast.auto_on', { n: state.autoRefreshSeconds }));
   };
 
-  renderAutoRefreshControls({ el, state, onSelect: applyAutoRefreshSetting });
-  syncAutoRefreshTimer();
+  const isReplayPage = String(state?.page || '') === 'replay-room';
+  if (isReplayPage) {
+    clearRoomAutoRefreshTimer();
+    if (el.autoRefreshOptions) el.autoRefreshOptions.innerHTML = '';
+  } else {
+    renderAutoRefreshControls({ el, state, onSelect: applyAutoRefreshSetting });
+    syncAutoRefreshTimer();
+  }
 
   el.btnUseQuickPlayer?.addEventListener('click', () => {
     const v = el.quickPlayerTarget.value;
@@ -2299,6 +2817,13 @@ export function bindRoomEvents({
     toast(self?.is_ready ? t('toast.ready_on') : t('toast.ready_off'));
   };
 
+  const rollCallVillage = async () => {
+    if (!state.roomId || !state.account) return;
+    const data = await dispatch('roll_call', { room_id: state.roomId, account: state.account });
+    renderState(data);
+    toast(t('toast.roll_call_done'));
+  };
+
   el.btnLeaveRoom?.addEventListener('click', leaveVillage);
 
   el.villageInfoList?.addEventListener('click', (event) => {
@@ -2315,6 +2840,11 @@ export function bindRoomEvents({
     const readyTarget = event.target instanceof Element ? event.target.closest('#btnToggleReadyInline') : null;
     if (readyTarget) {
       toggleReady();
+      return;
+    }
+    const rollCallTarget = event.target instanceof Element ? event.target.closest('#btnRollCallInline') : null;
+    if (rollCallTarget) {
+      rollCallVillage();
     }
   });
 
@@ -2510,7 +3040,18 @@ export function bindRoomEvents({
           });
           toast(t('toast.trip_rating_saved'));
         } catch (error) {
-          toast(error.message || t('toast.trip_rating_failed'), 'error');
+          const detail = String(error?.message || error?.detail || '').toLowerCase();
+          let ratingErrMsg;
+          if (detail.includes('not registered') || detail.includes('must have registered') || detail.includes('both players')) {
+            ratingErrMsg = t('toast.trip_rating_not_registered');
+          } else if (detail.includes('already rated')) {
+            ratingErrMsg = t('toast.trip_rating_already_rated');
+          } else if (detail.includes('rating limit')) {
+            ratingErrMsg = t('toast.trip_rating_limit');
+          } else {
+            ratingErrMsg = error.message || t('toast.trip_rating_failed');
+          }
+          toast(ratingErrMsg, 'error');
         }
       };
 
@@ -2653,13 +3194,51 @@ export function bindRoomEvents({
     });
   }
 
+  if (el.chatSendButton) {
+    el.chatSendButton.addEventListener('click', () => {
+      void sendChatMessage();
+    });
+  }
+  if (el.chatInput) {
+    el.chatInput.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      if (event.shiftKey) return;
+      event.preventDefault();
+      void sendChatMessage();
+    });
+  }
+
   if (el.roomInfo) {
     el.roomInfo.dataset.bound = 'true';
   }
 }
 
 export async function initRoomPage({ state, dispatch, renderState, setVillageInfoMessage, goToLobbyPage }) {
-  const recordId = String(new URLSearchParams(window.location.search).get('recordId') || '').trim();
+  const search = new URLSearchParams(window.location.search);
+  const isReplayPage = String(state?.page || '') === 'replay-room';
+
+  if (isReplayPage) {
+    const roomIdRaw = String(search.get('roomId') || '').trim();
+    if (!roomIdRaw) {
+      setVillageInfoMessage('roomId is required');
+      return;
+    }
+    try {
+      const response = await fetch(`/api/game_record_by_room?room_id=${encodeURIComponent(roomIdRaw)}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error('record_view_not_found');
+      const record = await response.json();
+      const replayState = buildReplayRoomState(record);
+      state.roomId = null;
+      renderState(replayState);
+      return;
+    } catch (error) {
+      console.error(error);
+      setVillageInfoMessage('歷史紀錄載入失敗');
+      return;
+    }
+  }
+
+  const recordId = String(search.get('recordId') || '').trim();
   if (recordId) {
     try {
       const response = await fetch(`/api/game_record/${encodeURIComponent(recordId)}`, { cache: 'no-store' });

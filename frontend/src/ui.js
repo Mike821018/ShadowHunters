@@ -1,11 +1,7 @@
 import { t } from './i18n.js';
 import { PLAYER_COLORS, PLAYER_COLOR_HEX } from './constants.js';
 import { getCharacterLocalizedName, getCharacterTooltipInfo, getCurrentUiLang } from './characterInfo.js';
-import { AVATAR_OPTIONS } from './avatarConfig.js';
-
-const AVATAR_COLOR_BY_ID = new Map(
-  AVATAR_OPTIONS.map((avatar) => [Number(avatar.id), String(avatar.color || '#222')]),
-);
+import { getAvatarColorById, getAvatarImageSrcById } from './avatarConfig.js';
 
 function colorHex(color) {
   return PLAYER_COLOR_HEX[color] || '#cccccc';
@@ -106,8 +102,8 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
   const renderCard = ([account, p]) => {
       const displayTrip = p.trip_display && p.trip_display !== '-' ? p.trip_display : null;
       const avatarNo = Number(p.avatar_no || 0);
-      const originalAvatarSrc = avatarNo ? `./assets/avatars/${avatarNo}.gif` : '';
-      const tripMarkerColor = AVATAR_COLOR_BY_ID.get(avatarNo) || '#222';
+      const originalAvatarSrc = avatarNo ? getAvatarImageSrcById(avatarNo) : '';
+      const tripMarkerColor = getAvatarColorById(avatarNo) || '#222';
       const cardColor = colorHex(p.color);
       const equipment = (p.equipment || [])
         .map((eq) => {
@@ -163,6 +159,20 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
         ? `<button class="player-shield-chip" type="button" data-shield-source="${esc(invulnerabilitySource)}" aria-label="${esc(t('room.invulnerability_source.aria_label'))}" title="${esc(t('room.invulnerability_source.title'))}">🛡️</button>`
         : '';
       const crownBadge = isWinner ? `<span class="avatar-crown" aria-label="${esc(t('ui.winner_crown'))}" title="${esc(t('ui.winner_crown'))}">👑</span>` : '';
+      const abilityTiming = Number(p.character_ability_timing || (isSelf ? p.self_character_ability_timing : 0) || 0);
+      const abilityStatus = String(p.ability_status || '').trim().toLowerCase();
+      const canUseAbility = p.can_use_ability == null
+        ? (isSelf ? Boolean(p.self_can_use_ability) : false)
+        : Boolean(p.can_use_ability);
+      const hasAbilityIndicator = ![0, 10].includes(abilityTiming) && abilityStatus !== 'used';
+      let abilityBadge = '';
+      if (hasAbilityIndicator) {
+        if (canUseAbility) {
+          abilityBadge = `<span class="player-ability-chip ready" aria-label="${esc(t('ui.ability_ready'))}" title="${esc(t('ui.ability_ready'))}">⚡</span>`;
+        } else {
+          abilityBadge = `<span class="player-ability-chip disabled" aria-label="${esc(t('ui.ability_disabled'))}" title="${esc(t('ui.ability_disabled'))}">🚫</span>`;
+        }
+      }
 
       let colorControlHtml = `<span class="color-chip-static" style="background:${cardColor}" title="${esc(p.color || 'N/A')}"></span>`;
       if (canPickColor) {
@@ -192,6 +202,7 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
                   : esc(getInitial(p.name || account))}
               ${crownBadge}
               ${shieldButton}
+              ${abilityBadge}
             </span>
             <div class="player-id-block">
               <strong>🩸 ${damageDisplayText} ❤️ ${hpDisplayText}</strong>
@@ -264,7 +275,7 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
     container.querySelectorAll('[data-player-account]').forEach((card) => {
       card.addEventListener('click', (event) => {
         const target = event.target;
-        if (target instanceof Element && target.closest('[data-pick-color], .color-picker, .player-role-trigger, .player-role-popover, .player-role-info, .equip-chip, .player-shield-chip')) return;
+        if (target instanceof Element && target.closest('[data-pick-color], .color-picker, .player-role-trigger, .player-role-popover, .player-role-info, .equip-chip, .player-shield-chip, .player-ability-chip')) return;
         const account = card.getAttribute('data-player-account');
         if (account) onPlayerCardClick(account);
       });

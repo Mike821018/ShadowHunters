@@ -1,4 +1,4 @@
-import { AVATAR_OPTIONS, AVATAR_PAGE_SIZE } from '../avatarConfig.js';
+import { AVATAR_PAGE_SIZE, getAvatarOptions } from '../avatarConfig.js';
 import { bindAvatarPicker } from '../components/avatarPicker.js';
 import { getCharacterLocalizedName, getCurrentUiLang } from '../characterInfo.js';
 import { resolveLang, t } from '../i18n.js';
@@ -150,7 +150,9 @@ function bindIdentityTools({ el, toast, dispatch }) {
 
   const identityState = {
     trip: '',
+    profileTrip: '',
     password: '',
+    directoryPage: 1,
     nicknamePage: 1,
     gamePage: 1,
     ratingPage: 1,
@@ -202,14 +204,44 @@ function bindIdentityTools({ el, toast, dispatch }) {
     const dialog = document.getElementById('skillLevelDialog');
     const messageEl = document.getElementById('skillLevelDialogMessage');
     const titleEl = document.getElementById('skillLevelDialogTitle');
-    const criteria = {
-      beginner: 'Beginner: 場數或勝率尚在初期階段。',
-      intermediate: 'Intermediate: 累積一定場數且有穩定勝率。',
-      advanced: 'Advanced: 高場數且勝率明顯高於平均。',
-      expert: 'Expert: 長期高表現，屬於頂級區間。',
+    const lang = resolveLang();
+    const labelByLang = {
+      beginner: { zh: '新手', en: 'Beginner', jp: '初級' },
+      intermediate: { zh: '中階', en: 'Intermediate', jp: '中級' },
+      advanced: { zh: '進階', en: 'Advanced', jp: '上級' },
+      expert: { zh: '專家', en: 'Expert', jp: '達人' },
+    };
+    const criteriaByLang = {
+      zh: {
+        beginner: '總場數 < 10，或總場數 >= 10 且勝率 < 40%',
+        intermediate: '總場數 >= 10 且勝率 >= 40%',
+        advanced: '總場數 >= 10 且勝率 >= 50%',
+        expert: '總場數 >= 10 且勝率 >= 60%',
+      },
+      en: {
+        beginner: 'Games < 10, or Games >= 10 with Win Rate < 40%',
+        intermediate: 'Games >= 10 and Win Rate >= 40%',
+        advanced: 'Games >= 10 and Win Rate >= 50%',
+        expert: 'Games >= 10 and Win Rate >= 60%',
+      },
+      jp: {
+        beginner: '試合数 < 10、または試合数 >= 10 かつ勝率 < 40%',
+        intermediate: '試合数 >= 10 かつ勝率 >= 40%',
+        advanced: '試合数 >= 10 かつ勝率 >= 50%',
+        expert: '試合数 >= 10 かつ勝率 >= 60%',
+      },
     };
     const normalized = skillLevel.toLowerCase();
-    const message = criteria[normalized] || `${skillLevel}: 依總場數與勝率綜合計算。`;
+    const localizedLevel = (labelByLang[normalized] && (labelByLang[normalized][lang] || labelByLang[normalized].zh)) || skillLevelLabel(skillLevel);
+    const criteriaMap = criteriaByLang[lang] || criteriaByLang.zh;
+    const fallbackByLang = {
+      zh: `${localizedLevel}：依總場數與勝率綜合計算。`,
+      en: `${localizedLevel}: Calculated from total games and win rate.`,
+      jp: `${localizedLevel}：総試合数と勝率で総合計算。`,
+    };
+    const message = criteriaMap[normalized]
+      ? `${localizedLevel}\n${criteriaMap[normalized]}`
+      : (fallbackByLang[lang] || fallbackByLang.zh);
     if (titleEl) titleEl.textContent = `評級說明：${skillLevelLabel(skillLevel)}`;
     if (messageEl) messageEl.textContent = message;
     if (dialog instanceof HTMLDialogElement) {
@@ -217,6 +249,46 @@ function bindIdentityTools({ el, toast, dispatch }) {
       return;
     }
     window.alert(`${skillLevelLabel(skillLevel)}\n\n${message}`);
+  };
+
+  const showAllSkillLevelDialog = () => {
+    const dialog = document.getElementById('skillLevelDialog');
+    const messageEl = document.getElementById('skillLevelDialogMessage');
+    const titleEl = document.getElementById('skillLevelDialogTitle');
+    const lang = resolveLang();
+    const linesByLang = {
+      zh: [
+        '新手：總場數 < 10，或總場數 >= 10 且勝率 < 40%',
+        '中階：總場數 >= 10 且勝率 >= 40%',
+        '進階：總場數 >= 10 且勝率 >= 50%',
+        '專家：總場數 >= 10 且勝率 >= 60%',
+      ],
+      en: [
+        'Beginner: Games < 10, or Games >= 10 with Win Rate < 40%',
+        'Intermediate: Games >= 10 and Win Rate >= 40%',
+        'Advanced: Games >= 10 and Win Rate >= 50%',
+        'Expert: Games >= 10 and Win Rate >= 60%',
+      ],
+      jp: [
+        '初級：試合数 < 10、または試合数 >= 10 かつ勝率 < 40%',
+        '中級：試合数 >= 10 かつ勝率 >= 40%',
+        '上級：試合数 >= 10 かつ勝率 >= 50%',
+        '達人：試合数 >= 10 かつ勝率 >= 60%',
+      ],
+    };
+    const lines = linesByLang[lang] || linesByLang.zh;
+    const titleMap = {
+      zh: '評級說明（總覽）',
+      en: 'Skill Criteria Overview',
+      jp: '評価基準（一覧）',
+    };
+    if (titleEl) titleEl.textContent = titleMap[lang] || titleMap.zh;
+    if (messageEl) messageEl.textContent = lines.join('\n');
+    if (dialog instanceof HTMLDialogElement) {
+      dialog.showModal();
+      return;
+    }
+    window.alert(lines.join('\n'));
   };
 
   const skillLevelLabel = (rawLevel) => {
@@ -237,8 +309,8 @@ function bindIdentityTools({ el, toast, dispatch }) {
 
   const roleBadgeClass = (camp) => {
     const normalized = String(camp || '').trim().toLowerCase();
-    if (normalized === 'hunter') return 'hunter';
-    if (normalized === 'shadow') return 'shadow';
+    if (['hunter', 'hunters', '獵人', '狩人'].includes(normalized)) return 'hunter';
+    if (['shadow', 'shadows', '暗影', '影', '闇'].includes(normalized)) return 'shadow';
     return 'civilian';
   };
 
@@ -267,14 +339,129 @@ function bindIdentityTools({ el, toast, dispatch }) {
     if (resultCode === 'hunter') return t('records.winner_hunter');
     if (resultCode === 'shadow') return t('records.winner_shadow');
     if (resultCode === 'civilian') return t('records.winner_civilian');
+    const parts = String(resultCode || '').split('_').filter(Boolean);
+    if (parts.length >= 2) {
+      const map = {
+        hunter: t('records.winner_hunter'),
+        shadow: t('records.winner_shadow'),
+        civilian: t('records.winner_civilian'),
+      };
+      const ordered = parts.filter((camp) => ['hunter', 'shadow', 'civilian'].includes(camp));
+      if (ordered.length) {
+        return ordered.map((camp) => map[camp]).join('+');
+      }
+    }
+    if (resultCode === 'boomed') return t('identity.boomed_yes');
     if (resultCode === 'draw') return '-';
     return isWinner ? t('identity.result_win') : t('identity.result_lose');
+  };
+
+  const resultClassFromCode = (resultCode) => {
+    if (resultCode === 'hunter') return 'records-winner-hunter';
+    if (resultCode === 'shadow') return 'records-winner-shadow';
+    if (resultCode === 'civilian') return 'records-winner-civilian';
+    if (String(resultCode || '').includes('_')) return 'records-winner-mixed';
+    return '';
+  };
+
+  const resultBadgeHtmlFromCode = (resultCode, boomed = false) => {
+    const map = {
+      hunter: { cls: 'records-winner-hunter', label: t('records.winner_hunter') },
+      shadow: { cls: 'records-winner-shadow', label: t('records.winner_shadow') },
+      civilian: { cls: 'records-winner-civilian', label: t('records.winner_civilian') },
+    };
+    const single = map[String(resultCode || '').trim()];
+    if (single) {
+      const classNames = `records-winner ${single.cls}${boomed ? ' records-winner-boomed' : ''}`;
+      return `<span class="${classNames}">${escapeHtml(single.label)}</span>`;
+    }
+    const parts = String(resultCode || '').split('_').filter(Boolean);
+    if (parts.length >= 2) {
+      const ordered = parts.filter((camp) => ['hunter', 'shadow', 'civilian'].includes(camp));
+      if (ordered.length) {
+        return `<span class="records-winner-group">${ordered.map((camp) => {
+          const item = map[camp];
+          const classNames = `records-winner ${item.cls}${boomed ? ' records-winner-boomed' : ''}`;
+          return `<span class="${classNames}">${escapeHtml(item.label)}</span>`;
+        }).join('')}</span>`;
+      }
+    }
+    return '';
+  };
+
+  const ratingLabel = (rawRating) => {
+    const value = Number(rawRating ?? 0);
+    if (value > 0) {
+      if (getCurrentUiLang() === 'en') return 'Positive';
+      if (getCurrentUiLang() === 'jp') return '肯定';
+      return '正';
+    }
+    if (value < 0) {
+      if (getCurrentUiLang() === 'en') return 'Negative';
+      if (getCurrentUiLang() === 'jp') return '否定';
+      return '負';
+    }
+    return '0';
   };
 
   const renderTripProfile = (profile) => {
     if (!el.tripProfileAccounts || !el.tripProfileGamesTbody || !el.tripProfileHint || !el.tripProfileRatingsTbody) return;
     el.tripProfileHint.textContent = `TRIP：${profile?.trip || '-'}`;
-    el.tripProfileAccounts.textContent = '';
+
+    if (profile?.not_registered || profile?.registered === false) {
+      const msgByLang = {
+        zh: '此 TRIP 尚未登記，無統計資料。',
+        en: 'This TRIP is not registered. No stats available.',
+        jp: 'この TRIP は未登録のため、統計は表示されません。',
+      };
+      const lang = getCurrentUiLang();
+      el.tripProfileAccounts.innerHTML = `<div class="identity-profile-summary"><div>${escapeHtml(msgByLang[lang] || msgByLang.zh)}</div></div>`;
+      el.tripProfileGamesTbody.innerHTML = '<tr><td colspan="7" class="lighttxt">-</td></tr>';
+      el.tripProfileRatingsTbody.innerHTML = '<tr><td colspan="4" class="lighttxt">-</td></tr>';
+      const nicknameBody = document.getElementById('tripProfileNicknamesTbody');
+      if (nicknameBody) nicknameBody.innerHTML = '<tr><td colspan="3" class="lighttxt">-</td></tr>';
+      setPagerInfo('tripNicknamesPageInfo', profile?.nickname_pagination);
+      setPagerInfo('tripGamesPageInfo', profile?.game_pagination);
+      setPagerInfo('tripRatingsPageInfo', profile?.rating_pagination);
+      setPagerButtons('tripNicknamesPrevPage', 'tripNicknamesNextPage', profile?.nickname_pagination, null, null);
+      setPagerButtons('tripGamesPrevPage', 'tripGamesNextPage', profile?.game_pagination, null, null);
+      setPagerButtons('tripRatingsPrevPage', 'tripRatingsNextPage', profile?.rating_pagination, null, null);
+      return;
+    }
+
+    const summary = profile?.performance_summary || {};
+    const summaryByLang = {
+      zh: [
+        `總勝率：${summary.total_win_rate || '0.00%'}`,
+        `生存率：${summary.survival_rate || '0.00%'}`,
+        `暴斃率：${summary.boomed_rate || '0.00%'}`,
+        `總評價：${Number(summary.total_rating_score || 0)}`,
+        `各陣營率（暗/獵/中）：${summary.camp_play_rates?.shadow || '0.00%'} / ${summary.camp_play_rates?.hunter || '0.00%'} / ${summary.camp_play_rates?.civilian || '0.00%'}`,
+        `各陣營勝率（暗/獵/中）：${summary.camp_win_rates?.shadow || '0.00%'} / ${summary.camp_win_rates?.hunter || '0.00%'} / ${summary.camp_win_rates?.civilian || '0.00%'}`,
+        `參與場次陣營勝率（暗/獵/中）：${summary.participated_games_camp_win_rates?.shadow || '0.00%'} / ${summary.participated_games_camp_win_rates?.hunter || '0.00%'} / ${summary.participated_games_camp_win_rates?.civilian || '0.00%'}`,
+      ],
+      en: [
+        `Total Win Rate: ${summary.total_win_rate || '0.00%'}`,
+        `Survival Rate: ${summary.survival_rate || '0.00%'}`,
+        `Boomed Rate: ${summary.boomed_rate || '0.00%'}`,
+        `Total Rating: ${Number(summary.total_rating_score || 0)}`,
+        `Camp Play Rate (S/H/N): ${summary.camp_play_rates?.shadow || '0.00%'} / ${summary.camp_play_rates?.hunter || '0.00%'} / ${summary.camp_play_rates?.civilian || '0.00%'}`,
+        `Camp Win Rate (S/H/N): ${summary.camp_win_rates?.shadow || '0.00%'} / ${summary.camp_win_rates?.hunter || '0.00%'} / ${summary.camp_win_rates?.civilian || '0.00%'}`,
+        `Camp Win Rate in Participated Games (S/H/N): ${summary.participated_games_camp_win_rates?.shadow || '0.00%'} / ${summary.participated_games_camp_win_rates?.hunter || '0.00%'} / ${summary.participated_games_camp_win_rates?.civilian || '0.00%'}`,
+      ],
+      jp: [
+        `総勝率：${summary.total_win_rate || '0.00%'}`,
+        `生存率：${summary.survival_rate || '0.00%'}`,
+        `暴斃率：${summary.boomed_rate || '0.00%'}`,
+        `総評価：${Number(summary.total_rating_score || 0)}`,
+        `陣営率（影/狩/中）：${summary.camp_play_rates?.shadow || '0.00%'} / ${summary.camp_play_rates?.hunter || '0.00%'} / ${summary.camp_play_rates?.civilian || '0.00%'}`,
+        `陣営勝率（影/狩/中）：${summary.camp_win_rates?.shadow || '0.00%'} / ${summary.camp_win_rates?.hunter || '0.00%'} / ${summary.camp_win_rates?.civilian || '0.00%'}`,
+        `参加試合の陣営勝率（影/狩/中）：${summary.participated_games_camp_win_rates?.shadow || '0.00%'} / ${summary.participated_games_camp_win_rates?.hunter || '0.00%'} / ${summary.participated_games_camp_win_rates?.civilian || '0.00%'}`,
+      ],
+    };
+    const lang = getCurrentUiLang();
+    const summaryLines = summaryByLang[lang] || summaryByLang.zh;
+    el.tripProfileAccounts.innerHTML = `<div class="identity-profile-summary">${summaryLines.map((line) => `<div>${escapeHtml(line)}</div>`).join('')}</div>`;
 
     const nicknameBody = document.getElementById('tripProfileNicknamesTbody');
     if (nicknameBody) {
@@ -302,11 +489,11 @@ function bindIdentityTools({ el, toast, dispatch }) {
         profile?.nickname_pagination,
         async () => {
           identityState.nicknamePage = Math.max(1, identityState.nicknamePage - 1);
-          await loadTripProfile(identityState.trip);
+          await loadTripProfile(identityState.profileTrip || identityState.trip);
         },
         async () => {
           identityState.nicknamePage += 1;
-          await loadTripProfile(identityState.trip);
+          await loadTripProfile(identityState.profileTrip || identityState.trip);
         }
       );
     }
@@ -321,17 +508,19 @@ function bindIdentityTools({ el, toast, dispatch }) {
       games.forEach((game) => {
         const tr = document.createElement('tr');
         const resultLabel = resultLabelFromCode(game.result_code, game.is_winner);
+        const resultBadgeHtml = resultBadgeHtmlFromCode(game.result_code, game.boomed);
         const roleNameLocalized = getCharacterLocalizedName(game.character_name || '-', getCurrentUiLang());
         const roleBadge = String(game.character_name || '?').trim().charAt(0).toUpperCase() || '?';
         const roleBadgeCampClass = roleBadgeClass(game.character_camp);
         const statusLabel = game.is_alive ? t('common.alive') : t('common.dead');
-        const recordHref = `./room.html?recordId=${encodeURIComponent(String(game.record_id || ''))}`;
+        const recordHref = `./replay_room.html?roomId=${encodeURIComponent(String(game.room_id || ''))}`;
+        const resultHtml = resultBadgeHtml || `<span class="lighttxt">${escapeHtml(resultLabel)}</span>`;
         tr.innerHTML = `
           <td><a href="${recordHref}">${escapeHtml(String(game.room_id ?? '-'))}</a></td>
           <td>${escapeHtml(game.player_name || '-')}</td>
           <td><span class="damage-meter-badge ${roleBadgeCampClass}">${escapeHtml(roleBadge)}</span> ${escapeHtml(roleNameLocalized || '-')}</td>
           <td>${escapeHtml(statusLabel)}</td>
-          <td>${escapeHtml(resultLabel)}</td>
+          <td>${resultHtml}</td>
           <td>${game.boomed ? t('identity.boomed_yes') : '-'}</td>
           <td>${Number(game.rating_score || 0)}</td>
         `;
@@ -345,11 +534,11 @@ function bindIdentityTools({ el, toast, dispatch }) {
       profile?.game_pagination,
       async () => {
         identityState.gamePage = Math.max(1, identityState.gamePage - 1);
-        await loadTripProfile(identityState.trip);
+        await loadTripProfile(identityState.profileTrip || identityState.trip);
       },
       async () => {
         identityState.gamePage += 1;
-        await loadTripProfile(identityState.trip);
+        await loadTripProfile(identityState.profileTrip || identityState.trip);
       }
     );
 
@@ -366,11 +555,11 @@ function bindIdentityTools({ el, toast, dispatch }) {
         profile?.rating_pagination,
         async () => {
           identityState.ratingPage = Math.max(1, identityState.ratingPage - 1);
-          await loadTripProfile(identityState.trip);
+          await loadTripProfile(identityState.profileTrip || identityState.trip);
         },
         async () => {
           identityState.ratingPage += 1;
-          await loadTripProfile(identityState.trip);
+          await loadTripProfile(identityState.profileTrip || identityState.trip);
         }
       );
       return;
@@ -379,14 +568,16 @@ function bindIdentityTools({ el, toast, dispatch }) {
     ratings.forEach((rating) => {
       const tr = document.createElement('tr');
       const gameRecordId = String(rating.game_record_id || '').trim();
+      const replayRoomId = String(rating.room_id || '').trim();
       const roomHref = gameRecordId
-        ? `./room.html?recordId=${encodeURIComponent(gameRecordId)}`
+        ? `./replay_room.html?roomId=${encodeURIComponent(replayRoomId)}`
         : '#';
+      const ratingText = ratingLabel(rating.rating);
       tr.innerHTML = `
-        <td>${gameRecordId ? `<a href="${roomHref}">${rating.room_id ?? '-'}</a>` : `${rating.room_id ?? '-'}`}</td>
-        <td><a href="#" data-trip="${escapeHtml(rating.source_trip || '-')}">${escapeHtml(rating.source_trip || '-')}</a></td>
-        <td>${Number(rating.rating ?? 0)}</td>
-        <td>${escapeHtml(rating.comment || '-')}</td>
+        <td class="trip-rating-col-room">${gameRecordId ? `<a href="${roomHref}">${rating.room_id ?? '-'}</a>` : `${rating.room_id ?? '-'}`}</td>
+        <td class="trip-rating-col-trip"><a href="#" data-trip="${escapeHtml(rating.source_trip || '-')}">${escapeHtml(rating.source_trip || '-')}</a></td>
+        <td class="trip-rating-col-score">${escapeHtml(ratingText)}</td>
+        <td class="trip-rating-col-comment">${escapeHtml(rating.comment || '-')}</td>
       `;
       el.tripProfileRatingsTbody.appendChild(tr);
     });
@@ -412,19 +603,24 @@ function bindIdentityTools({ el, toast, dispatch }) {
       profile?.rating_pagination,
       async () => {
         identityState.ratingPage = Math.max(1, identityState.ratingPage - 1);
-        await loadTripProfile(identityState.trip);
+        await loadTripProfile(identityState.profileTrip || identityState.trip);
       },
       async () => {
         identityState.ratingPage += 1;
-        await loadTripProfile(identityState.trip);
+        await loadTripProfile(identityState.profileTrip || identityState.trip);
       }
     );
   };
 
   const loadTripProfile = async (trip) => {
-    const response = await fetch(`/api/trip_profile?trip=${encodeURIComponent(trip)}&limit=300&page_size=20&nickname_page=${identityState.nicknamePage}&game_page=${identityState.gamePage}&rating_page=${identityState.ratingPage}`, { cache: 'no-store' });
+    const normalizedTrip = String(trip || '').trim();
+    if (!normalizedTrip) {
+      throw new Error('trip profile requires trip');
+    }
+    const response = await fetch(`/api/trip_profile?trip=${encodeURIComponent(normalizedTrip)}&limit=300&page_size=20&nickname_page=${identityState.nicknamePage}&game_page=${identityState.gamePage}&rating_page=${identityState.ratingPage}`, { cache: 'no-store' });
     if (!response.ok) throw new Error('trip profile failed');
     const data = await response.json();
+    identityState.profileTrip = normalizedTrip;
     renderTripProfile(data);
     activateProfileTab();
   };
@@ -432,6 +628,7 @@ function bindIdentityTools({ el, toast, dispatch }) {
   const openTripProfile = async (trip, profileTab = 'nicknames') => {
     const normalizedTrip = String(trip || '').trim();
     if (!normalizedTrip) return;
+    identityState.profileTrip = normalizedTrip;
     identityState.nicknamePage = 1;
     identityState.gamePage = 1;
     identityState.ratingPage = 1;
@@ -439,12 +636,40 @@ function bindIdentityTools({ el, toast, dispatch }) {
     activateProfileSubTab(profileTab);
   };
 
-  const renderTripDirectory = (entries) => {
+  const renderTripDirectory = (entries, pagination) => {
+    const skillHeader = document.getElementById('tripDirectorySkillHeader');
+    if (skillHeader && skillHeader.getAttribute('data-bound') !== 'true') {
+      skillHeader.setAttribute('role', 'button');
+      skillHeader.setAttribute('tabindex', '0');
+      skillHeader.setAttribute('data-bound', 'true');
+      skillHeader.addEventListener('click', () => showAllSkillLevelDialog());
+      skillHeader.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          showAllSkillLevelDialog();
+        }
+      });
+    }
+
     el.tripDirectoryTbody.innerHTML = '';
     if (!entries || !entries.length) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td colspan="4" class="lighttxt">${escapeHtml(t('identity.trip_directory_empty'))}</td>`;
+      tr.innerHTML = `<td colspan="5" class="lighttxt">${escapeHtml(t('identity.trip_directory_empty'))}</td>`;
       el.tripDirectoryTbody.appendChild(tr);
+      setPagerInfo('tripDirectoryPageInfo', pagination);
+      setPagerButtons(
+        'tripDirectoryPrevPage',
+        'tripDirectoryNextPage',
+        pagination,
+        async () => {
+          identityState.directoryPage = Math.max(1, identityState.directoryPage - 1);
+          await loadTripDirectory();
+        },
+        async () => {
+          identityState.directoryPage += 1;
+          await loadTripDirectory();
+        }
+      );
       return;
     }
 
@@ -452,13 +677,29 @@ function bindIdentityTools({ el, toast, dispatch }) {
       const tr = document.createElement('tr');
       const localizedSkillLevel = skillLevelLabel(entry.skill_level);
       tr.innerHTML = `
+        <td>${Number(entry.registration_index || 0)}</td>
         <td><a href="#" data-trip="${entry.trip}">${entry.trip}</a></td>
         <td>${entry.total_games ?? 0}</td>
         <td>${entry.win_rate || '-'}</td>
-        <td><button class="btn btn-inline" type="button" data-skill-level="${escapeHtml(entry.skill_level || '-')}" title="查看評級標準">${escapeHtml(localizedSkillLevel)}</button></td>
+        <td>${escapeHtml(localizedSkillLevel)}</td>
       `;
       el.tripDirectoryTbody.appendChild(tr);
     });
+
+    setPagerInfo('tripDirectoryPageInfo', pagination);
+    setPagerButtons(
+      'tripDirectoryPrevPage',
+      'tripDirectoryNextPage',
+      pagination,
+      async () => {
+        identityState.directoryPage = Math.max(1, identityState.directoryPage - 1);
+        await loadTripDirectory();
+      },
+      async () => {
+        identityState.directoryPage += 1;
+        await loadTripDirectory();
+      }
+    );
 
     el.tripDirectoryTbody.querySelectorAll('a[data-trip]').forEach((anchor) => {
       anchor.addEventListener('click', async (event) => {
@@ -476,31 +717,34 @@ function bindIdentityTools({ el, toast, dispatch }) {
       });
     });
 
-    el.tripDirectoryTbody.querySelectorAll('button[data-skill-level]').forEach((button) => {
-      button.addEventListener('click', () => {
-        const level = String(button.getAttribute('data-skill-level') || '').trim();
-        showSkillLevelDialog(level);
-      });
-    });
   };
 
   const loadTripDirectory = async () => {
     const keyword = String(el.tripSearchInput?.value || '').trim();
     try {
-      const response = await fetch(`/api/trip_directory?keyword=${encodeURIComponent(keyword)}&limit=200`, { cache: 'no-store' });
+      const params = new URLSearchParams();
+      params.set('keyword', keyword);
+      params.set('limit', '500');
+      params.set('page', String(identityState.directoryPage));
+      params.set('page_size', '20');
+      const response = await fetch(`/api/trip_directory?${params.toString()}`, { cache: 'no-store' });
       if (!response.ok) throw new Error('trip directory failed');
       const data = await response.json();
-      renderTripDirectory(data.entries || []);
+      renderTripDirectory(data.entries || [], data.pagination || { page: 1, page_size: 20, total: 0 });
     } catch {
-      renderTripDirectory([]);
+      renderTripDirectory([], { page: 1, page_size: 20, total: 0 });
       toast('TRIP 一覽載入失敗', 'error');
     }
   };
 
-  el.tripSearchButton?.addEventListener('click', loadTripDirectory);
+  el.tripSearchButton?.addEventListener('click', () => {
+    identityState.directoryPage = 1;
+    loadTripDirectory();
+  });
   el.tripSearchInput?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
+      identityState.directoryPage = 1;
       loadTripDirectory();
     }
   });
@@ -517,10 +761,12 @@ function bindIdentityTools({ el, toast, dispatch }) {
       try {
         const data = await dispatch('register_trip', { trip, password });
         setManagedTrip(trip, password);
+        identityState.directoryPage = 1;
         identityState.nicknamePage = 1;
         identityState.gamePage = 1;
         identityState.ratingPage = 1;
         toast(data.status === 'registered' ? t('identity.trip_registered') : t('identity.trip_verified'));
+        el.tripRegisterForm.reset();
         await loadTripDirectory();
         await loadTripProfile(trip);
       } catch (error) {
@@ -549,10 +795,12 @@ function bindIdentityTools({ el, toast, dispatch }) {
           new_password: newPassword,
         });
         setManagedTrip(newTrip, newPassword);
+        identityState.directoryPage = 1;
         identityState.nicknamePage = 1;
         identityState.gamePage = 1;
         identityState.ratingPage = 1;
         toast(t('identity.trip_changed'));
+        el.tripChangeForm.reset();
         await loadTripDirectory();
         await loadTripProfile(newTrip);
       } catch (error) {
@@ -579,6 +827,7 @@ function bindIdentityTools({ el, toast, dispatch }) {
           ...payload,
         });
         toast(t(successKey, { count: data.updated_records ?? 0 }));
+        form.reset();
         await loadTripDirectory();
         await loadTripProfile(identityState.trip);
       } catch (error) {
@@ -688,7 +937,7 @@ export async function initRegisterPage({
   bindAvatarPicker({
     state,
     el,
-    avatarOptions: AVATAR_OPTIONS,
+    avatarOptions: getAvatarOptions(),
     avatarPageSize: AVATAR_PAGE_SIZE,
     esc,
   });
@@ -698,6 +947,19 @@ export async function initRegisterPage({
 
   const currentLang = resolveLang();
   const nicknameMaxChars = currentLang === 'en' ? 20 : 10;
+
+  const btnBackToRoom = document.getElementById('btnBackToRoom');
+  if (btnBackToRoom instanceof HTMLButtonElement && btnBackToRoom.dataset.bound !== 'true') {
+    btnBackToRoom.addEventListener('click', () => {
+      const roomId = Number(state.roomId || 0);
+      if (roomId > 0) {
+        goToRoomPage(roomId);
+        return;
+      }
+      goToLobbyPage?.();
+    });
+    btnBackToRoom.dataset.bound = 'true';
+  }
 
   bindLoginSubmit({
     state,
@@ -755,6 +1017,7 @@ export async function initRegisterPage({
   }
   if (el.trip) {
     el.trip.setAttribute('aria-required', requireTrip ? 'true' : 'false');
+    el.trip.placeholder = t('common.placeholder.ascii20');
   }
 
   bindRegisterSubmit({

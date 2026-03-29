@@ -93,6 +93,7 @@ class Wight(Character):
         self.extra_turn = 0
 
     def ability(self, user, target, rooms):
+        ret = False
         if user.can_use_ability:
             death_cnt = 0
             for p in rooms.players.values():
@@ -100,8 +101,8 @@ class Wight(Character):
                     death_cnt += 1
             user.extra_turn += death_cnt
             user.can_use_ability = False
-        else:
-            pass
+            ret = True
+        return ret
 
     def disable_ability(self):
         self.can_use_ability = False
@@ -348,21 +349,16 @@ class Agnes(Character):
 
     def win_check(self, room, user, dead):
         ret = False
-        # 勝利條件: 當你的上一位的玩家獲得勝利 (預設)
-        # 如果已經發動過技能 (can_use_ability==False)，則變更為「當你的下一位的玩家獲得勝利」
-        
+        # 勝利條件: 預設追隨上家；發動能力後改為追隨下家。
+        # 以 action_order 的相鄰順序判定，不跳過死亡玩家。
+
         my_account = user.account
         if my_account in room.action_order:
             my_index = room.action_order.index(my_account)
 
-            if user.can_use_ability:
-                target_index = (my_index - 1) % len(room.action_order)
-            else:
-                target_index = (my_index + 1) % len(room.action_order)
-
+            target_index = (my_index - 1) % len(room.action_order) if user.can_use_ability else (my_index + 1) % len(room.action_order)
             target_account = room.action_order[target_index]
             target_player = room.players.get(target_account)
-
             if target_player and target_player.character and hasattr(target_player.character, 'win_check'):
                 ret = target_player.character.win_check(room, target_player, dead)
 
@@ -441,7 +437,14 @@ class Bryan(Character):
 
     def ability(self, user, target, rooms):
         ret = False
-        if user.can_use_ability and target and not target.is_alive and target.hp < 12:
+        if (
+            user.can_use_ability
+            and target
+            and not target.is_alive
+            and target.hp < 12
+            and getattr(rooms, 'current_player', None) == user
+            and int(getattr(user, 'status', 0) or 0) == 5
+        ):
             user.reveal_character()
             user.can_use_ability = False
             ret = True

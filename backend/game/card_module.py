@@ -778,7 +778,7 @@ class SpiritualDoll(Card):
     def action(self, user, target, rooms):
         ret = 0
         extra = []
-        dice_result, _ = rooms.board.roll_dice(1)
+        _, dice_result = rooms.board.roll_dice(2)
         if dice_result <= 4:
             target.defence(3, ignore_defence=True)
             if target.check_death():

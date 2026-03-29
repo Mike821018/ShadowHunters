@@ -124,6 +124,16 @@
                 <span id="chatVillageHint" class="field-hint" data-i18n="lobby.create.chat_room_hint">（聊天用村莊，最多 50 人，不會開始遊戲，也不會套用閒置自動廢村）</span>
               </label>
 
+              <label class="option-title" for="turnTimeoutSelect" data-i18n="lobby.create.turn_timeout_label">暴斃時間</label>
+              <select id="turnTimeoutSelect" class="txt">
+                <option value="2" data-i18n="lobby.create.turn_timeout_2min">2 分鐘</option>
+                <option value="3" selected data-i18n="lobby.create.turn_timeout_3min">3 分鐘</option>
+                <option value="5" data-i18n="lobby.create.turn_timeout_5min">5 分鐘</option>
+                <option value="10" data-i18n="lobby.create.turn_timeout_10min">10 分鐘</option>
+                <option value="20" data-i18n="lobby.create.turn_timeout_20min">20 分鐘</option>
+                <option value="30" data-i18n="lobby.create.turn_timeout_30min">30 分鐘</option>
+              </select>
+
               <label class="option-title" for="expansionModeSelect" data-i18n="lobby.create.expansion_mode_label">擴充形式</label>
               <select id="expansionModeSelect" class="txt">
                 <option value="all" data-i18n="lobby.create.expansion_mode_all">使用</option>

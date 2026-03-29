@@ -1,0 +1,301 @@
+{
+  "base_url": "http://127.0.0.1:5600/api/dispatch",
+  "seed": "split(20260327-random,20260328-eight)",
+  "scenarios": [
+    {
+      "scenario": "random-http",
+      "games": 20,
+      "fixed_players": null,
+      "duration_seconds": 20.26,
+      "summary": {
+        "games": 20,
+        "initial_green_true": 10,
+        "initial_green_false": 10,
+        "hide_trip_true": 12,
+        "hide_trip_false": 8,
+        "expansion_all": 10,
+        "expansion_no_extend": 10,
+        "min_steps": 121,
+        "max_steps": 557,
+        "avg_steps": 287.4,
+        "player_counts": {
+          "5": 2,
+          "6": 7,
+          "4": 4,
+          "8": 2,
+          "7": 5
+        },
+        "registered_trip_joins": 113,
+        "unregistered_trip_joins": 4,
+        "missing_trip_joins": 2,
+        "ratings_submitted": 95,
+        "positive_ratings": 88,
+        "negative_ratings": 7,
+        "boomed_players": 0,
+        "boomed_timeout_attempts": 0
+      },
+      "sample_games": [
+        {
+          "scenario": "random-http",
+          "game_index": 1,
+          "room_id": 108,
+          "player_count": 5,
+          "hide_trip": true,
+          "enable_initial_green_card": true,
+          "expansion_mode": "all",
+          "winner_accounts": [
+            "http-random-http-1-2"
+          ],
+          "step_count": 205,
+          "boomed_players": 0,
+          "boomed_timeout_attempts": 0,
+          "registered_trip_joins": 5,
+          "unregistered_trip_joins": 0,
+          "missing_trip_joins": 0,
+          "ratings_submitted": 4,
+          "positive_ratings": 4,
+          "negative_ratings": 0
+        },
+        {
+          "scenario": "random-http",
+          "game_index": 2,
+          "room_id": 109,
+          "player_count": 6,
+          "hide_trip": true,
+          "enable_initial_green_card": true,
+          "expansion_mode": "all",
+          "winner_accounts": [
+            "http-random-http-2-1",
+            "http-random-http-2-2"
+          ],
+          "step_count": 253,
+          "boomed_players": 0,
+          "boomed_timeout_attempts": 0,
+          "registered_trip_joins": 6,
+          "unregistered_trip_joins": 0,
+          "missing_trip_joins": 0,
+          "ratings_submitted": 2,
+          "positive_ratings": 2,
+          "negative_ratings": 0
+        },
+        {
+          "scenario": "random-http",
+          "game_index": 3,
+          "room_id": 110,
+          "player_count": 4,
+          "hide_trip": false,
+          "enable_initial_green_card": false,
+          "expansion_mode": "no_extend",
+          "winner_accounts": [
+            "http-random-http-3-3"
+          ],
+          "step_count": 272,
+          "boomed_players": 0,
+          "boomed_timeout_attempts": 0,
+          "registered_trip_joins": 3,
+          "unregistered_trip_joins": 1,
+          "missing_trip_joins": 0,
+          "ratings_submitted": 2,
+          "positive_ratings": 2,
+          "negative_ratings": 0
+        },
+        {
+          "scenario": "random-http",
+          "game_index": 4,
+          "room_id": 111,
+          "player_count": 8,
+          "hide_trip": false,
+          "enable_initial_green_card": false,
+          "expansion_mode": "all",
+          "winner_accounts": [
+            "http-random-http-4-4",
+            "http-random-http-4-7"
+          ],
+          "step_count": 332,
+          "boomed_players": 0,
+          "boomed_timeout_attempts": 0,
+          "registered_trip_joins": 8,
+          "unregistered_trip_joins": 0,
+          "missing_trip_joins": 0,
+          "ratings_submitted": 8,
+          "positive_ratings": 7,
+          "negative_ratings": 1
+        },
+        {
+          "scenario": "random-http",
+          "game_index": 5,
+          "room_id": 112,
+          "player_count": 4,
+          "hide_trip": false,
+          "enable_initial_green_card": true,
+          "expansion_mode": "all",
+          "winner_accounts": [
+            "http-random-http-5-2",
+            "http-random-http-5-3"
+          ],
+          "step_count": 153,
+          "boomed_players": 0,
+          "boomed_timeout_attempts": 0,
+          "registered_trip_joins": 4,
+          "unregistered_trip_joins": 0,
+          "missing_trip_joins": 0,
+          "ratings_submitted": 3,
+          "positive_ratings": 3,
+          "negative_ratings": 0
+        }
+      ]
+    },
+    {
+      "scenario": "eight-player-http",
+      "games": 20,
+      "fixed_players": 8,
+      "duration_seconds": 27.5,
+      "summary": {
+        "games": 20,
+        "initial_green_true": 10,
+        "initial_green_false": 10,
+        "hide_trip_true": 12,
+        "hide_trip_false": 8,
+        "expansion_all": 10,
+        "expansion_no_extend": 10,
+        "min_steps": 194,
+        "max_steps": 608,
+        "avg_steps": 381.3,
+        "player_counts": {
+          "8": 20
+        },
+        "registered_trip_joins": 145,
+        "unregistered_trip_joins": 11,
+        "missing_trip_joins": 4,
+        "ratings_submitted": 115,
+        "positive_ratings": 104,
+        "negative_ratings": 11,
+        "boomed_players": 0,
+        "boomed_timeout_attempts": 0
+      },
+      "sample_games": [
+        {
+          "scenario": "eight-player-http",
+          "game_index": 1,
+          "room_id": 128,
+          "player_count": 8,
+          "hide_trip": true,
+          "enable_initial_green_card": true,
+          "expansion_mode": "all",
+          "winner_accounts": [
+            "http-eight-player-http-1-1",
+            "http-eight-player-http-1-6",
+            "http-eight-player-http-1-7"
+          ],
+          "step_count": 194,
+          "boomed_players": 0,
+          "boomed_timeout_attempts": 0,
+          "registered_trip_joins": 8,
+          "unregistered_trip_joins": 0,
+          "missing_trip_joins": 0,
+          "ratings_submitted": 6,
+          "positive_ratings": 6,
+          "negative_ratings": 0
+        },
+        {
+          "scenario": "eight-player-http",
+          "game_index": 2,
+          "room_id": 129,
+          "player_count": 8,
+          "hide_trip": false,
+          "enable_initial_green_card": true,
+          "expansion_mode": "no_extend",
+          "winner_accounts": [
+            "http-eight-player-http-2-4"
+          ],
+          "step_count": 296,
+          "boomed_players": 0,
+          "boomed_timeout_attempts": 0,
+          "registered_trip_joins": 6,
+          "unregistered_trip_joins": 2,
+          "missing_trip_joins": 0,
+          "ratings_submitted": 5,
+          "positive_ratings": 3,
+          "negative_ratings": 2
+        },
+        {
+          "scenario": "eight-player-http",
+          "game_index": 3,
+          "room_id": 130,
+          "player_count": 8,
+          "hide_trip": false,
+          "enable_initial_green_card": true,
+          "expansion_mode": "no_extend",
+          "winner_accounts": [
+            "http-eight-player-http-3-5"
+          ],
+          "step_count": 451,
+          "boomed_players": 0,
+          "boomed_timeout_attempts": 0,
+          "registered_trip_joins": 7,
+          "unregistered_trip_joins": 1,
+          "missing_trip_joins": 0,
+          "ratings_submitted": 6,
+          "positive_ratings": 6,
+          "negative_ratings": 0
+        },
+        {
+          "scenario": "eight-player-http",
+          "game_index": 4,
+          "room_id": 131,
+          "player_count": 8,
+          "hide_trip": true,
+          "enable_initial_green_card": true,
+          "expansion_mode": "all",
+          "winner_accounts": [
+            "http-eight-player-http-4-0"
+          ],
+          "step_count": 364,
+          "boomed_players": 0,
+          "boomed_timeout_attempts": 0,
+          "registered_trip_joins": 8,
+          "unregistered_trip_joins": 0,
+          "missing_trip_joins": 0,
+          "ratings_submitted": 7,
+          "positive_ratings": 7,
+          "negative_ratings": 0
+        },
+        {
+          "scenario": "eight-player-http",
+          "game_index": 5,
+          "room_id": 132,
+          "player_count": 8,
+          "hide_trip": false,
+          "enable_initial_green_card": true,
+          "expansion_mode": "all",
+          "winner_accounts": [
+            "http-eight-player-http-5-7"
+          ],
+          "step_count": 361,
+          "boomed_players": 0,
+          "boomed_timeout_attempts": 0,
+          "registered_trip_joins": 7,
+          "unregistered_trip_joins": 1,
+          "missing_trip_joins": 0,
+          "ratings_submitted": 4,
+          "positive_ratings": 2,
+          "negative_ratings": 2
+        }
+      ]
+    }
+  ],
+  "behavior": {
+    "trip_pool_size": 10,
+    "missing_trip_prob": 0.02,
+    "unregistered_trip_prob": 0.05,
+    "boomed_turn_prob": 1e-06,
+    "boomed_wait_seconds": 181.0,
+    "negative_rating_prob": 0.08,
+    "rating_count_distribution": {
+      "0": 50,
+      "1": 34,
+      "2": 11,
+      "3": 5
+    }
+  }
+}

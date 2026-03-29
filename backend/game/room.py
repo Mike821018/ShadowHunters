@@ -4,6 +4,7 @@ from . import player
 import random
 from threading import Thread
 import time
+from typing import Any
 
 
 GREEN_CARD_HIT_CAMP = {
@@ -25,11 +26,11 @@ class room(Thread):
         self.room_id = 0
         self.room_name = ''
         self.room_status = 0 # 1:before game, 2:in game, 3:after game
-        self.board = None
+        self.board: Any = None
         self.players = {}
         self.action_order = [] # list of player account in action order
-        self.current_player = None
-        self.active_card = None
+        self.current_player: Any = None
+        self.active_card: Any = None
         self._attack_target = None   # 暫存本回合攻擊目標
         self._compass_areas = []     # 暫存 Mystic Compass 兩次擲骰的可選區域
         self._move_area_options = [] # 擲到 7 時可選的任意區域
@@ -48,17 +49,101 @@ class room(Thread):
         self.enable_initial_green_card: bool = False  # 遊戲開始時執行初始綠卡
         self.max_players: int = 8
         self.idle_timeout_seconds: int = 15 * 60
+        self.turn_timeout_seconds: int = 3 * 60
+        self.turn_last_action_at: float = 0.0
+        self.latest_boom_notice: dict = {}
         self.last_activity_at: float = time.time()
         self.manager_ref = None
         self.kick_votes = {}  # {target_account: set(voter_account)}
         self.private_character_visibility = {}  # {viewer_account: set(target_account)}
         self._join_seq: int = 0
-        self._initial_green_card_executed: bool = False  # 初始綠卡是否已執行
-        self._initial_green_card: object = None  # 暫存初始綠卡物件
+        self._initial_green_card_executed: bool = False  # 初始綠卡流程是否進行中
+        self._initial_green_card: Any = None  # 初始綠卡流程使用的同一卡片
         self._initial_green_card_players_executed: set = set()  # 已執行初始綠卡的玩家帳號集合
+        self.chat_messages = []
+        self._chat_seq = 0
 
     def touch_activity(self):
         self.last_activity_at = time.time()
+
+    def touch_turn_action(self):
+        self.turn_last_action_at = time.time()
+
+    def _clear_turn_timeout_notice(self):
+        self.latest_boom_notice = {}
+
+    def _current_turn_timeout_remaining(self):
+        if int(getattr(self, 'room_status', 0) or 0) != 2:
+            return None
+        current = getattr(self, 'current_player', None)
+        if not current or not bool(getattr(current, 'is_alive', False)):
+            return None
+        if getattr(self, '_pending_green_card', None):
+            return None
+        status = int(getattr(current, 'status', 0) or 0)
+        if status not in (1, 2, 3, 4, 5, 6):
+            return None
+        last_at = float(getattr(self, 'turn_last_action_at', 0) or 0)
+        if last_at <= 0:
+            return int(self.turn_timeout_seconds)
+        remain = int(self.turn_timeout_seconds - (time.time() - last_at))
+        return max(0, remain)
+
+    def get_turn_timeout_snapshot(self):
+        remaining = self._current_turn_timeout_remaining()
+        if remaining is None:
+            return None
+        current = getattr(self, 'current_player', None)
+        return {
+            'limit_seconds': int(self.turn_timeout_seconds),
+            'remaining_seconds': int(remaining),
+            'current_account': str(getattr(current, 'account', '') or ''),
+            'current_name': str(getattr(current, 'name', '') or ''),
+            'current_trip_display': str(getattr(current, 'trip_display', '') or ''),
+            'warning': bool(remaining <= 30),
+        }
+
+    def _handle_turn_timeout(self):
+        current = getattr(self, 'current_player', None)
+        if not current or not bool(getattr(current, 'is_alive', False)):
+            return False
+
+        current.is_alive = False
+        current.is_boomed = True
+        current.hp = 0
+        current.status = 0
+        if not bool(getattr(current, 'character_reveal', False)):
+            current.reveal_character()
+
+        self.latest_boom_notice = {
+            'account': str(getattr(current, 'account', '') or ''),
+            'trip_display': str(getattr(current, 'trip_display', '') or ''),
+            'name': str(getattr(current, 'name', '') or ''),
+            'timestamp': int(time.time()),
+        }
+        self.add_system_message(f"[{current.name or current.account}] 回合超時，判定暴斃")
+
+        self.active_card = None
+        self._attack_target = None
+        self._compass_areas = []
+        self._move_area_options = []
+        self._pending_kill_loot = None
+        self._pending_steal = None
+        self._pending_green_card = None
+        self._pending_counter_attack = None
+
+        self._handle_death([current])
+        if int(getattr(self, 'room_status', 0) or 0) == 2:
+            if bool(getattr(self, '_initial_green_card_executed', False)) and getattr(self, '_initial_green_card', None) is not None:
+                self._initial_green_card_players_executed.add(str(getattr(current, 'account', '') or ''))
+                self._set_next_alive_player_after_trip(str(getattr(current, 'trip', '') or ''))
+                if self.current_player:
+                    self.current_player.status = 3
+                    self.active_card = self._initial_green_card
+            else:
+                self._set_next_alive_player_after_trip(str(getattr(current, 'trip', '') or ''))
+            self.touch_turn_action()
+        return True
 
     def should_auto_abolish(self):
         if self.is_chat_room:
@@ -69,8 +154,11 @@ class room(Thread):
 
     def run(self):
         while not self.stop:
-            time.sleep(5)
+            time.sleep(1)
             if not self.should_auto_abolish():
+                timeout_remaining = self._current_turn_timeout_remaining()
+                if timeout_remaining is not None and timeout_remaining <= 0:
+                    self._handle_turn_timeout()
                 continue
             manager = self.manager_ref
             if manager and manager.get_room(self.room_id) is self:
@@ -84,9 +172,30 @@ class room(Thread):
     def create(self):
         self.board = board.board(self)
         self.touch_activity()
+        self.add_system_message(f"村莊已建立：{self.room_name or self.room_id}村")
         self.start()
 
-    def join(self, player_info):
+    def _push_message(self, message_type, text, account='', name=''):
+        text_value = str(text or '').strip()
+        if not text_value:
+            return
+        self._chat_seq = int(getattr(self, '_chat_seq', 0) or 0) + 1
+        self.chat_messages.append({
+            'id': int(self._chat_seq),
+            'type': str(message_type or 'chat'),
+            'account': str(account or '').strip(),
+            'name': str(name or '').strip(),
+            'text': text_value,
+            'timestamp': int(time.time()),
+        })
+
+    def add_chat_message(self, account, name, text):
+        self._push_message('chat', text=text, account=account, name=name)
+
+    def add_system_message(self, text):
+        self._push_message('system', text=text)
+
+    def join(self, player_info):  # pyright: ignore[reportIncompatibleMethodOverride]
         ret = False
         requested_trip_display = str(player_info.get('trip') or '').strip()
         internal_account = str(player_info.get('account') or '').strip()
@@ -188,6 +297,8 @@ class room(Thread):
 
     def game_start(self):
         self.touch_activity()
+        self.touch_turn_action()
+        self._clear_turn_timeout_notice()
         self.private_character_visibility = {}
         self.action_order = list(self.players.keys())
         random.shuffle(self.action_order)
@@ -198,18 +309,23 @@ class room(Thread):
         for p in self.players.values():
             p.status = 0
         self.current_player = self.players[self.action_order[0]] if self.action_order else None
-        
+        if self.current_player:
+            self.add_system_message(f"首位行動玩家：[{self.current_player.name or self.current_player.account}]")
+
         # 初始綠卡流程：若啟用，所有玩家先執行一張綠卡，再開始常規回合
         if self.enable_initial_green_card:
-            initial_green = self.board.draw('Green')
-            if initial_green:
-                self._initial_green_card = initial_green  # 保存初始綠卡
-                self.active_card = initial_green
-                self._initial_green_card_executed = True  # 標記為已開始執行流程
-                # 設為第一個玩家的狀態，開始綠卡執行
-                if self.current_player:
-                    self.current_player.status = 3  # 暫移至狀態 3（抽卡區），前端顯示綠卡
-                return  # 暫停，等待前端觸發 card_effect
+            self._initial_green_card_executed = True
+            self._initial_green_card_players_executed.clear()
+            self._initial_green_card = self.board.draw('Green')
+            if self.current_player:
+                self.current_player.status = 3
+                self.active_card = self._initial_green_card
+                if self.active_card:
+                    self.add_system_message(f"[{self.current_player.name or self.current_player.account}] 初始綠卡：{str(getattr(self.active_card, 'name', '') or '未知卡')}")
+                    return
+            self._initial_green_card_executed = False
+            self._initial_green_card = None
+            self._initial_green_card_players_executed.clear()
         
         # 常規遊戲開始
         if self.current_player:
@@ -239,6 +355,7 @@ class room(Thread):
             if next_player and next_player.is_alive:
                 self.current_player = next_player
                 self.current_player.status = 1
+                self.touch_turn_action()
                 return
         self.current_player = None
 
@@ -279,11 +396,83 @@ class room(Thread):
                 pass
         return card.action(self.current_player, target, self)
 
+    def _capture_effect_snapshot(self):
+        return {
+            account: {
+                'damage': int(getattr(player, 'damage', 0) or 0),
+                'alive': bool(getattr(player, 'is_alive', False)),
+            }
+            for account, player in self.players.items()
+        }
+
+    def _emit_effect_delta_messages(self, before_snapshot, source_kind, source_name, source_player=None):
+        source_kind_text = str(source_kind or '').strip()
+        source_name_text = str(source_name or '').strip()
+        if not source_kind_text or not source_name_text:
+            return
+        source_player_text = str(source_player or '').strip()
+        for account, player in self.players.items():
+            prev = before_snapshot.get(account) or {}
+            prev_damage = int(prev.get('damage', 0) or 0)
+            next_damage = int(getattr(player, 'damage', 0) or 0)
+            delta = next_damage - prev_damage
+            if delta > 0:
+                if source_player_text:
+                    self.add_system_message(f"[{player.name or player.account}] 因為 [{source_player_text}]({source_name_text}) 角色能力效果受到 {delta} 點傷害")
+                else:
+                    self.add_system_message(f"[{player.name or player.account}] 因為 {source_kind_text} {source_name_text} 效果受到 {delta} 點傷害")
+            elif delta < 0:
+                if source_player_text:
+                    self.add_system_message(f"[{player.name or player.account}] 因為 [{source_player_text}]({source_name_text}) 角色能力效果恢復 {abs(delta)} 點傷害")
+                else:
+                    self.add_system_message(f"[{player.name or player.account}] 因為 {source_kind_text} {source_name_text} 效果恢復 {abs(delta)} 點傷害")
+
+    def _resolve_snapshot_deaths(self, before_snapshot, allow_loot=False):
+        deaths = []
+        for account, player in self.players.items():
+            prev_alive = bool((before_snapshot.get(account) or {}).get('alive', False))
+            if not prev_alive:
+                continue
+            if bool(getattr(player, 'is_alive', False)):
+                hp = int(getattr(player, 'hp', 0) or 0)
+                damage = int(getattr(player, 'damage', 0) or 0)
+                if hp > 0 and damage >= hp and player.check_death():
+                    deaths.append(player)
+        if deaths:
+            self._handle_death(deaths, allow_loot=allow_loot)
+        return deaths
+
+    def _discard_remaining_equipment(self, player):
+        board = getattr(self, 'board', None)
+        if not player or not board:
+            return
+        for equipment in list(getattr(player, 'equipment_list', []) or []):
+            player.divest(equipment)
+            board.discard(equipment)
+
+    def _use_ability_with_resolution(self, player, target=None):
+        if not player or not getattr(player, 'character', None):
+            return False
+        snapshot = self._capture_effect_snapshot()
+        activated = bool(player.use_ability(target))
+        if not activated:
+            return False
+        target_label = str(getattr(target, 'name', '') or getattr(target, 'account', '') or '').strip() if target is not None else ''
+        if target_label:
+            self.add_system_message(f"[{player.name or player.account}] 發動能力，目標：[{target_label}]")
+        else:
+            self.add_system_message(f"[{player.name or player.account}] 發動能力")
+        character_name = str(getattr(getattr(player, 'character', None), 'name', '') or '未知角色')
+        player_display = str(player.name or player.account or '').strip()
+        self._emit_effect_delta_messages(snapshot, '角色能力', character_name, source_player=player_display)
+        self._resolve_snapshot_deaths(snapshot, allow_loot=False)
+        return True
+
     def _finish_active_card_resolution(self, target, ret, extra):
         # 結算卡牌效果
         if ret == 1 and extra:
             # 有人死亡：揭示身分、檢查勝利
-            winners = self._handle_death(extra)
+            self._handle_death(extra, allow_loot=False)
 
         elif ret == 2 and len(extra) >= 2:
             # 裝備轉移：extra=[from_player, to_player]
@@ -309,30 +498,38 @@ class room(Thread):
                 for viewer in extra:
                     self.mark_private_character_visibility(viewer, target)
 
-        self.board.discard(self.active_card)
         active_card_to_check = self.active_card  # 在丢弃前保存引用
+
+        is_initial_green_resolution = bool(
+            self._initial_green_card_executed
+            and self._initial_green_card is not None
+            and active_card_to_check is self._initial_green_card
+            and str(getattr(active_card_to_check, 'color', '') or '').lower() == 'green'
+        )
+
+        if not is_initial_green_resolution:
+            self.board.discard(self.active_card)
         
-        # 檢查是否為初始綠卡執行：若是，轉移到下一個玩家而非進入攻擊階段
-        if (self._initial_green_card_executed and active_card_to_check and 
-            str(getattr(active_card_to_check, 'color', '') or '').lower() == 'green'):
-            # 標記當前玩家已執行初始綠卡
+        # 初始綠卡流程：每位玩家依序抽一張綠卡並對自己結算，不進入攻擊階段。
+        if is_initial_green_resolution:
             if self.current_player:
                 self._initial_green_card_players_executed.add(self.current_player.account)
-            
-            # 檢查是否所有玩家都執行了
+
             all_executed = self._initial_green_card_players_executed == set(self.players.keys())
             if not all_executed:
-                # 移動到下一個玩家，繼續執行初始綠卡
                 self._set_next_alive_player_after_trip(self.current_player.trip if self.current_player else '')
                 if self.current_player:
                     self.current_player.status = 3
-                    self.active_card = self._initial_green_card  # 恢復初始綠卡
+                    self.active_card = self._initial_green_card
+                    if self.active_card:
+                        self.add_system_message(f"[{self.current_player.name or self.current_player.account}] 初始綠卡：{str(getattr(self.active_card, 'name', '') or '未知卡')}")
                     return
             else:
-                # 所有玩家都執行了初始綠卡，進入常規遊戲
+                # 所有玩家都執行了初始綠卡，回到常規回合流程
+                self.board.discard(self._initial_green_card)
+                self._initial_green_card_executed = False
                 self._initial_green_card = None
                 self._initial_green_card_players_executed.clear()
-                # 重新設置第一個玩家開始常規遊戲
                 self.current_player = self.players[self.action_order[0]] if self.action_order else None
                 if self.current_player:
                     self.current_player.status = 1
@@ -340,10 +537,14 @@ class room(Thread):
                 return
         
         self.active_card = None
+        if int(getattr(self, 'room_status', 0) or 0) == 3:
+            self._pending_steal = None
+            return
         self.current_player.status = 3 if self._pending_steal else 4
         # update → 通知前端卡牌效果結算完成，進入攻擊選擇階段
 
     def confirm_pending_green_card(self, account):
+        self.touch_turn_action()
         pending = self._pending_green_card
         if not pending:
             return False
@@ -358,14 +559,19 @@ class room(Thread):
         if self._green_card_requires_choice(to_player, card) and force_effect not in (1, 2):
             return False
 
+        choice_label = '發動' if force_effect == 1 else '不發動' if force_effect == 2 else '結算'
+        self.add_system_message(f"[{to_player.name or to_player.account}] 對綠卡 {str(getattr(card, 'name', '') or '-')} 選擇：{choice_label}")
         self.active_card = card
+        snapshot = self._capture_effect_snapshot()
         ret, extra = self._run_active_card_action(target=to_player, force_effect=force_effect)
+        self._emit_effect_delta_messages(snapshot, '卡片', str(getattr(card, 'name', '') or '-'))
         self._pending_green_card = None
         self._finish_active_card_resolution(to_player, ret, extra)
         return True
 
     def confirm_equipment(self):
         """確認裝備白卡並將其裝上。"""
+        self.touch_turn_action()
         if not self.active_card or str(getattr(self.active_card, 'type', '') or '').strip() != 'Equipment':
             return False
         if not self.current_player:
@@ -374,10 +580,13 @@ class room(Thread):
         card = self.active_card
         player = self.current_player
         player.equip(card)
+        self.add_system_message(f"[{player.name or player.account}] 裝備了 {str(getattr(card, 'name', '') or '-')}")
         if player.check_win_timing == 2:
             self._check_all_victory(equip_trigger=player)
 
         self.active_card = None
+        if int(getattr(self, 'room_status', 0) or 0) == 3:
+            return True
         player.status = 4
         return True
 
@@ -427,7 +636,7 @@ class room(Thread):
     #  in game
     ####################
 
-    def _handle_death(self, deaths):
+    def _handle_death(self, deaths, allow_loot=False):
         """
         處理死亡玩家：揭示身分、檢查所有玩家的勝利條件。
         deaths: 死亡 player 物件的 list
@@ -435,6 +644,10 @@ class room(Thread):
         for dead in deaths:
             if not dead.character_reveal:
                 dead.reveal_character()
+            role_name = str(getattr(getattr(dead, 'character', None), 'name', '') or '未知角色')
+            self.add_system_message(f"[{dead.name or dead.account}] 死亡，身份揭示為 {role_name}")
+            if not allow_loot:
+                self._discard_remaining_equipment(dead)
             # update → 通知所有前端顯示死亡玩家的角色身分
 
         # 死亡觸發型能力：使用既有的 ability_timing=9 與角色自身 ability 邏輯判定。
@@ -446,7 +659,7 @@ class room(Thread):
                 continue
 
             for dead in deaths:
-                if p.use_ability(dead):
+                if self._use_ability_with_resolution(p, dead):
                     break
 
         winners = self._check_all_victory(dead_trigger=deaths)
@@ -460,13 +673,17 @@ class room(Thread):
         回傳獲勝玩家的 list；若無人獲勝回傳空 list。
         若有人獲勝則將 room_status 設為 3 並通知前端。
         """
+        if int(getattr(self, 'room_status', 0) or 0) == 3:
+            return [self.players[acc] for acc in self.winner_accounts if acc in self.players]
+
         winners = []
 
         # 綠卡待確認期間，不允許一般 next_step 推進，避免被「跳過場地」覆蓋流程
         if self._pending_green_card:
             return
         for trip, p in self.players.items():
-            if not p.is_alive or not p.character:
+            # 規則：僅「暴斃」玩家不可獲勝；一般死亡玩家仍可依角色條件判定勝利。
+            if bool(getattr(p, 'is_boomed', False)) or not p.character:
                 continue
             if dead_trigger and p.check_win_timing == 1:
                 if p.character.win_check(self, p, dead_trigger):
@@ -477,6 +694,9 @@ class room(Thread):
         if winners:
             self.room_status = 3
             self.winner_accounts = [str(getattr(w, 'account', '') or '') for w in winners if w]
+            winner_names = [str(getattr(w, 'name', '') or getattr(w, 'account', '') or '').strip() for w in winners if w]
+            if winner_names:
+                self.add_system_message(f"遊戲結束，勝利者：{'、'.join(winner_names)}")
             if self.manager_ref and hasattr(self.manager_ref, 'records_api'):
                 self.manager_ref.records_api.on_game_end(self)
             # update → 通知前端 winners 獲勝，遊戲結束
@@ -575,6 +795,7 @@ class room(Thread):
             return False
 
         self.touch_activity()
+        self.touch_turn_action()
 
         attacker = pending.get('attacker')
         deaths = pending.get('deaths', [])
@@ -585,6 +806,8 @@ class room(Thread):
 
         # 允許跳過該死亡玩家的掠奪
         if (equipment is None) and (not take_all):
+            self.add_system_message(f"[{attacker.name or attacker.account}] 放棄掠奪 [{from_player.name or from_player.account}] 的裝備")
+            self._discard_remaining_equipment(from_player)
             deaths.remove(from_player)
             return True
 
@@ -609,11 +832,14 @@ class room(Thread):
 
             if from_player in deaths:
                 deaths.remove(from_player)
+            self.add_system_message(f"[{attacker.name or attacker.account}] 掠奪了 [{from_player.name or from_player.account}] 的全部裝備")
         else:
             if equipment not in from_player.equipment_list:
                 return False
             from_player.divest(equipment)
             attacker.equip(equipment)
+            self.add_system_message(f"[{attacker.name or attacker.account}] 掠奪 [{from_player.name or from_player.account}] 的裝備 {str(getattr(equipment, 'name', '') or '-')}")
+            self._discard_remaining_equipment(from_player)
             if from_player in deaths:
                 deaths.remove(from_player)
 
@@ -646,11 +872,13 @@ class room(Thread):
         6 : End      (回合結束，角色能力觸發)
         """
         self.touch_activity()
+        self.touch_turn_action()
 
         # 遊戲初始化：設定第一位行動玩家
         if self.current_player is None:
             self.current_player = self.players[self.action_order[0]]
             self.current_player.status = 1
+            self.touch_turn_action()
 
         p = self.current_player
 
@@ -671,7 +899,9 @@ class room(Thread):
                 p.eqp_immortal_source = ''
 
             if action and self._can_activate_ability(p):
-                p.use_ability(target)
+                self._use_ability_with_resolution(p, target)
+                if int(getattr(self, 'room_status', 0) or 0) == 3:
+                    return
             p.status = 2
             # update → 通知前端進入「擲骰移動」介面，顯示當前場地配置
 
@@ -704,6 +934,8 @@ class room(Thread):
             if has_move_ability and action and target:
                 # 發動移動能力（如 Emi：移動至鄰近區域），跳過擲骰
                 p.use_ability(target)
+                target_area_name = str(getattr(target, 'name', '') or '未知區域')
+                self.add_system_message(f"[{p.name or p.account}] 發動能力並移動到 {target_area_name}")
                 self._move_area_options = []
                 self._compass_areas = []
                 p.status = 3
@@ -714,6 +946,8 @@ class room(Thread):
                     # update → 通知前端所選區域無效，請重新選擇
                     return
                 p.move(target)
+                target_area_name = str(getattr(target, 'name', '') or '未知區域')
+                self.add_system_message(f"[{p.name or p.account}] 選擇移動到 {target_area_name}")
                 self._move_area_options = []
                 p.status = 3
                 # update → 通知前端玩家以「骰到 7」的效果移動位置與可用區域效果
@@ -724,6 +958,8 @@ class room(Thread):
                     # update → 通知前端所選 Compass 區域無效，請重新選擇
                     return
                 p.move(target)
+                target_area_name = str(getattr(target, 'name', '') or '未知區域')
+                self.add_system_message(f"[{p.name or p.account}] 使用神祕羅盤移動到 {target_area_name}")
                 self._compass_areas = []
                 self._move_area_options = []
                 p.status = 3
@@ -732,14 +968,18 @@ class room(Thread):
             elif has_compass:
                 # Compass 擲骰流程（由使用者逐次觸發，與一般移動一致）
                 D4, D6 = self.board.roll_dice(3)
+                self.add_system_message(f"[{p.name or p.account}] 羅盤擲骰：D4={D4} D6={D6}")
                 new_area = p.check_move(D4, D6)
 
                 if new_area == 'Any':
                     self._compass_areas = self._get_any_move_options(p.area)
+                    self.add_system_message(f"[{p.name or p.account}] 羅盤擲出 7，可任選區域")
                     # update → 通知前端 Compass 骰到 7，可從六個區域中任選其一
                     pass  # 保持 status=2，等待含 target 的選擇呼叫
                 elif new_area:
                     self._compass_areas.append(new_area)
+                    area_name = str(getattr(new_area, 'name', '') or '未知區域')
+                    self.add_system_message(f"[{p.name or p.account}] 羅盤擲到區域：{area_name}")
                     if len(self._compass_areas) == 1:
                         # 第一次有效：通知前端顯示結果，等待第二次擲骰
                         # update → 通知前端第一次 Compass 結果 (D4, D6)，請繼續擲第二次骰
@@ -756,13 +996,16 @@ class room(Thread):
             else:
                 # 一般移動：擲骰自動決定目的地
                 D4, D6 = self.board.roll_dice(3)
+                self.add_system_message(f"[{p.name or p.account}] 擲移動骰：D4={D4} D6={D6}")
                 new_area = p.check_move(D4, D6)
                 if new_area == 'Any':
                     self._move_area_options = self._get_any_move_options(p.area)
+                    self.add_system_message(f"[{p.name or p.account}] 擲出 7，可任選區域")
                     # update → 通知前端骰到 7，可從六個區域中任選其一
                     pass  # 保持 status=2，等待含 target 的下一次呼叫
                 elif new_area:
                     p.move(new_area)
+                    self.add_system_message(f"[{p.name or p.account}] 移動到 {str(getattr(new_area, 'name', '') or '未知區域')}")
                     p.status = 3
                     # update → 通知前端玩家移動位置與可用區域效果
                 else:
@@ -788,12 +1031,17 @@ class room(Thread):
         #          Erstwhile Altar        → next_step(action=True, target=<目標player>)
         #          ※ 抽到行動卡時保持 status=3，前端顯示卡牌後呼叫 card_effect(target)
         elif p.status == 3:
+            if self._initial_green_card_executed and self.active_card:
+                # 初始綠卡期間，僅允許透過 card_effect 結算，不允許 next_step 跳過。
+                return
             if action and p.area:
                 if p.area.is_draw:
                     # 決定抽哪色牌堆
                     color = action_type if (p.area.draw_type == 'Any' and action_type) else p.area.draw_type
                     card = self.board.draw(color)
                     self.active_card = card
+                    if card:
+                        self.add_system_message(f"[{p.name or p.account}] 在 {str(getattr(p.area, 'name', '') or '區域')} 抽到 {str(getattr(card, 'name', '') or '未知卡')}（{str(getattr(card, 'color', '') or '-')})")
 
                     # 行動卡和裝備卡都先在執行卡片區顯示，保持 status=3
                     # 前端顯示卡牌後呼叫 card_effect(target) 或 confirm_equipment()
@@ -802,9 +1050,24 @@ class room(Thread):
                     pass
 
                 elif p.area.is_action:
+                    area_name = str(getattr(p.area, 'name', '') or '區域')
+                    if area_name == 'Weird Woods' and action_type not in ('Heal', 'Hurt'):
+                        # Weird Woods 需先選擇治癒或傷害；未給定有效選項時不消耗區域效果階段。
+                        return
+                    target_name = str(getattr(target, 'name', '') or getattr(target, 'account', '') or '-') if target is not None else '-'
+                    action_label = str(action_type or 'use')
+                    self.add_system_message(f"[{p.name or p.account}] 在 {area_name} 對 [{target_name}] 執行效果：{action_label}")
                     ret, extra = p.area.action(p, target, action_type)
+                    # Add effect result messages for Weird Woods
+                    if area_name == 'Weird Woods' and target is not None:
+                        if action_type == 'Heal':
+                            self.add_system_message(f"[{target_name}] 因為 Weird Woods 效果治癒 1 點傷害")
+                        elif action_type == 'Hurt':
+                            has_brooch = any(getattr(c, 'name', '') == 'Fortune Brooch' for c in getattr(target, 'equipment_list', []))
+                            if not has_brooch or p == target:
+                                self.add_system_message(f"[{target_name}] 因為 Weird Woods 效果受到 2 點傷害")
                     if ret == 1 and extra:
-                        winners = self._handle_death(extra)
+                        self._handle_death(extra, allow_loot=False)
                     elif ret == 2 and len(extra) >= 2:
                         # Erstwhile Altar：extra=[from_player, to_player]
                         chooser_account = str(getattr(p, 'account', '') or '')
@@ -815,6 +1078,8 @@ class room(Thread):
                             'source': 'Erstwhile Altar',
                         }
                         # update → 通知前端選擇從 extra[0] 奪取哪張裝備卡轉給 extra[1]
+                    if int(getattr(self, 'room_status', 0) or 0) == 3:
+                        return
                     p.status = 4
                     # update → 通知前端區域效果結果，進入攻擊選擇
             else:
@@ -846,6 +1111,7 @@ class room(Thread):
                     # update → 通知前端目標無效，請重新選擇可攻擊目標
                     return
                 self._attack_target = target
+                self.add_system_message(f"[{p.name or p.account}] 宣告攻擊 [{target.name or target.account}]")
                 p.status = 5
                 # update → 通知前端顯示「擲傷害骰」介面
             elif p.eqp_force_atk and not (action and target):
@@ -854,6 +1120,7 @@ class room(Thread):
                 pass  # 保持 status=4，等待含 target 的下一次呼叫
             else:
                 # 選擇跳過攻擊
+                self.add_system_message(f"[{p.name or p.account}] 本回合放棄攻擊")
                 p.status = 6
                 # update → 通知前端進入回合結束
 
@@ -885,15 +1152,22 @@ class room(Thread):
             if p.eqp_atk_type == 2:  # Masamune：擲 1D4，必定命中
                 D4, _ = self.board.roll_dice(1)
                 dmg = D4
+                self.add_system_message(f"[{p.name or p.account}] 攻擊擲骰：D4={D4}，傷害={dmg}")
+            elif int(getattr(p, 'atk_type', 1) or 1) == 2:  # 角色效果：擲 1D4
+                D4, _ = self.board.roll_dice(1)
+                dmg = D4
+                self.add_system_message(f"[{p.name or p.account}] 攻擊擲骰：D4={D4}，傷害={dmg}")
             else:  # 一般攻擊：擲 D4+D6，傷害為差值
                 D4, D6 = self.board.roll_dice(3)
                 dmg = abs(D6 - D4)
+                self.add_system_message(f"[{p.name or p.account}] 攻擊擲骰：D4={D4} D6={D6}，傷害={dmg}")
 
             if dmg > 0 and self._attack_target:
+                self.add_system_message(f"[{p.name or p.account}] 對 [{self._attack_target.name or self._attack_target.account}] 造成 {dmg} 點傷害")
                 deaths, counter_attackers = p.attack(self._attack_target, list(self.players.values()), dmg)
 
                 if deaths:
-                    winners = self._handle_death(deaths)
+                    self._handle_death(deaths, allow_loot=True)
 
                     lootable_deaths = [dead for dead in deaths if dead.equipment_list]
                     if lootable_deaths:
@@ -952,12 +1226,15 @@ class room(Thread):
         #          跳過     → next_step(action=False)
         elif p.status == 6:
             if action and self._can_activate_ability(p):
-                p.use_ability(target)
+                self._use_ability_with_resolution(p, target)
+                if int(getattr(self, 'room_status', 0) or 0) == 3:
+                    return
 
             # 額外回合處理（Concealed Knowledge / Wight 特殊能力）
             if p.extra_turn > 0:
                 p.extra_turn -= 1
                 p.status = 1
+                self.touch_turn_action()
                 # update → 通知前端同一玩家開始額外回合
                 return
 
@@ -988,6 +1265,8 @@ class room(Thread):
         if not self.active_card:
             return
 
+        self.touch_turn_action()
+
         if self._pending_green_card:
             return
 
@@ -995,6 +1274,10 @@ class room(Thread):
         card_color = str(getattr(self.active_card, 'color', '') or '').lower()
         resolved_target = target
         if resolved_target is None and card_target == 'self':
+            resolved_target = self.current_player
+
+        if self._initial_green_card_executed and card_color == 'green':
+            # 初始綠卡固定由當前玩家對自己結算，不進入「指定他人」流程。
             resolved_target = self.current_player
 
         normalized_choice = str(choice or '').strip().lower()
@@ -1005,7 +1288,8 @@ class room(Thread):
             force_effect = 2
 
         # 綠卡 (隱士小屋抽到) 採「指定目標後由目標玩家確認」流程
-        if card_color == 'green' and card_target in ('other', 'one') and target is not None:
+        if (not self._initial_green_card_executed) and card_color == 'green' and card_target in ('other', 'one') and target is not None:
+            self.add_system_message(f"[{self.current_player.name or self.current_player.account}] 指定 [{target.name or target.account}] 接收綠卡 {str(getattr(self.active_card, 'name', '') or '-')}")
             self._pending_green_card = {
                 'from_player': self.current_player,
                 'to_player': target,
@@ -1016,12 +1300,32 @@ class room(Thread):
             return
 
         needs_choice = False
-        if hasattr(self.active_card, 'requires_choice'):
-            needs_choice = bool(self.active_card.requires_choice(self.current_player, resolved_target, self))
+        requires_choice_fn = getattr(self.active_card, 'requires_choice', None)
+        if callable(requires_choice_fn):
+            needs_choice = bool(requires_choice_fn(self.current_player, resolved_target, self))
         if needs_choice and force_effect not in (1, 2):
             return
 
+        target_name = str(getattr(resolved_target, 'name', '') or getattr(resolved_target, 'account', '') or '-') if resolved_target is not None else '-'
+        card_name = str(getattr(self.active_card, 'name', '') or '-')
+        card_color = str(getattr(self.active_card, 'color', '') or '-')
+        self.add_system_message(f"[{self.current_player.name or self.current_player.account}] 使用卡片 {card_name}（{card_color}），目標：[{target_name}]")
+        snapshot = self._capture_effect_snapshot()
         ret, extra = self._run_active_card_action(target=resolved_target, force_effect=force_effect)
+        self._emit_effect_delta_messages(snapshot, '卡片', card_name)
+        if card_name == 'Blessing' and resolved_target is not None:
+            dice_d6 = int(getattr(getattr(self, 'board', None), 'dice', {}).get('D6', 0) or 0)
+            if dice_d6 > 0:
+                self.add_system_message(f"[{resolved_target.name or resolved_target.account}] 因為 白卡(Blessing) 恢復 {dice_d6} 點傷害")
+        if card_name == 'First Aid' and resolved_target is not None:
+            self.add_system_message(f"[{resolved_target.name or resolved_target.account}] 因為 白卡(First Aid) 傷害變為 7")
+        if card_name == 'Spiritual Doll':
+            dice_d6 = int(getattr(getattr(self, 'board', None), 'dice', {}).get('D6', 0) or 0)
+            if dice_d6 > 0:
+                if dice_d6 <= 4:
+                    self.add_system_message(f"[Spiritual Doll] 擲出 D6={dice_d6}，目標承受效果")
+                else:
+                    self.add_system_message(f"[Spiritual Doll] 擲出 D6={dice_d6}，改為自己承受效果")
         self._finish_active_card_resolution(resolved_target, ret, extra)
 
     def steal_equipment(self, from_player, to_player, equipment):
@@ -1032,11 +1336,16 @@ class room(Thread):
         [UI操作] 前端顯示 from_player 的裝備清單讓玩家選擇。
         [UI回傳] steal_equipment(from_player, to_player, <選定的 equipment 物件>)
         """
+        self.touch_turn_action()
         from_player.divest(equipment)
         to_player.equip(equipment)
+        self.add_system_message(f"[{to_player.name or to_player.account}] 從 [{from_player.name or from_player.account}] 取得裝備 {str(getattr(equipment, 'name', '') or '-')}")
         # 檢查裝備取得後勝利條件（如 Franklin）
         if to_player.check_win_timing == 2:
-            winners = self._check_all_victory(equip_trigger=to_player)
+            self._check_all_victory(equip_trigger=to_player)
+        if int(getattr(self, 'room_status', 0) or 0) == 3:
+            self._pending_steal = None
+            return
         if self.current_player and self.current_player.status == 3 and self.current_player.area and self.current_player.area.name == "Erstwhile Altar":
             self.current_player.status = 4
         if self._pending_steal and self._pending_steal.get('from_player') == from_player and self._pending_steal.get('to_player') == to_player:

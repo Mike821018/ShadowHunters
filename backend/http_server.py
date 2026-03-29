@@ -40,9 +40,13 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
             return self._handle_summary_stats()
         if parsed.path == '/api/room_stats':
             return self._handle_room_stats(parsed.query)
+        if parsed.path == '/api/avatar_catalog':
+            return self._handle_avatar_catalog()
         if parsed.path.startswith('/api/game_record/'):
             record_id = parsed.path.rsplit('/', 1)[-1]
             return self._handle_game_record(record_id)
+        if parsed.path == '/api/game_record_by_room':
+            return self._handle_game_record_by_room(parsed.query)
         if parsed.path == '/':
             self.path = '/index.html'
         return super().do_GET()
@@ -147,16 +151,29 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
     def _handle_game_records(self, query: str):
         params = self._query_params(query)
         limit_raw = (params.get('limit') or ['100'])[0]
+        page_raw = (params.get('page') or ['1'])[0]
+        page_size_raw = (params.get('page_size') or ['20'])[0]
         limit = int(limit_raw or 100)
-        result = self.server.room_manager.records_api.api_get_game_records(limit)
+        page = int(page_raw or 1)
+        page_size = int(page_size_raw or 20)
+        result = self.server.room_manager.records_api.api_get_game_records(limit, page, page_size)
         self._send_json(HTTPStatus.OK, result)
 
     def _handle_trip_directory(self, query: str):
         params = self._query_params(query)
         keyword = (params.get('keyword') or [''])[0]
         limit_raw = (params.get('limit') or ['200'])[0]
+        page_raw = (params.get('page') or ['1'])[0]
+        page_size_raw = (params.get('page_size') or ['20'])[0]
         limit = int(limit_raw or 200)
-        result = self.server.room_manager.records_api.api_get_trip_directory(keyword=keyword, limit=limit)
+        page = int(page_raw or 1)
+        page_size = int(page_size_raw or 20)
+        result = self.server.room_manager.records_api.api_get_trip_directory(
+            keyword=keyword,
+            limit=limit,
+            page=page,
+            page_size=page_size,
+        )
         self._send_json(HTTPStatus.OK, result)
 
     def _handle_trip_profile(self, query: str):
@@ -197,6 +214,21 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
         status = HTTPStatus.OK if 'error' not in result else HTTPStatus.NOT_FOUND
         self._send_json(status, result)
 
+    def _handle_game_record_by_room(self, query: str):
+        params = self._query_params(query)
+        room_id_raw = (params.get('room_id') or [''])[0]
+        if not room_id_raw:
+            self._send_json(HTTPStatus.BAD_REQUEST, {'error': 'room_id is required'})
+            return
+        try:
+            room_id = int(room_id_raw)
+        except (TypeError, ValueError):
+            self._send_json(HTTPStatus.BAD_REQUEST, {'error': 'room_id must be an integer'})
+            return
+        result = self.server.room_manager.records_api.api_get_game_record_by_room_id(room_id)
+        status = HTTPStatus.OK if 'error' not in result else HTTPStatus.NOT_FOUND
+        self._send_json(status, result)
+
     def _handle_player_games(self, query: str):
         params = self._query_params(query)
         account = (params.get('account') or [''])[0]
@@ -217,6 +249,10 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
 
     def _handle_summary_stats(self):
         result = self.server.room_manager.records_api.api_get_summary_stats()
+        self._send_json(HTTPStatus.OK, result)
+
+    def _handle_avatar_catalog(self):
+        result = self.server.room_manager.api_get_avatar_catalog()
         self._send_json(HTTPStatus.OK, result)
 
 

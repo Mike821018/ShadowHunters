@@ -1,3 +1,6 @@
+from typing import Any
+
+
 class player():
     def __init__(self, room, profile):
         self.room = room
@@ -12,14 +15,16 @@ class player():
 
         self.is_alive = True
         self.status = 0 # 0: Waiting, 1: Start, 2: Move, 3:Area_effect, 4: Attack, 5: Damage calculation, 6: End
-        self.character = None
+        self.character: Any = None
         self.character_name = ''
         self.camp = '' # Shadow, Hunter, Civilian
         self.character_reveal = False
         self.can_use_ability = False
+        # ready: 可使用, used: 已主動使用一次性能力, disabled: 被外力封鎖, none: 無需顯示
+        self.ability_status = 'none'
         self.check_win_timing = 1 # 1: after someone dead, 2: after get equipment
 
-        self.area = None
+        self.area: Any = None
         self.area_name = '' # Hermit's Cabin, Church, Cemetery, Underworld Gate, Weird Woods, Erstwhile Altar
         self.zone = 0 # 1, 2, 3
 
@@ -44,6 +49,9 @@ class player():
         self.eqp_immortal_source = ''
         self.eqp_rob = False
 
+        # 逾時暴斃狀態（AFK 死亡）
+        self.is_boomed = False
+
     ####################
     #  before game
     ####################
@@ -59,6 +67,14 @@ class player():
     def assign_character(self, character):
         self.character = character
         character.assign(self)
+        ability_timing = int(getattr(character, 'ability_timing', 0) or 0)
+        if ability_timing in (0, 10):
+            self.ability_status = 'ready' if bool(self.can_use_ability) else 'disabled'
+        else:
+            if bool(getattr(character, 'ability_requires_reveal', True)) and not bool(self.character_reveal):
+                self.ability_status = 'locked'
+            else:
+                self.ability_status = 'ready' if bool(self.can_use_ability) else 'none'
         # update
 
     ####################
@@ -66,13 +82,25 @@ class player():
     ####################
 
     def reveal_character(self):
+        if not self.character:
+            return
         self.character.reveal(self)
+        ability_timing = int(getattr(getattr(self, 'character', None), 'ability_timing', 0) or 0)
+        if ability_timing in (0, 10):
+            self.ability_status = 'ready' if bool(self.can_use_ability) else 'disabled'
+        elif self.ability_status not in ('used', 'disabled'):
+            self.ability_status = 'ready' if bool(self.can_use_ability) else 'none'
         # update
 
     def use_ability(self, target):
         ret = False
         if self.character and self.character.can_use_ability:
             ret = bool(self.character.ability(self, target, self.room))
+            if ret:
+                if self.can_use_ability:
+                    self.ability_status = 'ready'
+                else:
+                    self.ability_status = 'used'
         return ret
 
     def disable_ability(self):
@@ -82,6 +110,7 @@ class player():
 
         self.character.disable_ability()
         self.can_use_ability = False
+        self.ability_status = 'disabled'
 
         if self.character_reveal:
             self.force_atk = getattr(self.character, 'force_atk', self.force_atk)
@@ -109,6 +138,8 @@ class player():
         # update
 
     def execute_action(self, target):
+        if not self.area:
+            return
         self.area.action(self, target, self.room)
         # update
 

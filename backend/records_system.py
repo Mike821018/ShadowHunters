@@ -11,6 +11,8 @@ import csv
 import json
 import hashlib
 import base64
+import os
+import sqlite3
 from collections import Counter
 
 
@@ -27,7 +29,9 @@ class PlayerRecord:
     cards_played: int
     trip_display: str = ''
     account_password_hash: str = ''
+    avatar_no: int = 1
     cards_equipped: List[str] = field(default_factory=list)
+    boomed: bool = False
 
 
 @dataclass
@@ -37,6 +41,7 @@ class TripRegistration:
     password_hash: str
     created_date: str
     updated_date: str = ''
+    registration_index: int = 0
 
 
 @dataclass
@@ -68,6 +73,8 @@ class GameRecord:
     total_healing: int = 0
     kills_count: Dict[str, int] = field(default_factory=dict)
     game_log: List[Dict[str, Any]] = field(default_factory=list)
+    chat_messages: List[Dict[str, Any]] = field(default_factory=list)
+    final_state: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -110,6 +117,7 @@ class PlayerStats:
     wins: int = 0
     losses: int = 0
     draws: int = 0
+    boomed_count: int = 0
     
     character_stats: Dict[str, CharacterStats] = field(default_factory=dict)
     camp_stats: Dict[str, CampStats] = field(default_factory=dict)
@@ -154,9 +162,9 @@ class RoomGameHistory:
 
 
 class GameRecordStore:
-    """In-memory game record storage system"""
+    """Game record storage with in-memory cache and SQLite persistence"""
     
-    def __init__(self):
+    def __init__(self, db_path: Optional[str] = None):
         self.game_records: Dict[str, GameRecord] = {}
         self.player_stats: Dict[str, PlayerStats] = {}
         self.room_histories: Dict[int, RoomGameHistory] = {}
@@ -166,6 +174,397 @@ class GameRecordStore:
             'global': [],
             'by_room': {},
         }
+        default_db_path = os.path.join(os.path.dirname(__file__), 'data', 'shadowhunters.db')
+        self.db_path = str(db_path or os.getenv('SHADOWHUNTERS_DB_PATH') or default_db_path)
+        self._setup_database()
+        self._load_from_database()
+
+    def _connect(self) -> sqlite3.Connection:
+        return sqlite3.connect(self.db_path)
+
+    def _setup_database(self):
+        db_dir = os.path.dirname(self.db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS game_records (
+                    record_id TEXT PRIMARY KEY,
+                    room_id INTEGER NOT NULL,
+                    game_date TEXT NOT NULL,
+                    payload_json TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS trip_registrations (
+                    trip TEXT PRIMARY KEY,
+                    password_hash TEXT NOT NULL,
+                    created_date TEXT NOT NULL,
+                    updated_date TEXT NOT NULL,
+                    registration_index INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            columns = [str(row[1]) for row in conn.execute("PRAGMA table_info(trip_registrations)")]
+            if 'registration_index' not in columns:
+                conn.execute(
+                    """
+                    ALTER TABLE trip_registrations
+                    ADD COLUMN registration_index INTEGER NOT NULL DEFAULT 0
+                    """
+                )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS rating_records (
+                    record_id TEXT PRIMARY KEY,
+                    room_id INTEGER NOT NULL,
+                    source_trip TEXT NOT NULL,
+                    target_trip TEXT NOT NULL,
+                    rating INTEGER NOT NULL,
+                    comment TEXT NOT NULL,
+                    created_date TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS app_counters (
+                    counter_key TEXT PRIMARY KEY,
+                    next_value INTEGER NOT NULL
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_game_records_room_id ON game_records(room_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_game_records_game_date ON game_records(game_date)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_rating_records_room_id ON rating_records(room_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_rating_records_target_trip ON rating_records(target_trip)")
+
+    def _player_record_to_dict(self, player: PlayerRecord) -> Dict[str, Any]:
+        return {
+            'player_id': player.player_id,
+            'player_name': player.player_name,
+            'character_name': player.character_name,
+            'character_camp': player.character_camp,
+            'is_alive': bool(player.is_alive),
+            'final_hp': int(player.final_hp),
+            'damage_taken': int(player.damage_taken),
+            'cards_played': int(player.cards_played),
+            'trip_display': str(player.trip_display or ''),
+            'account_password_hash': str(player.account_password_hash or ''),
+            'avatar_no': int(getattr(player, 'avatar_no', 1) or 1),
+            'cards_equipped': list(player.cards_equipped or []),
+            'boomed': bool(getattr(player, 'boomed', False)),
+        }
+
+    def _player_record_from_dict(self, row: Dict[str, Any]) -> PlayerRecord:
+        return PlayerRecord(
+            player_id=str(row.get('player_id') or ''),
+            player_name=str(row.get('player_name') or ''),
+            character_name=str(row.get('character_name') or ''),
+            character_camp=str(row.get('character_camp') or ''),
+            is_alive=bool(row.get('is_alive', False)),
+            final_hp=int(row.get('final_hp') or 0),
+            damage_taken=int(row.get('damage_taken') or 0),
+            cards_played=int(row.get('cards_played') or 0),
+            trip_display=str(row.get('trip_display') or ''),
+            account_password_hash=str(row.get('account_password_hash') or ''),
+            avatar_no=int(row.get('avatar_no') or 1),
+            cards_equipped=list(row.get('cards_equipped') or []),
+            boomed=bool(row.get('boomed', False)),
+        )
+
+    def _game_record_to_dict(self, record: GameRecord) -> Dict[str, Any]:
+        return {
+            'record_id': record.record_id,
+            'room_id': int(record.room_id),
+            'game_date': record.game_date,
+            'game_duration_seconds': int(record.game_duration_seconds),
+            'game_settings': dict(record.game_settings or {}),
+            'players': [self._player_record_to_dict(player) for player in (record.players or [])],
+            'winner_camp': str(record.winner_camp or ''),
+            'winner_players': list(record.winner_players or []),
+            'end_reason': str(record.end_reason or ''),
+            'total_actions': int(record.total_actions or 0),
+            'total_damage_dealt': int(record.total_damage_dealt or 0),
+            'total_healing': int(record.total_healing or 0),
+            'kills_count': dict(record.kills_count or {}),
+            'game_log': list(record.game_log or []),
+            'chat_messages': list(getattr(record, 'chat_messages', []) or []),
+            'final_state': dict(getattr(record, 'final_state', {}) or {}),
+        }
+
+    def _game_record_from_dict(self, row: Dict[str, Any]) -> GameRecord:
+        return GameRecord(
+            record_id=str(row.get('record_id') or ''),
+            room_id=int(row.get('room_id') or 0),
+            game_date=str(row.get('game_date') or ''),
+            game_duration_seconds=int(row.get('game_duration_seconds') or 0),
+            game_settings=dict(row.get('game_settings') or {}),
+            players=[self._player_record_from_dict(player_row) for player_row in (row.get('players') or [])],
+            winner_camp=str(row.get('winner_camp') or ''),
+            winner_players=list(row.get('winner_players') or []),
+            end_reason=str(row.get('end_reason') or ''),
+            total_actions=int(row.get('total_actions') or 0),
+            total_damage_dealt=int(row.get('total_damage_dealt') or 0),
+            total_healing=int(row.get('total_healing') or 0),
+            kills_count=dict(row.get('kills_count') or {}),
+            game_log=list(row.get('game_log') or []),
+            chat_messages=list(row.get('chat_messages') or []),
+            final_state=dict(row.get('final_state') or {}),
+        )
+
+    def _persist_game_record(self, record: GameRecord):
+        payload_json = json.dumps(self._game_record_to_dict(record), ensure_ascii=False)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO game_records (record_id, room_id, game_date, payload_json)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    record.record_id,
+                    int(record.room_id),
+                    str(record.game_date or ''),
+                    payload_json,
+                ),
+            )
+
+    def _persist_all_game_records(self):
+        with self._connect() as conn:
+            conn.execute("DELETE FROM game_records")
+            rows = [
+                (
+                    record.record_id,
+                    int(record.room_id),
+                    str(record.game_date or ''),
+                    json.dumps(self._game_record_to_dict(record), ensure_ascii=False),
+                )
+                for record in self.game_records.values()
+            ]
+            if rows:
+                conn.executemany(
+                    """
+                    INSERT INTO game_records (record_id, room_id, game_date, payload_json)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    rows,
+                )
+
+    def _persist_trip_registration(self, registration: TripRegistration):
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO trip_registrations (trip, password_hash, created_date, updated_date, registration_index)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    registration.trip,
+                    registration.password_hash,
+                    registration.created_date,
+                    registration.updated_date,
+                    int(getattr(registration, 'registration_index', 0) or 0),
+                ),
+            )
+
+    def _persist_all_trip_registrations(self):
+        with self._connect() as conn:
+            conn.execute("DELETE FROM trip_registrations")
+            rows = [
+                (
+                    registration.trip,
+                    registration.password_hash,
+                    registration.created_date,
+                    registration.updated_date,
+                    int(getattr(registration, 'registration_index', 0) or 0),
+                )
+                for registration in self.trip_registrations.values()
+            ]
+            if rows:
+                conn.executemany(
+                    """
+                    INSERT INTO trip_registrations (trip, password_hash, created_date, updated_date, registration_index)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    rows,
+                )
+
+    def _set_counter_seed(self, key: str, next_value: int):
+        safe_next = max(1, int(next_value or 1))
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO app_counters (counter_key, next_value)
+                VALUES (?, ?)
+                ON CONFLICT(counter_key) DO UPDATE SET
+                  next_value = CASE
+                    WHEN app_counters.next_value >= excluded.next_value THEN app_counters.next_value
+                    ELSE excluded.next_value
+                  END
+                """,
+                (str(key), safe_next),
+            )
+
+    def _allocate_counter_value(self, key: str) -> int:
+        counter_key = str(key)
+        with self._connect() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            row = conn.execute(
+                "SELECT next_value FROM app_counters WHERE counter_key = ?",
+                (counter_key,),
+            ).fetchone()
+            if row is None:
+                allocated = 1
+                conn.execute(
+                    "INSERT INTO app_counters (counter_key, next_value) VALUES (?, ?)",
+                    (counter_key, 2),
+                )
+                return allocated
+
+            allocated = max(1, int(row[0] or 1))
+            conn.execute(
+                "UPDATE app_counters SET next_value = ? WHERE counter_key = ?",
+                (allocated + 1, counter_key),
+            )
+            return allocated
+
+    def _backfill_trip_registration_indices(self):
+        registrations = sorted(
+            self.trip_registrations.values(),
+            key=lambda row: (str(getattr(row, 'created_date', '') or ''), str(getattr(row, 'trip', '') or '')),
+        )
+        current_max = 0
+        for row in registrations:
+            idx = int(getattr(row, 'registration_index', 0) or 0)
+            if idx > current_max:
+                current_max = idx
+
+        changed = False
+        for row in registrations:
+            idx = int(getattr(row, 'registration_index', 0) or 0)
+            if idx > 0:
+                continue
+            current_max += 1
+            row.registration_index = current_max
+            changed = True
+
+        if changed:
+            self._persist_all_trip_registrations()
+
+        self._set_counter_seed('trip_registration_index', current_max + 1)
+
+    def _initialize_counters(self):
+        max_room_id = 0
+        for record in self.game_records.values():
+            max_room_id = max(max_room_id, int(getattr(record, 'room_id', 0) or 0))
+        self._set_counter_seed('room_id', max_room_id + 1)
+        self._backfill_trip_registration_indices()
+
+    def _persist_rating_record(self, rating_row: TripRatingRecord):
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO rating_records
+                (record_id, room_id, source_trip, target_trip, rating, comment, created_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    rating_row.record_id,
+                    int(rating_row.room_id),
+                    str(rating_row.source_trip or ''),
+                    str(rating_row.target_trip or ''),
+                    int(rating_row.rating or 0),
+                    str(rating_row.comment or ''),
+                    str(rating_row.created_date or ''),
+                ),
+            )
+
+    def _persist_all_rating_records(self):
+        with self._connect() as conn:
+            conn.execute("DELETE FROM rating_records")
+            rows = [
+                (
+                    rating_row.record_id,
+                    int(rating_row.room_id),
+                    str(rating_row.source_trip or ''),
+                    str(rating_row.target_trip or ''),
+                    int(rating_row.rating or 0),
+                    str(rating_row.comment or ''),
+                    str(rating_row.created_date or ''),
+                )
+                for rating_row in self.rating_records
+            ]
+            if rows:
+                conn.executemany(
+                    """
+                    INSERT INTO rating_records
+                    (record_id, room_id, source_trip, target_trip, rating, comment, created_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    rows,
+                )
+
+    def _rebuild_room_histories(self):
+        self.room_histories.clear()
+        sorted_records = sorted(self.game_records.values(), key=lambda row: row.game_date)
+        for game_record in sorted_records:
+            self.add_game_to_room_history(game_record.room_id, game_record)
+
+    def _load_from_database(self):
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+
+            for row in conn.execute(
+                "SELECT trip, password_hash, created_date, updated_date, registration_index FROM trip_registrations ORDER BY created_date ASC"
+            ):
+                trip_key = str(row['trip'] or '').strip()
+                if not trip_key:
+                    continue
+                self.trip_registrations[trip_key] = TripRegistration(
+                    trip=trip_key,
+                    password_hash=str(row['password_hash'] or ''),
+                    created_date=str(row['created_date'] or ''),
+                    updated_date=str(row['updated_date'] or ''),
+                    registration_index=int(row['registration_index'] or 0),
+                )
+
+            for row in conn.execute(
+                "SELECT record_id, payload_json FROM game_records ORDER BY game_date ASC"
+            ):
+                try:
+                    payload = json.loads(str(row['payload_json'] or '{}'))
+                    game_record = self._game_record_from_dict(payload)
+                except Exception:
+                    continue
+                if not game_record.record_id:
+                    game_record.record_id = str(row['record_id'] or '')
+                if game_record.record_id:
+                    self.game_records[game_record.record_id] = game_record
+
+            for row in conn.execute(
+                """
+                SELECT record_id, room_id, source_trip, target_trip, rating, comment, created_date
+                FROM rating_records
+                ORDER BY created_date ASC
+                """
+            ):
+                self.rating_records.append(
+                    TripRatingRecord(
+                        record_id=str(row['record_id'] or ''),
+                        room_id=int(row['room_id'] or 0),
+                        source_trip=str(row['source_trip'] or ''),
+                        target_trip=str(row['target_trip'] or ''),
+                        rating=int(row['rating'] or 0),
+                        comment=str(row['comment'] or ''),
+                        created_date=str(row['created_date'] or ''),
+                    )
+                )
+
+        self._rebuild_room_histories()
+        self.rebuild_player_stats()
+        self._initialize_counters()
 
     def hash_trip_password(self, password: str) -> str:
         return hashlib.sha256(str(password or '').encode('utf-8')).hexdigest()
@@ -222,6 +621,7 @@ class GameRecordStore:
             if existing.password_hash != password_hash:
                 raise ValueError('TRIP password mismatch')
             existing.updated_date = now
+            self._persist_trip_registration(existing)
             return 'verified'
 
         self.trip_registrations[trip_key] = TripRegistration(
@@ -229,7 +629,9 @@ class GameRecordStore:
             password_hash=password_hash,
             created_date=now,
             updated_date=now,
+            registration_index=self._allocate_counter_value('trip_registration_index'),
         )
+        self._persist_trip_registration(self.trip_registrations[trip_key])
         return 'registered'
 
     def change_trip_registration(self, old_trip: str, old_password: str, new_trip: str, new_password: str) -> None:
@@ -248,6 +650,7 @@ class GameRecordStore:
         registration.trip = new_trip_key
         registration.password_hash = self.hash_trip_password(new_password)
         registration.updated_date = datetime.now().isoformat()
+        registration.registration_index = int(getattr(registration, 'registration_index', 0) or 0)
         self.trip_registrations[new_trip_key] = registration
 
         for game_record in self.game_records.values():
@@ -260,6 +663,10 @@ class GameRecordStore:
                 rating_record.source_trip = new_trip_key
             if str(rating_record.target_trip or '').strip() == old_trip_key:
                 rating_record.target_trip = new_trip_key
+
+        self._persist_all_trip_registrations()
+        self._persist_all_game_records()
+        self._persist_all_rating_records()
 
         self.rebuild_player_stats()
 
@@ -323,6 +730,7 @@ class GameRecordStore:
 
     def add_trip_rating(self, row: TripRatingRecord) -> str:
         self.rating_records.append(row)
+        self._persist_rating_record(row)
         return row.record_id
 
     def reassign_trip_by_account(self, target_trip: str, account: str, account_password: str, room_id: Optional[int] = None, *, only_unassigned: bool) -> int:
@@ -350,6 +758,7 @@ class GameRecordStore:
                 updated += 1
 
         if updated:
+            self._persist_all_game_records()
             self.rebuild_player_stats()
         return updated
 
@@ -372,6 +781,7 @@ class GameRecordStore:
                 updated += 1
 
         if updated:
+            self._persist_all_game_records()
             self.rebuild_player_stats()
         return updated
 
@@ -387,6 +797,7 @@ class GameRecordStore:
     def save_game_record(self, record: GameRecord) -> str:
         """Save a game record"""
         self.game_records[record.record_id] = record
+        self._persist_game_record(record)
         return record.record_id
     
     def get_game_record(self, record_id: str) -> Optional[GameRecord]:
@@ -412,15 +823,20 @@ class GameRecordStore:
 
         if player_record.trip_display:
             stats.trip_display = player_record.trip_display
+
+        is_boomed = bool(getattr(player_record, 'boomed', False))
+        if is_boomed:
+            stats.boomed_count += 1
         
         # Update basic stats
         stats.total_games += 1
-        if account in game_record.winner_players:
-            stats.wins += 1
-        elif game_record.winner_camp == 'Draw':
-            stats.draws += 1
-        else:
-            stats.losses += 1
+        if not is_boomed:
+            if account in game_record.winner_players:
+                stats.wins += 1
+            elif game_record.winner_camp == 'Draw':
+                stats.draws += 1
+            else:
+                stats.losses += 1
         
         # Update character stats
         char_name = player_record.character_name
@@ -428,10 +844,11 @@ class GameRecordStore:
             stats.character_stats[char_name] = CharacterStats(character_name=char_name)
         char_stats = stats.character_stats[char_name]
         char_stats.games_played += 1
-        if account in game_record.winner_players:
-            char_stats.wins += 1
-        else:
-            char_stats.losses += 1
+        if not is_boomed:
+            if account in game_record.winner_players:
+                char_stats.wins += 1
+            else:
+                char_stats.losses += 1
         char_stats.total_damage_dealt += game_record.kills_count.get(account, 0)
         char_stats.kills += game_record.kills_count.get(account, 0)
         
@@ -441,7 +858,7 @@ class GameRecordStore:
             stats.camp_stats[camp_name] = CampStats(camp_name=camp_name)
         camp_stats = stats.camp_stats[camp_name]
         camp_stats.games_played += 1
-        if account in game_record.winner_players:
+        if not is_boomed and account in game_record.winner_players:
             camp_stats.wins += 1
         
         # Update other stats
@@ -679,3 +1096,12 @@ class GameRecordStore:
         self.trip_registrations.clear()
         self.rating_records.clear()
         self.leaderboards = {'global': [], 'by_room': {}}
+        with self._connect() as conn:
+            conn.execute("DELETE FROM game_records")
+            conn.execute("DELETE FROM trip_registrations")
+            conn.execute("DELETE FROM rating_records")
+            conn.execute("DELETE FROM app_counters")
+
+    def allocate_room_id(self) -> int:
+        """Allocate a persistent room id."""
+        return self._allocate_counter_value('room_id')

@@ -8,7 +8,7 @@ export function createApiClient(transport: ApiTransport) {
       return transport({ action, payload });
     },
 
-    createRoom(room_name: string, options?: { room_comment?: string; require_trip?: boolean; hide_trip?: boolean; trip_min_games?: number; manager_trip?: string; manager_trip_encrypted?: boolean }) {
+    createRoom(room_name: string, options?: { room_comment?: string; require_trip?: boolean; hide_trip?: boolean; trip_min_games?: number; manager_trip?: string; manager_trip_encrypted?: boolean; turn_timeout_minutes?: number }) {
       return transport({
         action: 'create_room',
         payload: {

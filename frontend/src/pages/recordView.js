@@ -15,6 +15,21 @@ function campLabel(camp) {
   if (normalized === 'hunter') return t('records.winner_hunter');
   if (normalized === 'shadow') return t('records.winner_shadow');
   if (normalized === 'civilian' || normalized === 'neutral') return t('records.winner_civilian');
+  const parts = normalized.split('_').filter(Boolean);
+  if (parts.length >= 2) {
+    const map = {
+      hunter: t('records.winner_hunter'),
+      shadow: t('records.winner_shadow'),
+      civilian: t('records.winner_civilian'),
+      neutral: t('records.winner_civilian'),
+    };
+    const ordered = ['shadow', 'hunter', 'civilian', 'neutral'].filter((token) => parts.includes(token));
+    if (ordered.length) {
+      const normalizedTokens = ordered.map((token) => (token === 'neutral' ? 'civilian' : token));
+      const uniqueTokens = [...new Set(normalizedTokens)];
+      return uniqueTokens.map((token) => map[token]).join('+');
+    }
+  }
   return '-';
 }
 

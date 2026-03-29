@@ -43,7 +43,7 @@
             <h2 data-i18n="guide.section.overview">遊戲概述</h2>
             <div class="card-body">
               <h3 data-i18n="guide.overview.title">暗影獵人是什麼？</h3>
-              <p data-i18n="guide.overview.desc">《暗影獵人》是 4-8 人的隱藏身分桌遊。玩家會分屬獵人、暗影或中立角色，在彼此不知道真實身分的情況下，透過移動、區域效果、裝備、攻擊與情報卡逐步確認敵友並完成各自的勝利條件。</p>
+              <p data-i18n="guide.overview.desc">《暗影獵人》是 4-8 人的隱藏身分桌遊。玩家會分屬獵人、暗影或中立角色，在彼此不知道真實身分的情況下，透過移動、區域效果、裝備、攻擊與綠卡逐步確認敵友並完成各自的勝利條件。</p>
             </div>
           </section>
 
@@ -67,6 +67,29 @@
                 <h4 data-i18n="guide.roles.civilians">中立 (Neutrals)</h4>
                 <p data-i18n="guide.roles.civilians_desc">中立角色不屬於獵人或暗影，每張角色卡都有自己的專屬勝利條件。有些要求存活，有些要求擊倒特定人物，也可能和其他陣營同時獲勝。</p>
               </div>
+
+              <div class="guide-subsection">
+                <h4>各人數陣營配置</h4>
+                <div class="rooms-table-wrap" style="margin-top: 8px;">
+                  <table class="data-table" aria-label="各人數陣營配置">
+                    <thead>
+                      <tr>
+                        <th>遊玩人數</th>
+                        <th>暗影</th>
+                        <th>獵人</th>
+                        <th>中立</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr><td>4</td><td>2</td><td>2</td><td>0</td></tr>
+                      <tr><td>5</td><td>2</td><td>2</td><td>1</td></tr>
+                      <tr><td>6</td><td>2</td><td>2</td><td>2</td></tr>
+                      <tr><td>7</td><td>2</td><td>2</td><td>3</td></tr>
+                      <tr><td>8</td><td>3</td><td>3</td><td>2</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -75,30 +98,38 @@
             <h2 data-i18n="guide.section.gameplay">遊戲流程</h2>
             <div class="card-body">
               <h3 data-i18n="guide.gameplay.turn_structure">標準回合</h3>
-              <p data-i18n="guide.gameplay.turn_desc">每回合大致依照「移動 → 區域效果 → 攻擊」的順序進行：</p>
+              <p data-i18n="guide.gameplay.turn_desc">每回合大致依照「回合開始 → 移動 → 場地效果 → 攻擊 → 結束回合」的順序進行：</p>
               
               <ol class="guide-steps">
                 <li>
-                  <strong data-i18n="guide.gameplay.step1_title">移動階段 (Move Phase)</strong>
-                  <span data-i18n="guide.gameplay.step1_desc">擲兩顆骰子後，依結果移動到對應區域；若總和為 7，通常可以自行選擇移動到任一其他區域。</span>
+                  <strong data-i18n="guide.gameplay.step1_title">回合開始 (Start Phase)</strong>
+                  <span data-i18n="guide.gameplay.step1_desc">準備開始回合，部分角色能力能在此階段發動。</span>
                 </li>
                 <li>
-                  <strong data-i18n="guide.gameplay.step2_title">區域效果 (Area Effect)</strong>
-                  <span data-i18n="guide.gameplay.step2_desc">抵達區域後，執行該區域效果，例如抽白卡、抽黑卡、抽隱士卡，或對指定玩家造成 2 傷害 / 回復 1 傷害。</span>
+                  <strong data-i18n="guide.gameplay.step2_title">移動階段 (Move Phase)</strong>
+                  <span data-i18n="guide.gameplay.step2_desc">擲兩顆骰子後，依結果移動到對應場地；若總和為 7，可以自行選擇移動到任一目前所在位置以外的場地。遊戲開始時六個場地的位置會隨機排列，並分成三個區域。</span>
                 </li>
                 <li>
-                  <strong data-i18n="guide.gameplay.step3_title">攻擊階段 (Attack Phase)</strong>
-                  <span data-i18n="guide.gameplay.step3_desc">回合最後可選擇攻擊範圍內的一名玩家。攻擊傷害通常是兩顆骰子的點數差，部分裝備會改變射程或攻擊方式。</span>
+                  <strong data-i18n="guide.gameplay.step3_title">場地效果 (Area Effect)</strong>
+                  <span data-i18n="guide.gameplay.step3_desc">抵達區域後，可以選擇是否執行該區域效果，例如抽白卡、抽黑卡、抽隱士卡，或對指定玩家造成 2 傷害 / 回復 1 傷害。</span>
                 </li>
                 <li>
-                  <strong data-i18n="guide.gameplay.step4_title">公開能力與結算 (Reveal / Resolve)</strong>
-                  <span data-i18n="guide.gameplay.step4_desc">部分角色可以在合適時機翻開角色卡發動能力；只要有人滿足自己的勝利條件，遊戲就會立即結束並結算所有符合條件的勝者。</span>
+                  <strong data-i18n="guide.gameplay.step4_title">攻擊階段 (Attack Phase)</strong>
+                  <span data-i18n="guide.gameplay.step4_desc">攻擊階段可選擇攻擊同區域內的一名玩家。攻擊時擲一顆四面骰與一顆六面骰，點數差即為造成的傷害，部分裝備會改變射程或攻擊方式。</span>
+                </li>
+                <li>
+                  <strong data-i18n="guide.gameplay.step5_title">結束階段 (End Phase)</strong>
+                  <span data-i18n="guide.gameplay.step5_desc">準備結束回合，部分角色能力能在此階段發動。</span>
+                </li>
+                <li>
+                  <strong data-i18n="guide.gameplay.step6_title">公開與結算 (Reveal / Resolution)</strong>
+                  <span data-i18n="guide.gameplay.step6_desc">玩家可隨時主動翻開角色卡；角色卡通常需翻開才能發動能力。只要有人滿足自己的勝利條件，遊戲就會立即結束並結算所有符合條件的勝者。</span>
                 </li>
               </ol>
 
               <div class="guide-subsection">
-                <h4 data-i18n="guide.gameplay.areas_title">六個區域</h4>
-                <p data-i18n="guide.gameplay.areas_desc">六個區域包含 隱士小屋、教堂、墓園、時空之門、希望與絕望的森林、古代祭壇。它們分別對應情報、白卡、黑卡、自由抽牌、傷害/治療、奪取裝備等核心效果。</p>
+                <h4 data-i18n="guide.gameplay.areas_title">六個場地</h4>
+                <p data-i18n="guide.gameplay.areas_desc">六個場地包含 隱士小屋、教堂、墓園、時空之門、希望與絕望的森林、古代祭壇。它們分別對應情報、白卡、黑卡、自由抽牌、傷害/治療、奪取裝備等核心效果。</p>
               </div>
             </div>
           </section>
@@ -110,7 +141,7 @@
               <h3 data-i18n="guide.cards.types">卡牌類型</h3>
               
               <div class="guide-subsection">
-                <h4 data-i18n="guide.cards.green_cards">隱士卡 / 情報卡</h4>
+                <h4 data-i18n="guide.cards.green_cards">綠卡 / 隱士卡 (Hermit Cards)</h4>
                 <p data-i18n="guide.cards.green_desc">隱士卡主要用來測試他人陣營。抽到後會交給一名玩家，由對方依照卡面條件判定是否承受效果，因此也是辨識身分的重要來源。</p>
               </div>
 

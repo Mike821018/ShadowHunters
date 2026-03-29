@@ -17,7 +17,7 @@ export function goToRegisterPage({ state, persistSession }, roomId = state.roomI
   syncAccountForRoom(state, state.roomId);
   persistSession(state);
   const targetRoomId = state.roomId ? `?roomId=${encodeURIComponent(state.roomId)}` : '';
-  window.location.href = `./resident_register.html${targetRoomId}`;
+  window.location.href = `./room_resident_register.html${targetRoomId}`;
 }
 
 export function goToLobbyPage({ persistSession, state }) {

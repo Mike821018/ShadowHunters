@@ -50,11 +50,15 @@
           </div>
 
           <div class="room-top-row room-stage-row">
-            <fieldset>
+            <fieldset class="room-chat-fieldset">
               <legend><strong>聊天室</strong></legend>
               <div class="card-body">
                 <div id="chatStage" class="room-stage-surface room-chat-surface" aria-live="polite">
-                  <p class="lighttxt">聊天室區塊（待接入）</p>
+                  <div id="chatMessages" class="chat-messages" aria-label="聊天室訊息"></div>
+                  <div class="chat-input-row">
+                    <textarea id="chatInput" class="txt chat-input" maxlength="200" rows="3" placeholder="輸入訊息（最多 200 字）"></textarea>
+                    <button id="chatSendButton" class="btn" type="button">送出</button>
+                  </div>
                 </div>
               </div>
             </fieldset>

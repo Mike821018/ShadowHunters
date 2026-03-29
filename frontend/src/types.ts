@@ -41,7 +41,8 @@ export type ApiAction =
   | 'toggle_ready'
   | 'vote_kick'
   | 'reveal_character'
-  | 'submit_trip_rating';
+  | 'submit_trip_rating'
+  | 'upload_avatar';
 
 export type ApiRequest<TPayload = Record<string, unknown>> = {
   action: ApiAction;

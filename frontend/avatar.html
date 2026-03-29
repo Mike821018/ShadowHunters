@@ -61,11 +61,18 @@
               </div>
               <div class="avatar-gallery-title" data-i18n="register.avatar.gallery">頭像一覽</div>
               <div class="avatar-pager" aria-label="頭像分頁控制">
-                <button id="btnAvatarGalleryPrev" class="btn" type="button" data-i18n="register.avatar.prev">上一頁</button>
-                <label for="avatarGalleryPageInput" class="lighttxt" data-i18n="register.avatar.page_prefix">第</label>
-                <input id="avatarGalleryPageInput" class="txt avatar-page-input" type="number" min="1" value="1" />
-                <span id="avatarGalleryPageInfo" class="avatar-page-info">/ 1 頁</span>
-                <button id="btnAvatarGalleryNext" class="btn" type="button" data-i18n="register.avatar.next">下一頁</button>
+                <div class="avatar-page-controls">
+                  <button id="btnAvatarGalleryPrev" class="btn" type="button" data-i18n="register.avatar.prev">上一頁</button>
+                  <label for="avatarGalleryPageInput" class="lighttxt" data-i18n="register.avatar.page_prefix">第</label>
+                  <input id="avatarGalleryPageInput" class="txt avatar-page-input" type="number" min="1" value="1" />
+                  <span id="avatarGalleryPageInfo" class="avatar-page-info">/ 1</span>
+                  <button id="btnAvatarGalleryNext" class="btn" type="button" data-i18n="register.avatar.next">下一頁</button>
+                </div>
+                <div class="avatar-search-controls">
+                  <input id="avatarSearchInput" class="txt avatar-search-input" type="text" placeholder="搜尋頭像名稱" data-i18n-placeholder="avatar.search_placeholder" aria-label="搜尋頭像名稱" />
+                  <button id="btnAvatarSearch" class="btn" type="button" data-i18n="avatar.search_btn">搜尋</button>
+                  <button id="btnAvatarSearchClear" class="btn" type="button" data-i18n="avatar.search_clear_btn">清除</button>
+                </div>
               </div>
               <div id="avatarGalleryGrid" class="avatar-option-grid avatar-gallery-grid" aria-live="polite"></div>
             </div>
@@ -79,13 +86,21 @@
               <p class="lighttxt" data-i18n="avatar.pixel_hint">遊戲內頭像建議使用 56x56 像素，支援 PNG / JPG / GIF / WEBP。</p>
               <form id="avatarUploadPreviewForm" class="identity-inline-form" novalidate>
                 <strong data-i18n="avatar.upload_title">上傳頭像</strong>
-                <input id="avatarUploadTrip" class="txt" type="text" placeholder="TRIP" data-i18n-placeholder="identity.col_trip" />
-                <input id="avatarUploadPassword" class="txt" type="password" placeholder="密碼" data-i18n-placeholder="identity.password" />
+                <div class="avatar-upload-auth-row">
+                  <input id="avatarUploadTrip" class="txt" type="text" placeholder="TRIP" data-i18n-placeholder="identity.col_trip" />
+                  <input id="avatarUploadPassword" class="txt" type="password" placeholder="密碼" data-i18n-placeholder="identity.password" />
+                </div>
                 <input id="avatarUploadName" class="txt" type="text" placeholder="頭像名稱" data-i18n-placeholder="avatar.upload_name" />
+                <div class="avatar-upload-color-block">
+                  <div id="avatarUploadColorPreview" class="color-chip-static" aria-hidden="true" style="background:#9aa4ad"></div>
+                  <div id="avatarUploadColorPresets" class="avatar-upload-color-presets" role="group" aria-label="Avatar color presets"></div>
+                  <input id="avatarUploadColor" class="txt avatar-upload-color-input" type="text" value="#9aa4ad" inputmode="text" spellcheck="false" placeholder="#9aa4ad" aria-label="Avatar color hex code" />
+                </div>
                 <input id="avatarUploadFile" class="txt" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
+                <button class="btn" type="submit" data-i18n="avatar.upload_submit">確認上傳</button>
               </form>
               <div class="avatar-upload-preview-block">
-                <div id="avatarUploadPreview" class="avatar-preview" aria-live="polite"></div>
+                <div id="avatarUploadPreview" class="avatar-option-card avatar-upload-preview-card readonly" aria-live="polite"></div>
                 <p id="avatarUploadMeta" class="lighttxt" data-i18n="avatar.upload_meta_idle">選擇圖片後會在這裡顯示預覽與像素大小。</p>
               </div>
             </div>

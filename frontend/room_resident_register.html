@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>暗影獵人｜住民登錄</title>
+    <link rel="stylesheet" href="./src/theme.css" />
+  </head>
+  <body data-page="register" class="higu-register-page">
+    <div id="header">
+      <div class="wrap s_clear">
+        <h2>暗影獵人</h2>
+        <div id="umenu" aria-live="polite">
+          <span id="transportMode" class="pill" data-i18n-title="common.transport.source" title="目前資料來源">AUTO</span>
+          <span id="statusText" class="lighttxt" data-i18n="common.status.init">前端已啟動</span>
+          <div class="lang-switcher">
+            <select class="lang-select" data-lang-select aria-label="Language selector">
+              <option value="zh">ZH</option>
+              <option value="en">EN</option>
+              <option value="jp">JP</option>
+            </select>
+          </div>
+        </div>
+        <div id="menu" class="room-menu-bar">
+          <button id="btnBackToRoom" class="btn room-back-lobby-btn" type="button" data-i18n="common.nav.back_room">回到房間</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="wrap s_clear" id="wrap">
+      <main class="main">
+        <section class="panel" tabindex="0">
+          <fieldset>
+            <legend><strong id="loginVillageTitle">住民登入</strong></legend>
+            <p class="field-hint register-form-note" data-i18n="register.login.help">帳號與密碼限 20 位內英文/數字/標點符號。若已經登錄過住民，請直接用原帳密登入。</p>
+            <form id="loginRoomForm" class="card-body form-grid" autocomplete="off">
+              <label for="loginAccount" data-i18n="register.login.account">帳號</label>
+              <input id="loginAccount" class="txt" type="text" maxlength="20" data-i18n-placeholder="common.placeholder.ascii20" placeholder="最多20位英文/數字/標點符號" />
+
+              <label for="loginPassword" data-i18n="register.login.password">密碼</label>
+              <input id="loginPassword" class="txt" type="password" maxlength="20" data-i18n-placeholder="common.placeholder.ascii20" placeholder="最多20位英文/數字/標點符號" />
+
+              <div></div>
+              <button class="btn" type="submit" data-i18n="register.login.submit">住民登入</button>
+            </form>
+          </fieldset>
+
+          <fieldset>
+            <legend><strong id="registerVillageTitle">住民登記</strong></legend>
+            <p class="field-hint register-form-note" data-i18n="register.register.help">TRIP 可選填；若村莊要求 TRIP 驗證則會改為必填。帳號與密碼限 20 位內英文/數字/標點符號，暱稱請使用方便辨識的名稱。</p>
+            <form id="joinRoomForm" class="card-body form-grid" autocomplete="off">
+              <label id="tripLabel" for="trip" data-i18n="register.register.trip">TRIP（可選填）</label>
+              <input id="trip" class="txt" type="text" maxlength="20" data-i18n-placeholder="common.placeholder.ascii20" placeholder="最多20位英文/數字/標點符號" />
+
+              <label for="account" data-i18n="register.register.account">帳號</label>
+              <input id="account" class="txt" type="text" maxlength="20" required data-i18n-placeholder="common.placeholder.ascii20" placeholder="最多20位英文/數字/標點符號" />
+
+              <label for="password" data-i18n="register.register.password">密碼</label>
+              <input id="password" class="txt" type="password" maxlength="20" required data-i18n-placeholder="common.placeholder.ascii20" placeholder="最多20位英文/數字/標點符號" />
+
+              <label for="nickname" data-i18n="register.register.nickname">暱稱</label>
+              <input id="nickname" class="txt" type="text" maxlength="20" required data-i18n-placeholder="common.placeholder.kanji10" placeholder="最多10位中文" />
+
+              <div></div>
+              <button class="btn" type="submit" data-i18n="register.register.submit">住民登錄</button>
+            </form>
+          </fieldset>
+
+          <fieldset class="avatar-panel">
+            <legend><strong data-i18n="register.avatar.title">選擇頭像</strong></legend>
+            <div class="card-body">
+              <input id="avatarValue" type="hidden" value="1" />
+
+              <div class="avatar-preview-wrap">
+                <span id="avatarPreview" class="avatar-preview" aria-live="polite"></span>
+                <span class="lighttxt" data-i18n="register.avatar.current">目前頭貼</span>
+                <label for="avatarNumberInput" class="lighttxt" data-i18n="register.avatar.number_label">頭像編號</label>
+                <input id="avatarNumberInput" class="txt avatar-number-input" type="number" min="1" value="1" />
+              </div>
+
+              <div class="avatar-gallery-title" data-i18n="register.avatar.gallery">頭像一覽</div>
+              <div class="avatar-pager" aria-label="頭像分頁控制">
+                <div class="avatar-page-controls">
+                  <button id="btnAvatarPrev" class="btn" type="button" data-i18n="register.avatar.prev">上一頁</button>
+                  <label for="avatarPageInput" class="lighttxt" data-i18n="register.avatar.page_prefix">第</label>
+                  <input id="avatarPageInput" class="txt avatar-page-input" type="number" min="1" value="1" />
+                  <span id="avatarPageInfo" class="avatar-page-info">/ 1</span>
+                  <button id="btnAvatarNext" class="btn" type="button" data-i18n="register.avatar.next">下一頁</button>
+                </div>
+                <div class="avatar-search-controls">
+                  <input id="avatarPickerSearchInput" class="txt avatar-search-input" type="text" data-i18n-placeholder="avatar.search_placeholder" placeholder="搜尋頭像名稱" aria-label="搜尋頭像名稱" />
+                  <button id="btnAvatarPickerSearch" class="btn" type="button" data-i18n="avatar.search_btn">搜尋</button>
+                  <button id="btnAvatarPickerSearchClear" class="btn" type="button" data-i18n="avatar.search_clear_btn">清除</button>
+                </div>
+              </div>
+
+              <div id="avatarOptionGrid" class="avatar-option-grid avatar-gallery-grid" aria-live="polite"></div>
+
+              <div class="inline-actions" style="margin-top:10px;">
+                <a class="btn" href="./avatar.html" data-i18n="register.avatar.gallery">頭像一覽</a>
+              </div>
+            </div>
+          </fieldset>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

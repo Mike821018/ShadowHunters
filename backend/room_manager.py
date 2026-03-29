@@ -1,11 +1,14 @@
 import random
 import base64
 import hashlib
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from backend.avatar_store import AvatarStore
 from backend.game import character_module
-from backend.game import info as game_info
+import info as game_info
 from backend.game import room
 from backend.game_records_api import GameRecordsAPI
 from backend.records_system import GameRecordStore
@@ -32,9 +35,11 @@ API_SCHEMAS = {
                         'login_room',
                         'start_game', 'next_step', 'card_effect', 'loot_from_kill',
                         'steal_equipment', 'set_green_card_choice', 'confirm_green_card', 'confirm_equipment',
-                        'get_room_state', 'change_color', 'abolish_room', 'toggle_ready', 'vote_kick',
+                        'get_room_state', 'change_color', 'abolish_room', 'toggle_ready', 'vote_kick', 'roll_call',
+                        'send_chat',
                         'register_trip', 'change_trip', 'claim_trip_records', 'modify_trip_records', 'delete_trip_records',
-                        'submit_trip_rating'
+                        'submit_trip_rating',
+                        'upload_avatar'
                     ],
                 },
                 'payload': {'type': 'object'},
@@ -79,7 +84,7 @@ API_SCHEMAS = {
         'TargetRef': {
             'type': 'object',
             'properties': {
-                'kind': {'type': 'string', 'enum': ['player', 'area', 'none']},
+                'kind': {'type': 'string', 'enum': ['player', 'area', 'discard', 'none']},
                 'id': {'type': ['string', 'null']},
             },
             'required': ['kind'],
@@ -89,11 +94,12 @@ API_SCHEMAS = {
 
 
 class RoomManager:
-    def __init__(self):
+    def __init__(self, root_dir: Optional[Path] = None):
         self.rooms: Dict[int, room.room] = {}
-        self._next_room_id = 1
-        self.record_store = GameRecordStore()
+        self.root_dir = Path(root_dir) if root_dir else Path(__file__).resolve().parent.parent
+        self.record_store = GameRecordStore(db_path=os.getenv('SHADOWHUNTERS_DB_PATH') or None)
         self.records_api = GameRecordsAPI(self.record_store)
+        self.avatar_store = AvatarStore(self.root_dir)
 
     def get_api_schemas(self) -> Dict[str, Any]:
         return API_SCHEMAS
@@ -110,11 +116,12 @@ class RoomManager:
         is_chat_room: bool = False,
         expansion_mode: str = 'all',
         enable_initial_green_card: bool = False,
+        turn_timeout_minutes: int = 3,
     ) -> room.room:
         game_room = room.room()
-        game_room.room_id = self._next_room_id
+        game_room.room_id = int(self.record_store.allocate_room_id())
         game_room.room_name = room_name
-        game_room.room_comment = room_comment
+        setattr(game_room, 'room_comment', room_comment)
         game_room.require_trip = require_trip
         game_room.hide_trip = hide_trip is not False
         game_room.trip_min_games = max(0, int(trip_min_games or 0))
@@ -123,12 +130,16 @@ class RoomManager:
         game_room.is_chat_room = bool(is_chat_room)
         game_room.expansion_mode = self._normalize_expansion_mode(expansion_mode)
         game_room.enable_initial_green_card = bool(enable_initial_green_card)
+        valid_timeout_minutes = [2, 3, 5, 10, 20, 30]
+        chosen = int(turn_timeout_minutes or 3)
+        if chosen not in valid_timeout_minutes:
+            chosen = min(valid_timeout_minutes, key=lambda v: abs(v - chosen))
+        game_room.turn_timeout_seconds = chosen * 60
         game_room.max_players = 50 if game_room.is_chat_room else 8
-        game_room.manager_ref = self
+        setattr(game_room, 'manager_ref', self)
         game_room.room_status = 1
         game_room.create()
         self.rooms[game_room.room_id] = game_room
-        self._next_room_id += 1
         return game_room
 
     def list_rooms(self) -> List[Dict[str, Any]]:
@@ -148,7 +159,11 @@ class RoomManager:
         game_room = self.get_room(room_id)
         if not game_room:
             return False
-        return game_room.join(player_info)
+        ret = game_room.join(player_info)
+        if ret:
+            joined_name = str(player_info.get('name') or player_info.get('account') or '').strip() or '匿名玩家'
+            game_room.add_system_message(f"[{joined_name}] 進入了村莊")
+        return ret
 
     def is_trip_taken(self, room_id: int, trip: str) -> bool:
         game_room = self.get_room(room_id)
@@ -166,7 +181,11 @@ class RoomManager:
         game_room = self.get_room(room_id)
         if not game_room:
             return False
+        leaving_player = game_room.players.get(account)
+        leaving_name = str(getattr(leaving_player, 'name', '') or getattr(leaving_player, 'account', '') or account).strip() or account
         ret = game_room.kick(account)
+        if ret:
+            game_room.add_system_message(f"[{leaving_name}] 離開了村莊")
         # 不再因最後一位玩家離開而自動廢村。
         # TODO: 後續改由獨立的廢村機制（例如超時、村長操作、排程任務）管理房間生命週期。
         return ret
@@ -337,14 +356,38 @@ class RoomManager:
             'Green': {
                 'deck': pile_count('Green'),
                 'discard': pile_count('Green Discard'),
+                'discard_cards': [
+                    {
+                        'id': f"Green:{str(getattr(card, 'name', '') or '')}",
+                        'name': str(getattr(card, 'name', '') or ''),
+                        'type': str(getattr(card, 'type', '') or ''),
+                    }
+                    for card in (board_deck.get('Green Discard', []) or [])
+                ],
             },
             'White': {
                 'deck': pile_count('White'),
                 'discard': pile_count('White Discard'),
+                'discard_cards': [
+                    {
+                        'id': f"White:{str(getattr(card, 'name', '') or '')}",
+                        'name': str(getattr(card, 'name', '') or ''),
+                        'type': str(getattr(card, 'type', '') or ''),
+                    }
+                    for card in (board_deck.get('White Discard', []) or [])
+                ],
             },
             'Black': {
                 'deck': pile_count('Black'),
                 'discard': pile_count('Black Discard'),
+                'discard_cards': [
+                    {
+                        'id': f"Black:{str(getattr(card, 'name', '') or '')}",
+                        'name': str(getattr(card, 'name', '') or ''),
+                        'type': str(getattr(card, 'type', '') or ''),
+                    }
+                    for card in (board_deck.get('Black Discard', []) or [])
+                ],
             },
         }
 
@@ -408,6 +451,8 @@ class RoomManager:
         visible_active_card_name = None
         if current_player and active_card:
             card_target = str(getattr(active_card, 'target', '') or '')
+            if bool(getattr(game_room, '_initial_green_card_executed', False)) and str(getattr(active_card, 'color', '') or '').lower() == 'green':
+                card_target = 'self'
             target_accounts = []
             if card_target in ('other', 'one'):
                 target_players = [player for player in game_room.players.values() if bool(getattr(player, 'is_alive', False))]
@@ -498,8 +543,11 @@ class RoomManager:
                 'current_account': current_player.account if current_player else None,
                 'status': current_player.status if current_player else None,
             },
+            'turn_timeout': game_room.get_turn_timeout_snapshot() if hasattr(game_room, 'get_turn_timeout_snapshot') else None,
+            'boomed_notice': dict(getattr(game_room, 'latest_boom_notice', {}) or {}),
+            'chat_messages': list(getattr(game_room, 'chat_messages', []) or []),
             'action_order': list(game_room.action_order or []),
-            'move_options': [area.name for area in game_room._move_area_options],
+            'move_options': [area.name for area in (getattr(game_room, '_move_area_options', []) or []) if area],
             'compass_options': [area.name for area in (getattr(game_room, '_compass_areas', []) or [])] if len(getattr(game_room, '_compass_areas', []) or []) > 1 else [],
             'pending_kill_loot': {
                 'attacker_account': pending_loot['attacker'].account,
@@ -548,11 +596,16 @@ class RoomManager:
                     'character_reveal': p.character_reveal,
                     'character': p.character.name if (p.character and game_room.can_view_character(viewer_account, account)) else None,
                     'character_camp': p.character.camp if (p.character and game_room.can_view_character(viewer_account, account)) else None,
+                    'can_use_ability': bool(p.can_use_ability) if p.character else None,
+                    'ability_status': str(getattr(p, 'ability_status', '') or '') if p.character else None,
+                    'character_ability_timing': int(getattr(p.character, 'ability_timing', 0) or 0) if p.character else None,
+                    'character_ability_target': str(getattr(p.character, 'target', '') or '') if p.character else None,
                     'self_character': p.character.name if p.character and account == viewer_account else None,
                     'self_character_camp': p.character.camp if p.character and account == viewer_account else None,
                     'self_can_use_ability': bool(p.can_use_ability) if account == viewer_account else None,
                     'self_character_ability_timing': int(getattr(p.character, 'ability_timing', 0) or 0) if p.character and account == viewer_account else None,
                     'self_character_ability_target': str(getattr(p.character, 'target', '') or '') if p.character and account == viewer_account else None,
+                    'self_atk_type': int(getattr(p, 'atk_type', 1) or 1) if account == viewer_account else None,
                     'is_invulnerable': bool(getattr(p, 'immortal', False) or getattr(p, 'eqp_immortal', False)),
                     'invulnerability_sources': serialize_invulnerability_sources(p),
                     'equipment': [eq.name for eq in p.equipment_list],
@@ -660,9 +713,27 @@ class RoomManager:
         if kind == 'player':
             return game_room.players.get(target_id)
         if kind == 'area':
-            for area in game_room.board.field:
-                if area.name == target_id:
+            board = getattr(game_room, 'board', None)
+            for area in (getattr(board, 'field', []) or []):
+                if area and area.name == target_id:
                     return area
+        if kind == 'discard':
+            board = getattr(game_room, 'board', None)
+            card_deck = getattr(board, 'card_deck', {}) or {}
+            target_text = str(target_id or '').strip()
+            if not target_text:
+                return None
+            color_hint = ''
+            card_name = target_text
+            if ':' in target_text:
+                color_hint, card_name = target_text.split(':', 1)
+                color_hint = str(color_hint or '').strip().title()
+                card_name = str(card_name or '').strip()
+            discard_keys = [f'{color_hint} Discard'] if color_hint else ['Green Discard', 'White Discard', 'Black Discard']
+            for discard_key in discard_keys:
+                for card in (card_deck.get(discard_key, []) or []):
+                    if str(getattr(card, 'name', '') or '').strip() == card_name:
+                        return card
         return None
 
     def api_dispatch(self, action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -703,8 +774,12 @@ class RoomManager:
                 return self.api_toggle_ready(payload)
             if action == 'vote_kick':
                 return self.api_vote_kick(payload)
+            if action == 'roll_call':
+                return self.api_roll_call(payload)
             if action == 'reveal_character':
                 return self.api_reveal_character(payload)
+            if action == 'send_chat':
+                return self.api_send_chat(payload)
             if action == 'register_trip':
                 return self.api_register_trip(payload)
             if action == 'change_trip':
@@ -717,6 +792,8 @@ class RoomManager:
                 return self.api_delete_trip_records(payload)
             if action == 'submit_trip_rating':
                 return self.api_submit_trip_rating(payload)
+            if action == 'upload_avatar':
+                return self.api_upload_avatar(payload)
             return self._error(action, 'ACTION_NOT_SUPPORTED', 'action is not supported', 404)
         except ValueError as e:
             return self._error(action, 'BAD_REQUEST', str(e), 400)
@@ -737,6 +814,7 @@ class RoomManager:
         is_chat_room = bool(payload.get('is_chat_room', False))
         expansion_mode = self._normalize_expansion_mode(payload.get('expansion_mode', 'all'))
         enable_initial_green_card = bool(payload.get('enable_initial_green_card', False))
+        turn_timeout_minutes = int(payload.get('turn_timeout_minutes', 3) or 3)
         if not room_name:
             return self._error('create_room', 'ROOM_NAME_REQUIRED', 'room_name is required', 400)
         game_room = self.create_room(
@@ -750,6 +828,7 @@ class RoomManager:
             is_chat_room=is_chat_room,
             expansion_mode=expansion_mode,
             enable_initial_green_card=enable_initial_green_card,
+            turn_timeout_minutes=turn_timeout_minutes,
         )
         return self._success('create_room', self._serialize_room(game_room))
 
@@ -860,6 +939,7 @@ class RoomManager:
         if bool(getattr(game_room, 'is_chat_room', False)):
             return self._error('start_game', 'CHAT_ROOM_NO_GAME', '聊天村不可開始遊戲', 400)
         game_room = self.start_game(room_id, seed=seed)
+        game_room.add_system_message('遊戲開始，發放角色並進入回合流程')
         viewer_account = str(payload.get('account') or payload.get('viewer_account') or '').strip() or None
         return self._success('start_game', self._serialize_room_state(game_room, viewer_account=viewer_account))
 
@@ -910,6 +990,7 @@ class RoomManager:
         if bool(target_player.profile.get('is_ready', False)):
             return self._error('change_color', 'PLAYER_READY', '已準備完成的玩家不可更換顏色', 400)
         target_player.choose_color(color)
+        game_room.add_system_message(f"[{target_player.name or account}] 更換顏色為 {color}")
         game_room.touch_activity()
         return self._success('change_color', self._serialize_room_state(game_room, viewer_account=account))
 
@@ -931,11 +1012,14 @@ class RoomManager:
 
         current_ready = bool(target_player.profile.get('is_ready', False))
         target_player.profile['is_ready'] = not current_ready
+        ready_text = '已準備' if target_player.profile['is_ready'] else '取消準備'
+        game_room.add_system_message(f"[{target_player.name or account}] {ready_text}")
         game_room.touch_activity()
 
         player_count = len(game_room.players)
         all_ready = (not bool(getattr(game_room, 'is_chat_room', False))) and player_count >= 4 and all(bool(p.profile.get('is_ready', False)) for p in game_room.players.values())
         if all_ready:
+            game_room.add_system_message('全員準備完成，遊戲開始')
             self.start_game(room_id)
 
         return self._success('toggle_ready', self._serialize_room_state(game_room, viewer_account=account))
@@ -964,18 +1048,44 @@ class RoomManager:
         if bool(voter.profile.get('is_village_manager', False)):
             if not game_room.kick(target_account):
                 return self._error('vote_kick', 'KICK_FAILED', '剔除失敗', 400)
+            game_room.add_system_message(f"村長 [{voter.name or voter_account}] 剔除了 [{target.name or target_account}]")
             game_room.clear_all_kick_votes()
             game_room.reset_all_ready()
             return self._success('vote_kick', self._serialize_room_state(game_room, viewer_account=voter_account))
 
         vote_count = game_room.cast_kick_vote(voter_account, target_account)
+        game_room.add_system_message(f"[{voter.name or voter_account}] 投票剔除 [{target.name or target_account}]（目前 {vote_count} 票）")
         if vote_count >= 3:
             if not game_room.kick(target_account):
                 return self._error('vote_kick', 'KICK_FAILED', '剔除失敗', 400)
+            game_room.add_system_message(f"[{target.name or target_account}] 已被投票剔除")
             game_room.clear_all_kick_votes()
             game_room.reset_all_ready()
 
         return self._success('vote_kick', self._serialize_room_state(game_room, viewer_account=voter_account))
+
+    def api_roll_call(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        room_id = payload.get('room_id')
+        account = str(payload.get('account') or '').strip()
+        if room_id is None or not account:
+            return self._error('roll_call', 'INVALID_PAYLOAD', 'room_id and account are required', 400)
+
+        game_room = self.get_room(room_id)
+        if not game_room:
+            return self._error('roll_call', 'ROOM_NOT_FOUND', '房間不存在', 404)
+        if int(getattr(game_room, 'room_status', 0) or 0) != 1:
+            return self._error('roll_call', 'NOT_RECRUITING', '僅招募中可使用點名功能', 400)
+
+        requester = game_room.players.get(account)
+        if not requester:
+            return self._error('roll_call', 'PLAYER_NOT_FOUND', '玩家不存在', 404)
+        if not bool(requester.profile.get('is_village_manager', False)):
+            return self._error('roll_call', 'NOT_VILLAGE_MANAGER', '只有村長可以點名', 403)
+
+        game_room.reset_all_ready()
+        game_room.add_system_message(f"村長 [{requester.name or account}] 發起點名，所有人需重新準備")
+        game_room.touch_activity()
+        return self._success('roll_call', self._serialize_room_state(game_room, viewer_account=account))
 
     def api_reveal_character(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         room_id = payload.get('room_id')
@@ -995,8 +1105,29 @@ class RoomManager:
         if not player.character:
             return self._error('reveal_character', 'NO_CHARACTER', '玩家未被分配角色', 400)
         player.reveal_character()
+        role_name = str(getattr(getattr(player, 'character', None), 'name', '') or '未知角色')
+        game_room.add_system_message(f"[{player.name or account}] 主動揭示身份：{role_name}")
         game_room.touch_activity()
         return self._success('reveal_character', self._serialize_room_state(game_room, viewer_account=account))
+
+    def api_send_chat(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        room_id = payload.get('room_id')
+        account = str(payload.get('account') or '').strip()
+        message = str(payload.get('message') or '').strip()
+        if room_id is None or not account or not message:
+            return self._error('send_chat', 'INVALID_PAYLOAD', 'room_id/account/message are required', 400)
+        game_room = self.get_room(room_id)
+        if not game_room:
+            return self._error('send_chat', 'ROOM_NOT_FOUND', '房間不存在', 404)
+        sender = game_room.players.get(account)
+        if not sender:
+            return self._error('send_chat', 'PLAYER_NOT_FOUND', '玩家不存在', 404)
+        if len(message) > 200:
+            return self._error('send_chat', 'MESSAGE_TOO_LONG', '訊息最多 200 字', 400)
+
+        game_room.add_chat_message(account=account, name=str(sender.name or account), text=message)
+        game_room.touch_activity()
+        return self._success('send_chat', self._serialize_room_state(game_room, viewer_account=account))
 
     def api_abolish_room(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         room_id = payload.get('room_id')
@@ -1193,3 +1324,24 @@ class RoomManager:
         except ValueError as exc:
             return self._error('submit_trip_rating', 'BAD_REQUEST', str(exc), 400)
         return self._success('submit_trip_rating', result)
+
+    def api_get_avatar_catalog(self) -> Dict[str, Any]:
+        return {
+            'avatars': self.avatar_store.list_custom_avatars(),
+        }
+
+    def api_upload_avatar(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        trip = str(payload.get('trip', '') or '').strip()
+        password = str(payload.get('password', '') or '')
+        name = str(payload.get('name', '') or '').strip()
+        color = str(payload.get('color', '') or '').strip() or '#9aa4ad'
+        image_data_url = str(payload.get('image_data_url', '') or '').strip()
+        if not trip or not password or not name or not image_data_url:
+            return self._error('upload_avatar', 'INVALID_PAYLOAD', 'trip/password/name/image_data_url are required', 400)
+        if not self.record_store.verify_trip_password(trip, password):
+            return self._error('upload_avatar', 'LOGIN_FAILED', 'TRIP 或密碼錯誤', 401)
+        try:
+            avatar = self.avatar_store.upload_avatar(trip, name, color, image_data_url)
+        except ValueError as exc:
+            return self._error('upload_avatar', 'BAD_REQUEST', str(exc), 400)
+        return self._success('upload_avatar', avatar)

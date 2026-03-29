@@ -7,6 +7,7 @@ cd /d "%ROOT_DIR%"
 set "SERVER_HOST=127.0.0.1"
 set "SERVER_PORT=5600"
 set "BOOTSTRAP_TEST_ROOM=0"
+set "SERVER_DB_PATH=%ROOT_DIR%backend\data\shadowhunters.db"
 
 if exist "%ROOT_DIR%server.env" (
     for /f "usebackq tokens=1,* delims==" %%A in ("%ROOT_DIR%server.env") do (
@@ -15,10 +16,13 @@ if exist "%ROOT_DIR%server.env" (
                 if /I "%%A"=="HOST" set "SERVER_HOST=%%B"
                 if /I "%%A"=="PORT" set "SERVER_PORT=%%B"
                 if /I "%%A"=="BOOTSTRAP_TEST_ROOM" set "BOOTSTRAP_TEST_ROOM=%%B"
+                if /I "%%A"=="DB_PATH" set "SERVER_DB_PATH=%%B"
             )
         )
     )
 )
+
+set "SHADOWHUNTERS_DB_PATH=%SERVER_DB_PATH%"
 
 set "BOOTSTRAP_ENABLED=0"
 if /I "%BOOTSTRAP_TEST_ROOM%"=="1" set "BOOTSTRAP_ENABLED=1"
@@ -36,6 +40,7 @@ echo Starting ShadowHunters server...
 echo Using Python: %PYTHON%
 echo Host: %SERVER_HOST%
 echo Port: %SERVER_PORT%
+echo DB Path: %SHADOWHUNTERS_DB_PATH%
 echo Bootstrap test room: %BOOTSTRAP_ENABLED%
 
 if "%BOOTSTRAP_ENABLED%"=="1" if exist "%ROOT_DIR%scripts\bootstrap_test_room.py" (

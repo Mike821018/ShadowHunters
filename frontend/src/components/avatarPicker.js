@@ -1,5 +1,9 @@
+import { t } from '../i18n.js';
+
 export function bindAvatarPicker({ state, el, avatarOptions, avatarPageSize, esc }) {
   if (!el.avatarOptionGrid || !el.avatarPreview || !el.avatarValue) return;
+
+  let filteredOptions = Array.isArray(avatarOptions) ? avatarOptions.slice() : [];
 
   const fitInputWidthByDigits = (input, value, minDigits = 1) => {
     if (!input) return;
@@ -42,14 +46,14 @@ export function bindAvatarPicker({ state, el, avatarOptions, avatarPageSize, esc
   };
 
   const renderAvatarPage = () => {
-    const totalPages = Math.max(1, Math.ceil(avatarOptions.length / avatarPageSize));
+    const totalPages = Math.max(1, Math.ceil(filteredOptions.length / avatarPageSize));
     if (state.avatarPage < 1) state.avatarPage = 1;
     if (state.avatarPage > totalPages) state.avatarPage = totalPages;
 
     const start = (state.avatarPage - 1) * avatarPageSize;
-    const pageItems = avatarOptions.slice(start, start + avatarPageSize);
+    const pageItems = filteredOptions.slice(start, start + avatarPageSize);
 
-    if (el.avatarPageInfo) el.avatarPageInfo.textContent = `/ ${totalPages} 頁`;
+    if (el.avatarPageInfo) el.avatarPageInfo.textContent = `/ ${totalPages}`;
     if (el.avatarPageInput) {
       el.avatarPageInput.value = String(state.avatarPage);
       el.avatarPageInput.max = String(totalPages);
@@ -152,6 +156,31 @@ export function bindAvatarPicker({ state, el, avatarOptions, avatarPageSize, esc
 
     preventEnterSubmit(el.avatarNumberInput, () => el.avatarNumberInput.onchange());
   }
+
+  const searchInput = document.getElementById('avatarPickerSearchInput');
+  const searchButton = document.getElementById('btnAvatarPickerSearch');
+  const searchClearButton = document.getElementById('btnAvatarPickerSearchClear');
+  const applySearch = () => {
+    const query = String(searchInput?.value || '').trim().toLowerCase();
+    filteredOptions = query
+      ? avatarOptions.filter((item) => item.name.toLowerCase().includes(query) || String(item.id).includes(query))
+      : avatarOptions.slice();
+    state.avatarPage = 1;
+    renderAvatarPage();
+  };
+
+  searchButton?.addEventListener('click', applySearch);
+  searchClearButton?.addEventListener('click', () => {
+    if (searchInput) searchInput.value = '';
+    filteredOptions = avatarOptions.slice();
+    state.avatarPage = 1;
+    renderAvatarPage();
+  });
+  searchInput?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    applySearch();
+  });
 
   renderAvatarPage();
 }

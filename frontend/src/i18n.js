@@ -87,17 +87,28 @@ export function t(key, params = {}) {
  * @param {Document|Element} [root=document]
  */
 export function applyI18n(root = document) {
+  const parseArgs = (el) => {
+    const raw = el.getAttribute('data-i18n-args');
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+
   root.querySelectorAll('[data-i18n]').forEach((el) => {
-    el.textContent = t(el.dataset.i18n);
+    el.textContent = t(el.dataset.i18n, parseArgs(el));
   });
   root.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
-    el.placeholder = t(el.dataset.i18nPlaceholder);
+    el.placeholder = t(el.dataset.i18nPlaceholder, parseArgs(el));
   });
   root.querySelectorAll('[data-i18n-title]').forEach((el) => {
-    el.title = t(el.dataset.i18nTitle);
+    el.title = t(el.dataset.i18nTitle, parseArgs(el));
   });
   root.querySelectorAll('[data-i18n-aria]').forEach((el) => {
-    el.setAttribute('aria-label', t(el.dataset.i18nAria));
+    el.setAttribute('aria-label', t(el.dataset.i18nAria, parseArgs(el)));
   });
 }
 

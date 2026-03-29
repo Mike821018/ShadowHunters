@@ -69,6 +69,7 @@ export function bindLobbyEvents({
     const is_chat_room = el.chatVillageCheck?.checked ?? false;
     const expansion_mode = String(el.expansionModeSelect?.value || 'all');
     const enable_initial_green_card = el.enableInitialGreenCardCheck?.checked ?? false;
+    const turn_timeout_minutes = Math.max(1, Number.parseInt(el.turnTimeoutSelect?.value || '3', 10) || 3);
     if (!baseName) {
       toast(t('toast.room_name_required'), 'error');
       return;
@@ -97,6 +98,7 @@ export function bindLobbyEvents({
       is_chat_room,
       expansion_mode,
       enable_initial_green_card,
+      turn_timeout_minutes,
     });
     state.roomId = data.room_id;
     persistSession(state);
@@ -110,6 +112,7 @@ export function bindLobbyEvents({
     if (el.hideTripCheck) el.hideTripCheck.checked = true;
     if (el.chatVillageCheck) el.chatVillageCheck.checked = false;
     if (el.expansionModeSelect) el.expansionModeSelect.value = 'all';
+    if (el.turnTimeoutSelect) el.turnTimeoutSelect.value = '3';
     if (el.enableInitialGreenCardCheck) el.enableInitialGreenCardCheck.checked = false;
     await refreshRooms();
     goToRoomPage(data.room_id);

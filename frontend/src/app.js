@@ -1,4 +1,5 @@
 import { bindTransportModeEvents } from './bootstrap.js';
+import { loadAvatarCatalog } from './avatarConfig.js';
 import { AREA_NAMES } from './constants.js';
 import { initAvatarGalleryPage } from './pages/avatarGallery.js';
 import { initRegisterPage } from './pages/register.js';
@@ -93,6 +94,7 @@ const renderState = (data) => renderRoomState({
 
 async function boot() {
   const currentLang = initI18n();
+  await loadAvatarCatalog();
   applyI18n();
   bindLangSwitcher(currentLang);
 
@@ -129,7 +131,7 @@ async function boot() {
     await initLobbyPage({ loadAnnouncement: () => loadAnnouncement(el), refreshRooms });
   }
 
-  if (state.page === 'room') {
+  if (state.page === 'room' || state.page === 'replay-room') {
     await initRoomPage({ state, dispatch, renderState, setVillageInfoMessage, goToLobbyPage });
   }
 
@@ -159,7 +161,7 @@ async function boot() {
   }
 
   if (state.page === 'avatar-gallery') {
-    await initAvatarGalleryPage({ state, toast });
+    await initAvatarGalleryPage({ state, toast, dispatch });
   }
 
   if (state.page === 'version-notes') {
