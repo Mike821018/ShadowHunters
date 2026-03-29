@@ -136,6 +136,25 @@ git show v0.1.0-test
 - 如需修改提交訊息，使用 `git commit --amend`
 - 標籤推送需要明確的 `git push origin <tag-name>` 指令
 
+## 測試檔案歸位準則（必遵守）
+
+為避免新 Session 重複整理，測試相關檔案一律放在 `test_artifacts/` 下，不可散落於專案根目錄。
+
+- `test_artifacts/scripts/`：測試腳本（例如 `test_issue_*.py`、`verify_*.py`）
+- `test_artifacts/logs/`：測試輸出文字與執行日誌（例如 `*.txt`）
+- `test_artifacts/summaries/`：測試報告 JSON（例如 `simulation_run_*.json`、`*_results.json`）
+- `test_artifacts/plans/`：測試計畫與測試說明（例如 `*_TEST_PLAN.md`、`test_*.md`）
+
+禁止事項：
+- 不要新增根目錄測試檔（`test_*.*`、`verify_*.*`）
+- 不要把一次性測試結果放在根目錄
+
+提交前自檢：
+```bash
+git status --short
+```
+若看到根目錄出現 `test_` 或 `verify_` 開頭檔案，先移入 `test_artifacts/` 對應子目錄再提交。
+
 ---
 
 完成以上步驟後，本版本即可正式納入版本控制歷史。
