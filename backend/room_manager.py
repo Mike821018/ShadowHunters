@@ -324,6 +324,8 @@ class RoomManager:
             'room_status': game_room.room_status,
             'is_chat_room': bool(getattr(game_room, 'is_chat_room', False)),
             'expansion_mode': self._normalize_expansion_mode(getattr(game_room, 'expansion_mode', 'all')),
+            'enable_initial_green_card': bool(getattr(game_room, 'enable_initial_green_card', False)),
+            'turn_timeout_minutes': int(getattr(game_room, 'turn_timeout_seconds', 180) or 180) // 60,
             'max_players': max(1, int(getattr(game_room, 'max_players', 8) or 8)),
             'player_count': len(game_room.players),
             'players': list(game_room.players.keys()),
@@ -616,6 +618,7 @@ class RoomManager:
                     'equipment': [eq.name for eq in p.equipment_list],
                 }
                 for account, p in game_room.players.items()
+                if int(getattr(game_room, 'room_status', 0) or 0) == 1 or bool(getattr(p, 'character', None))
             },
         }
 
@@ -845,6 +848,8 @@ class RoomManager:
         game_room = self.get_room(room_id)
         if not game_room:
             return self._error('join_room', 'ROOM_NOT_FOUND', '房間不存在', 404)
+        if int(getattr(game_room, 'room_status', 0) or 0) != 1:
+            return self._error('join_room', 'ROOM_NOT_RECRUITING', '遊戲已開始或已結束，無法住民登記', 400)
         trip_raw = str(player_info.get('trip') or '').strip()
         trip_display = self.encrypt_trip_like_higu(trip_raw) if trip_raw else ''
         account = str(player_info.get('account') or '').strip()

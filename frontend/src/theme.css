@@ -332,6 +332,18 @@ legend {
   align-items: stretch;
 }
 
+.room-top-row.room-info-header {
+  grid-template-columns: 1fr;
+}
+
+.room-top-row.room-info-header > fieldset {
+  width: 100%;
+}
+
+.room-top-row.room-player-row {
+  grid-template-columns: 1fr;
+}
+
 .room-top-row > fieldset {
   margin: 0;
 }
@@ -633,7 +645,7 @@ legend {
 
 .stage-field-detail-panel {
   position: fixed;
-  z-index: 30;
+  z-index: 120;
   width: min(300px, calc(100vw - 24px));
   border: 1px solid #d6e4ef;
   border-radius: 10px;
@@ -1903,14 +1915,14 @@ legend {
 
 .avatar-crown {
   position: absolute;
-  left: -6px;
-  top: -8px;
-  width: 18px;
-  height: 18px;
+  left: -10px;
+  top: -12px;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 20px;
   line-height: 1;
   z-index: 12;
 }
@@ -2456,11 +2468,51 @@ legend {
 
 .village-info-list {
   margin: 0;
-  padding-left: 18px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .village-info-list li {
-  margin: 3px 0;
+  margin: 0;
+}
+
+.village-info-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  width: 100%;
+}
+
+.village-info-row strong {
+  color: #245;
+  margin-right: 6px;
+}
+
+.village-info-row-primary,
+.village-info-row-meta,
+.village-info-row-actions {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fbfe;
+  padding: 8px 10px;
+}
+
+.village-info-row-actions {
+  background: #f3f9ff;
+}
+
+.village-info-item {
+  display: inline-flex;
+  align-items: center;
+}
+
+.village-info-settings {
+  color: #667;
+  font-size: 13px;
 }
 
 .village-info-list li.room-timeout-warning {
@@ -3062,5 +3114,479 @@ legend {
 
   .guide-section {
     margin-bottom: 16px;
+  }
+}
+
+/* Preview version layout styles */
+.room-preview-info-chat-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 340px) 1fr;
+  grid-template-areas:
+    "info chat"
+    "players players";
+  gap: 12px;
+  margin-bottom: 12px;
+  align-items: stretch;
+}
+
+.room-preview-info-chat-row > fieldset {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.room-preview-info-chat-row > fieldset > .card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.room-preview-info-chat-row .room-chat-surface {
+  flex: 1;
+  height: 420px;
+  min-height: 420px;
+  max-height: 420px;
+  align-items: stretch;
+}
+
+.room-preview-info-fieldset {
+  grid-area: info;
+}
+
+.room-preview-info-chat-row > .room-chat-fieldset {
+  grid-area: chat;
+}
+
+.room-preview-player-fieldset {
+  grid-area: players;
+  width: 100%;
+}
+
+.room-preview-player-fieldset .card-body {
+  display: block;
+}
+
+.room-preview-stage-row {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+}
+
+.room-preview-stage-row > fieldset {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.room-preview-stage-row > fieldset > .card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Preview: make field cards horizontal (landscape) */
+[data-page="room-preview"] .table-stage {
+  min-height: 100%;
+  height: 100%;
+}
+
+[data-page="room-preview"] .stage-card-field {
+  width: clamp(80px, 8vw, 98px);
+  height: clamp(56px, 6vw, 72px);
+  padding: 6px 5px 5px;
+  gap: 4px;
+}
+
+[data-page="room-preview"] .stage-field-number-list {
+  min-height: 20px;
+  gap: 4px;
+}
+
+[data-page="room-preview"] .stage-field-number,
+[data-page="room-preview"] .stage-field-number-static {
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
+}
+
+[data-page="room-preview"] .stage-field-occupants {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  min-height: 24px;
+}
+
+/* Preview: separate field cards #1 and #2 so they don't touch */
+[data-page="room-preview"] .stage-card-1 { left: 18%; }
+[data-page="room-preview"] .stage-card-2 { left: 33%; }
+
+/* Preview: shift deck/discard columns horizontally */
+[data-page="room-preview"] .stage-card-7,
+[data-page="room-preview"] .stage-card-8,
+[data-page="room-preview"] .stage-card-9 {
+  left: 71%;
+}
+
+[data-page="room-preview"] .stage-card-10,
+[data-page="room-preview"] .stage-card-11,
+[data-page="room-preview"] .stage-card-12 {
+  left: 83%;
+}
+
+/* Preview: move #3, #6 and dice upward by about 3/4 card distance */
+[data-page="room-preview"] .stage-card-3 { top: 34%; }
+[data-page="room-preview"] .stage-card-4 { top: 34%; }
+[data-page="room-preview"] .stage-card-5 { top: 60%; }
+[data-page="room-preview"] .stage-card-6 { top: 60%; }
+[data-page="room-preview"] .stage-center-badges { top: 46%; }
+
+/* Preview: vertical fine-tuning for pile/control groups */
+[data-page="room-preview"] .stage-card-8 { top: 27%; }
+[data-page="room-preview"] .stage-card-11 { top: 27%; }
+[data-page="room-preview"] .stage-card-9 { top: 48%; }
+[data-page="room-preview"] .stage-card-12 { top: 48%; }
+[data-page="room-preview"] .stage-card-active { top: 67%; }
+[data-page="room-preview"] .stage-next-step-button { bottom: 16%; }
+[data-page="room-preview"] .stage-pile-title-discard { top: -18%; }
+
+/* Preview: make 3-color deck/discard piles and active card horizontal */
+[data-page="room-preview"] .stage-card-pile,
+[data-page="room-preview"] .stage-card-active {
+  width: clamp(64px, 6.8vw, 80px);
+  height: clamp(40px, 4.4vw, 52px);
+}
+
+.room-preview-game-fieldset .room-game-surface,
+.room-preview-system-fieldset .room-system-surface {
+  height: 300px;
+  min-height: 300px;
+  max-height: 300px;
+}
+
+.room-preview-player-row > fieldset {
+  width: 100%;
+}
+
+.room-preview-player-row .card-body {
+  display: block;
+}
+
+.room-system-surface {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.system-messages {
+  flex: 1;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.system-line {
+  display: block;
+  margin-bottom: 4px;
+  color: #665500;
+  background: #fffbf0;
+  border-left: 3px solid #ffcc99;
+  padding: 4px 6px;
+  border-radius: 2px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.system-line.system-timeout {
+  border-left-color: #ffaa00;
+  background: #fff9f0;
+}
+
+.system-line.system-boomed {
+  border-left-color: #ff5555;
+  background: #fff0f0;
+  color: #880000;
+}
+
+/* ============================================================
+   Preview-only player card overrides
+   Scoped to [data-page="room-preview"] — zero impact on real room
+
+   Layout (per card):
+     ┌───────────────────────────────────────┐
+     │ [avatar] │ 🩸dmg ❤️hp                 │
+     │  30×30   │ 🎯 status                  │
+     │          │ 📍 area                    │
+     │          │ [char badge] char name     │
+     ├──────────┴──────────┬─────────────────┤
+     │ [■] nickname        │ ◆(col)  trip    │
+     ├─────────────────────┴─────────────────┤
+     │ □ □ □  equipment chips (scrollable)   │
+     └───────────────────────────────────────┘
+   ============================================================ */
+
+/* --- Slot: remove forced 260px min-height --- */
+[data-page="room-preview"] .seat-slot {
+  min-height: 148px;
+}
+
+[data-page="room-preview"] .seat-slot > .player-card {
+  height: 148px;
+  min-height: 148px;
+  max-height: 148px;
+}
+
+/* --- Card shell: 2-col grid (nick | trip on row 2), tight padding --- */
+[data-page="room-preview"] .player-card {
+  padding: 4px 5px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto 1fr;
+  gap: 0;
+}
+
+/* --- Row 1: header spans both columns --- */
+[data-page="room-preview"] .player-card-head {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 8px;
+  align-items: start;
+  margin-bottom: 2px;
+}
+
+/* Colour cell hidden in header (DOM-patched to nickname row) */
+[data-page="room-preview"] .player-card-head .player-color-cell {
+  display: none;
+}
+
+/* Avatar: original size */
+[data-page="room-preview"] .avatar-badge {
+  width: 56px;
+  height: 56px;
+}
+
+/* id-block: block layout — HP+status inline, then area/char on own lines */
+[data-page="room-preview"] .player-id-block {
+  display: block;
+  min-width: 0;
+}
+
+/* HP strong inline so status can follow on same line */
+[data-page="room-preview"] .player-id-block strong {
+  display: inline;
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+/* Status sits right after HP on the same line */
+[data-page="room-preview"] .player-status-inline {
+  display: inline;
+  margin-left: 5px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/* Area row DOM-patched inside id-block */
+[data-page="room-preview"] .player-id-block .player-card-meta {
+  display: block;
+  margin-top: 1px;
+  font-size: 12px;
+  gap: 0;
+}
+
+/* Character row DOM-patched inside id-block */
+[data-page="room-preview"] .player-id-block .player-card-meta-role {
+  margin-top: 1px;
+  font-size: 12px;
+}
+
+/* --- Row 2 left: colour swatch + nickname (no diamond) --- */
+[data-page="room-preview"] .player-card-hp {
+  grid-column: 1;
+  grid-row: 2;
+  margin-top: 2px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Diamond moved to trip row – hide it here */
+[data-page="room-preview"] .player-card-hp .trip-prefix-diamond {
+  display: none;
+}
+
+/* Colour swatch patched into this row */
+[data-page="room-preview"] .player-card-hp .player-color-cell {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+[data-page="room-preview"] .player-card-hp .color-chip-static,
+[data-page="room-preview"] .player-card-hp .color-chip-trigger {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+[data-page="room-preview"] .player-card-nickname {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* --- Row 2 right: coloured diamond + trip --- */
+[data-page="room-preview"] .player-card-role {
+  grid-column: 2;
+  grid-row: 2;
+  margin-top: 2px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+}
+
+/* Hide original fixed-colour diamond (replaced by DOM-patched coloured one) */
+[data-page="room-preview"] .trip-prefix-diamond-fixed {
+  display: none;
+}
+
+/* Coloured ◆ now lives in trip row */
+[data-page="room-preview"] .player-card-role .trip-prefix-diamond {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* --- Row 3: equipment (full-width, single-line scrollable) --- */
+[data-page="room-preview"] .equip-row {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  margin-top: 3px;
+  gap: 3px;
+  max-height: 44px;
+  flex-wrap: wrap;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  padding-right: 2px;
+}
+
+/* --- Village info: remove card backgrounds, items on separate lines --- */
+[data-page="room-preview"] .village-info-row-primary,
+[data-page="room-preview"] .village-info-row-meta,
+[data-page="room-preview"] .village-info-row-actions {
+  border: none;
+  background: none;
+  padding: 1px 0;
+  border-radius: 0;
+}
+
+[data-page="room-preview"] .village-info-row-primary .village-info-item {
+  display: block;
+}
+
+[data-page="room-preview"] .village-info-row-primary .village-info-item strong {
+  display: block;
+  margin-right: 0;
+}
+
+[data-page="room-preview"] .village-info-row-meta .village-info-item {
+  display: inline-flex;
+  align-items: center;
+}
+
+[data-page="room-preview"] .village-info-row-meta .village-info-item strong {
+  display: inline;
+}
+
+[data-page="room-preview"] .village-info-value {
+  display: block;
+}
+
+[data-page="room-preview"] .village-info-settings-line {
+  display: block;
+  width: 100%;
+  color: #778;
+  font-size: 11px;
+  padding-left: 0;
+}
+
+[data-page="room-preview"] .village-info-settings {
+  display: block;
+  padding-left: 1em;
+  color: #778;
+  font-size: 11px;
+}
+
+/* Damage meter uses its own row styles to avoid coupling with village info rules */
+[data-page="room-preview"] .damage-meter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fbfe;
+  padding: 8px 10px;
+}
+
+[data-page="room-preview"] .damage-meter-row + .damage-meter-row {
+  margin-top: 8px;
+}
+
+[data-page="room-preview"] .damage-meter-item {
+  display: inline-flex;
+  align-items: center;
+}
+
+[data-page="room-preview"] .damage-meter-item strong {
+  color: #245;
+  margin-right: 6px;
+}
+
+[data-page="room-preview"] .equip-chip {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0;
+  border-radius: 4px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+@media (max-width: 960px) {
+  .room-preview-info-chat-row {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "info"
+      "chat"
+      "players";
+  }
+
+  .room-preview-stage-row {
+    grid-template-columns: 1fr;
+  }
+
+  .room-preview-game-fieldset .room-game-surface,
+  .room-preview-system-fieldset .room-system-surface {
+    max-height: none;
   }
 }

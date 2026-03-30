@@ -1,4 +1,6 @@
 export function createAppState() {
+  const rawPage = document.body?.dataset?.page || 'lobby';
+  const page = rawPage === 'room-preview' ? 'room' : rawPage;
   return {
     roomId: null,
     account: '',
@@ -7,6 +9,6 @@ export function createAppState() {
     autoRefreshSeconds: 0,
     eventSeq: 0,
     avatarPage: 1,
-    page: document.body?.dataset?.page || 'lobby',
+    page,
   };
 }

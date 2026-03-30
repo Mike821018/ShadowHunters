@@ -1235,8 +1235,58 @@ class room(Thread):
                 self.add_system_message(f"[{p.name or p.account}] 攻擊擲骰：D4={D4} D6={D6}，傷害={dmg}")
 
             if dmg > 0 and self._attack_target:
-                self.add_system_message(f"[{p.name or p.account}] 對 [{self._attack_target.name or self._attack_target.account}] 造成 {dmg} 點傷害")
+                attack_targets = []
+                if p.eqp_aoe:
+                    target_zone = int(getattr(self._attack_target, 'zone', 0) or 0)
+                    if not target_zone:
+                        target_area = getattr(self._attack_target, 'area', None)
+                        target_zone = int(getattr(target_area, 'zone', 0) or 0)
+                    for candidate in self.players.values():
+                        if not bool(getattr(candidate, 'is_alive', False)) or candidate == p:
+                            continue
+                        candidate_zone = int(getattr(candidate, 'zone', 0) or 0)
+                        if not candidate_zone:
+                            candidate_area = getattr(candidate, 'area', None)
+                            candidate_zone = int(getattr(candidate_area, 'zone', 0) or 0)
+                        if target_zone and candidate_zone == target_zone:
+                            attack_targets.append(candidate)
+                else:
+                    attack_targets = [self._attack_target]
+
+                before_attack = {
+                    str(getattr(target_player, 'account', '') or ''): {
+                        'damage': int(getattr(target_player, 'damage', 0) or 0),
+                        'defence': int((getattr(target_player, 'df', 0) or 0) + (getattr(target_player, 'eqp_df', 0) or 0)),
+                    }
+                    for target_player in attack_targets
+                }
+
                 deaths, counter_attackers = p.attack(self._attack_target, list(self.players.values()), dmg)
+
+                atk_mod = int(getattr(p, 'eqp_atk', 0) or 0)
+                for target_player in attack_targets:
+                    account = str(getattr(target_player, 'account', '') or '')
+                    if not account:
+                        continue
+                    snapshot = before_attack.get(account, {})
+                    prev_damage = int(snapshot.get('damage', 0) or 0)
+                    next_damage = int(getattr(target_player, 'damage', 0) or 0)
+                    delta = next_damage - prev_damage
+                    defence = int(snapshot.get('defence', 0) or 0)
+                    target_label = str(getattr(target_player, 'name', '') or getattr(target_player, 'account', '') or '-').strip() or '-'
+
+                    if delta > 0:
+                        self.add_system_message(
+                            f"[{p.name or p.account}] 對 [{target_label}] 造成 {delta} 點傷害（基礎:{dmg} / 增減傷:{atk_mod:+d} / 防禦:{defence}）"
+                        )
+                    elif delta < 0:
+                        self.add_system_message(
+                            f"[{p.name or p.account}] 對 [{target_label}] 的攻擊使傷害減少 {abs(delta)}（基礎:{dmg} / 增減傷:{atk_mod:+d} / 防禦:{defence}）"
+                        )
+                    else:
+                        self.add_system_message(
+                            f"[{p.name or p.account}] 攻擊 [{target_label}] 未造成傷害（基礎:{dmg} / 增減傷:{atk_mod:+d} / 防禦:{defence}）"
+                        )
 
                 if deaths:
                     self._handle_death(deaths, allow_loot=True)

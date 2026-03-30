@@ -96,6 +96,20 @@ const renderState = (data) => renderRoomState({
 const GUIDE_GREEN_CARDS = ['Aid', 'Anger', 'Blackmail', 'Bully', 'Exorcism', 'Greed', 'Huddle', 'Nurturance', 'Prediction', 'Slap', 'Spell', 'Tough Lesson'];
 const GUIDE_WHITE_CARDS = ['Talisman', 'Fortune Brooch', 'Mystic Compass', 'Holy Robe', 'Silver Rosary', 'Spear of Longinus', 'Holy Water of Healing', 'Advent', 'Chocolate', 'Blessing', 'Concealed Knowledge', 'Guardian Angel', 'Flare of Judgement', 'Disenchant Mirror', 'First Aid'];
 const GUIDE_BLACK_CARDS = ['Chainsaw', 'Butcher Knife', 'Rusted Broad Axe', 'Masamune', 'Machine Gun', 'Handgun', 'Vampire Bat', 'Bloodthirsty Spider', 'Moody Goblin', 'Spiritual Doll', 'Dynamite', 'Diabolic Ritual', 'Banana Peel'];
+const GUIDE_EQUIPMENT_ICONS = {
+  'Talisman': '🔮',
+  'Fortune Brooch': '💠',
+  'Mystic Compass': '🧭',
+  'Holy Robe': '🧥',
+  'Silver Rosary': '📿',
+  'Spear of Longinus': '🗡️',
+  'Chainsaw': '⚙️',
+  'Butcher Knife': '🔪',
+  'Rusted Broad Axe': '🪓',
+  'Masamune': '⚔️',
+  'Machine Gun': '🔫',
+  'Handgun': '🎯',
+};
 
 function setLocalizedPageTitle() {
   const brand = t('common.brand');
@@ -129,12 +143,23 @@ function renderGuideCardCatalogs() {
   const cardName = (card) => {
     const key = `room.active_card.names.${card}`;
     const localized = t(key);
-    return localized === key ? card : localized;
+    const baseName = localized === key ? card : localized;
+    const icon = GUIDE_EQUIPMENT_ICONS[card] || '';
+    return icon ? `${icon} ${baseName}` : baseName;
   };
   const cardDesc = (card) => {
     const key = `room.active_card.desc.${card}`;
     const localized = t(key);
     return localized === key ? '-' : localized;
+  };
+
+  const parseCharacterMeta = (characterKey) => {
+    const desc = cardDesc(characterKey);
+    const hpMatch = String(desc).match(/HP\s*(\d+)\s*(\*)?/i);
+    return {
+      hp: hpMatch ? hpMatch[1] : '-',
+      isExpansion: Boolean(hpMatch && hpMatch[2] === '*'),
+    };
   };
 
   const renderCharacterTable = () => {
@@ -145,9 +170,12 @@ function renderGuideCardCatalogs() {
         const badge = String(key || '?').trim().charAt(0).toUpperCase() || '?';
         const win = info?.win?.[lang] || info?.win?.en || '-';
         const ability = info?.ability?.[lang] || info?.ability?.en || '-';
+        const { hp, isExpansion } = parseCharacterMeta(key);
+        const localizedName = getCharacterLocalizedName(key, lang);
         return `
           <tr>
-            <td><span class="damage-meter-badge ${esc(campClass)}">${esc(badge)}</span> ${esc(getCharacterLocalizedName(key, lang))}</td>
+            <td><span class="damage-meter-badge ${esc(campClass)}">${esc(badge)}</span> ${esc(localizedName)}${isExpansion ? '*' : ''}</td>
+            <td>${esc(hp)}</td>
             <td>${esc(camp)}</td>
             <td>${esc(win)}</td>
             <td>${esc(ability)}</td>
@@ -160,6 +188,7 @@ function renderGuideCardCatalogs() {
         <thead>
           <tr>
             <th>${esc(t('guide.catalog.character_name'))}</th>
+            <th>${esc(t('guide.catalog.character_hp'))}</th>
             <th>${esc(t('guide.catalog.camp'))}</th>
             <th>${esc(t('guide.catalog.win'))}</th>
             <th>${esc(t('guide.catalog.ability'))}</th>
@@ -167,6 +196,7 @@ function renderGuideCardCatalogs() {
         </thead>
         <tbody>${rows}</tbody>
       </table>
+      <p class="lighttxt">${esc(t('guide.catalog.expansion_note'))}</p>
     `;
   };
 

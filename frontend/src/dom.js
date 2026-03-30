@@ -99,6 +99,7 @@ export function getDomElements() {
     villageInfoList: document.getElementById('villageInfoList'),
     damageMeter: document.getElementById('damageMeter'),
     chatMessages: document.getElementById('chatMessages'),
+    systemMessages: document.getElementById('systemMessages'),
     chatInput: document.getElementById('chatInput'),
     chatSendButton: document.getElementById('chatSendButton'),
     btnRoomRefresh: document.getElementById('btnRoomRefresh'),

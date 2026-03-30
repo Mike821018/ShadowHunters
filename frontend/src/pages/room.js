@@ -516,12 +516,13 @@ function openInvulnerabilityInfoDialog(source, anchorEl = null) {
   const descEl = document.getElementById('activeCardDialogDesc');
 
   const normalized = String(source || '').trim();
+  const normalizedKey = normalized.toLowerCase();
   let sourceName = '';
   let sourceDesc = '';
-  if (normalized === 'Guardian Angel') {
+  if (normalizedKey === 'guardian angel' || normalizedKey === 'guardian_angel') {
     sourceName = getLocalizedCardName('Guardian Angel');
     sourceDesc = t('room.invulnerability_source.guardian_angel_desc');
-  } else if (normalized === 'Gregor') {
+  } else if (normalizedKey === 'gregor' || normalizedKey === 'gregor ability' || normalizedKey === 'character ability') {
     sourceName = t('room.invulnerability_source.Gregor');
     sourceDesc = t('room.invulnerability_source.gregor_desc');
   } else {
@@ -769,6 +770,23 @@ function getPendingStealState(state, dataSnapshot = latestRoomSnapshot) {
   };
 }
 
+function getPendingKillLootState(state, dataSnapshot = latestRoomSnapshot) {
+  const selfAccount = String(state?.account || '').trim();
+  const currentAccount = String(dataSnapshot?.turn?.current_account || '').trim();
+  const roomStatus = Number(dataSnapshot?.room?.room_status || 0);
+  const selfStatus = Number(dataSnapshot?.players?.[selfAccount]?.status || 0);
+  const pending = dataSnapshot?.pending_kill_loot || null;
+  const deathAccounts = Array.isArray(pending?.death_accounts)
+    ? pending.death_accounts.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+
+  return {
+    active: Boolean(selfAccount && roomStatus === 2 && selfAccount === currentAccount && selfStatus === 5 && deathAccounts.length > 0),
+    deathAccounts,
+    allowFull: Boolean(pending?.allow_full),
+  };
+}
+
 function getEquipmentConfirmPromptState(state, dataSnapshot = latestRoomSnapshot) {
   const selfAccount = String(state?.account || '').trim();
   const currentAccount = String(dataSnapshot?.turn?.current_account || '').trim();
@@ -836,6 +854,7 @@ function updateStageNextStepButtonState(state, dataSnapshot = latestRoomSnapshot
   const selfStatus = Number(dataSnapshot?.players?.[selfAccount]?.status || 0);
   const drawablePileColors = getDrawablePileColors(dataSnapshot, state);
   const pendingSteal = getPendingStealState(state, dataSnapshot);
+  const pendingKillLoot = getPendingKillLootState(state, dataSnapshot);
   const equipmentConfirm = getEquipmentConfirmPromptState(state, dataSnapshot);
   const greenConfirm = getGreenConfirmPromptState(state, dataSnapshot);
   const cardPrompt = getCardPromptState(state, dataSnapshot);
@@ -884,6 +903,9 @@ function updateStageNextStepButtonState(state, dataSnapshot = latestRoomSnapshot
   } else if (selfStatus === 2) {
     disabled = true;
     label = t('room.table_next_step.roll_move_dice');
+  } else if (pendingKillLoot.active) {
+    disabled = true;
+    label = t('room.table_next_step.choose_equipment');
   } else if (selfStatus === 5) {
     disabled = true;
     label = t('room.table_next_step.roll_damage_dice');
@@ -1081,12 +1103,20 @@ function renderDamageMeter({ el, esc }, data) {
 
 export function setVillageInfoMessage({ el, esc }, message) {
   if (el.villageInfoList) {
+    const isPreviewPage = /room_preview\.html$/i.test(window.location.pathname || '');
+    if (isPreviewPage) {
+      el.villageInfoList.innerHTML = `
+        <li class="village-info-row village-info-row-message lighttxt">${esc(message)}</li>
+      `;
+      return;
+    }
     el.villageInfoList.innerHTML = `<li class="lighttxt">${esc(message)}</li>`;
   }
 }
 
 export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage, state }, data) {
   if (!el.villageInfoList) return;
+  const isPreviewPage = /room_preview\.html$/i.test(window.location.pathname || '');
 
   const room = data?.room;
   if (!room) {
@@ -1116,36 +1146,75 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
   const canRollCall = isVillageManager && status === 1 && !isChatRoom;
   const villageName = withVillageSuffix(room.room_name || '');
   const villageDescription = room.room_comment || room.village_description || room.description || '-';
+  const initialGreenCard = room.enable_initial_green_card ? 'On' : 'Off';
+  const boomTimeoutMinutes = Number(room.turn_timeout_minutes || 3);
+  const roomSettings = [
+    `TRIP:${room.require_trip ? 'On' : 'Off'}`,
+    `Mode:${String(room.expansion_mode || 'all')}`,
+    `初始綠卡:${initialGreenCard}`,
+    `暴斃時間:${boomTimeoutMinutes}分`,
+  ].join(' / ');
   const replayNotice = String(room.replay_notice || '').trim();
   const turnTimeout = data?.turn_timeout || null;
   const timeoutRemain = Number(turnTimeout?.remaining_seconds);
   const timeoutCurrent = String(turnTimeout?.current_name || turnTimeout?.current_account || turnTimeout?.current_trip_display || '-').trim();
   const timeoutWarnRow = (status === 2 && Number.isFinite(timeoutRemain))
-    ? `<li class="room-timeout-warning"><strong>${esc(t('room.info.turn_timeout'))}</strong>${esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-', n: Math.max(0, timeoutRemain) }))}</li>`
+    ? `<li class="${isPreviewPage ? 'village-info-row ' : ''}room-timeout-warning"><strong>${esc(t('room.info.turn_timeout'))}</strong>${esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-', n: Math.max(0, timeoutRemain) }))}</li>`
     : '';
   const boomedNotice = data?.boomed_notice || null;
   const boomedName = String(boomedNotice?.name || boomedNotice?.trip_display || '').trim();
   const boomedNoticeRow = (status === 2 && boomedName)
-    ? `<li class="room-timeout-warning"><strong>${esc(t('room.info.boomed_notice'))}</strong>${esc(t('room.info.boomed_notice_fmt', { name: boomedName }))}</li>`
+    ? `<li class="${isPreviewPage ? 'village-info-row ' : ''}room-timeout-warning"><strong>${esc(t('room.info.boomed_notice'))}</strong>${esc(t('room.info.boomed_notice_fmt', { name: boomedName }))}</li>`
     : '';
 
+  if (!isPreviewPage) {
+    el.villageInfoList.innerHTML = `
+      <li>
+        <strong>${esc(t('room.info.room_id'))}</strong>${room.room_id ?? '-'}
+        ${canAbolish ? `<button id="btnAbolishVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.abolish'))}</button>` : ''}
+      </li>
+      <li>
+        <strong>${esc(t('room.info.status'))}</strong><span class="${statusClass}">${esc(statusText)}</span>
+        ${canLeave ? `<button id="btnLeaveVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.leave'))}</button>` : (canRegister && !hasJoined ? `<button id="btnOpenResidentRegister" class="btn btn-inline" type="button">${esc(t('room.info.open_register'))}</button>` : '')}
+      </li>
+      <li>
+        <strong>${esc(t('room.info.count'))}</strong>(${Number(room.player_count || 0)}/${maxPlayers})
+        ${canToggleReady ? `<button id="btnToggleReadyInline" class="btn btn-inline" type="button">${esc(isSelfReady ? t('room.ops.unready') : t('room.ops.ready'))}</button>` : ''}
+        ${canRollCall ? `<button id="btnRollCallInline" class="btn btn-inline" type="button">${esc(t('room.ops.roll_call'))}</button>` : ''}
+      </li>
+      <li><strong>${esc(t('room.info.name'))}</strong>${esc(villageName || '-')}</li>
+      <li><strong>${esc(t('room.info.desc'))}</strong>${esc(villageDescription)}</li>
+      ${replayNotice ? `<li><strong>${esc(t('room.info.replay_notice'))}</strong>${esc(replayNotice)}</li>` : ''}
+      ${timeoutWarnRow}
+      ${boomedNoticeRow}
+    `;
+
+    if (canRegister && !hasJoined) {
+      const btn = el.villageInfoList.querySelector('#btnOpenResidentRegister');
+      btn?.addEventListener('click', () => goToRegisterPage(room.room_id));
+    }
+    return;
+  }
+
   el.villageInfoList.innerHTML = `
-    <li>
-      <strong>${esc(t('room.info.room_id'))}</strong>${room.room_id ?? '-'}
-      ${canAbolish ? `<button id="btnAbolishVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.abolish'))}</button>` : ''}
+    <li class="village-info-row village-info-row-primary">
+      <span class="village-info-item"><strong>${esc(t('room.info.name'))}</strong>${esc(villageName || '-')}</span>
+      <span class="village-info-item"><strong>${esc(t('room.info.desc'))}</strong>${esc(villageDescription)}</span>
+      ${replayNotice ? `<span class="village-info-item village-info-replay"><strong>${esc(t('room.info.replay_notice'))}</strong>${esc(replayNotice)}</span>` : ''}
     </li>
-    <li>
-      <strong>${esc(t('room.info.status'))}</strong><span class="${statusClass}">${esc(statusText)}</span>
-      ${canLeave ? `<button id="btnLeaveVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.leave'))}</button>` : (canRegister && !hasJoined ? `<button id="btnOpenResidentRegister" class="btn btn-inline" type="button">${esc(t('room.info.open_register'))}</button>` : '')}
+    <li class="village-info-row village-info-row-meta">
+      <span class="village-info-item"><strong>${esc(t('room.info.room_id'))}</strong>${room.room_id ?? '-'}</span>
+      <span class="village-info-item"><strong>${esc(t('room.info.status'))}</strong><span class="${statusClass}">${esc(statusText)}</span></span>
+      <span class="village-info-item"><strong>${esc(t('room.info.count'))}</strong>${Number(room.player_count || 0)}/${maxPlayers}</span>
+      <span class="village-info-settings-line">(${esc(roomSettings)})</span>
     </li>
-    <li>
-      <strong>${esc(t('room.info.count'))}</strong>(${Number(room.player_count || 0)}/${maxPlayers})
+    <li class="village-info-row village-info-row-actions">
+      ${(canRegister && !hasJoined) ? `<button id="btnOpenResidentRegister" class="btn btn-inline" type="button">${esc(t('room.info.open_register'))}</button>` : ''}
+      ${canLeave ? `<button id="btnLeaveVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.leave'))}</button>` : ''}
       ${canToggleReady ? `<button id="btnToggleReadyInline" class="btn btn-inline" type="button">${esc(isSelfReady ? t('room.ops.unready') : t('room.ops.ready'))}</button>` : ''}
       ${canRollCall ? `<button id="btnRollCallInline" class="btn btn-inline" type="button">${esc(t('room.ops.roll_call'))}</button>` : ''}
+      ${canAbolish ? `<button id="btnAbolishVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.abolish'))}</button>` : ''}
     </li>
-    <li><strong>${esc(t('room.info.name'))}</strong>${esc(villageName || '-')}</li>
-    <li><strong>${esc(t('room.info.desc'))}</strong>${esc(villageDescription)}</li>
-    ${replayNotice ? `<li><strong>${esc(t('room.info.replay_notice'))}</strong>${esc(replayNotice)}</li>` : ''}
     ${timeoutWarnRow}
     ${boomedNoticeRow}
   `;
@@ -1521,14 +1590,23 @@ function renderChatStage({ el, esc }, data, state) {
     return safeText.replace(/\[([^\]]+)\]/g, (_, n) => showRoleInSystemMessages ? pidRole(n, n) : `<span class="chat-pid">${n}</span>`);
   };
 
-  el.chatMessages.innerHTML = messages.map((message) => {
+  const chatLines = [];
+  const systemLines = [];
+  const nowTs = Math.floor(Date.now() / 1000);
+  const pushSystemLine = (htmlText, extraClass = '', ts = nowTs) => {
+    const tsLabel = fmtTime(Number(ts) || nowTs);
+    const cls = extraClass ? `system-line ${extraClass}` : 'system-line';
+    systemLines.push(`<div class="${cls}">[${esc(tsLabel)}] ${htmlText}</div>`);
+  };
+
+  messages.forEach((message) => {
     const msgType = String(message?.type || 'chat').toLowerCase();
     const ts = Number(message?.timestamp || 0);
     const text = String(message?.text || '').trim();
     if (msgType === 'system') {
       const formatted = formatSystem(text, ts);
-      if (!formatted) return '';
-      return `<div class="chat-line chat-line-system">${formatted}</div>`;
+      if (formatted) pushSystemLine(formatted, '', ts);
+      return;
     }
     const account = String(message?.account || '').trim();
     const mappedName = String(data?.players?.[account]?.name || '').trim();
@@ -1539,10 +1617,28 @@ function renderChatStage({ el, esc }, data, state) {
     const isSelf = Boolean(state?.account) && account === String(state.account || '');
     const cls = isSelf ? 'chat-line chat-line-self' : 'chat-line';
     const chatTextHtml = esc(text).replace(/\r\n|\r|\n/g, '<br>');
-    return `<div class="${cls}"><div class="chat-sender">${esc(name || '-')}<span class="chat-time">(${timeStr})</span>:</div><div class="chat-text">${chatTextHtml}</div></div>`;
-  }).join('');
+    chatLines.push(`<div class="${cls}"><div class="chat-sender">${esc(name || '-')}<span class="chat-time">(${timeStr})</span>:</div><div class="chat-text">${chatTextHtml}</div></div>`);
+  });
+
+  el.chatMessages.innerHTML = chatLines.length
+    ? chatLines.join('')
+    : `<p class="lighttxt">${esc(t('room.chat.empty'))}</p>`;
+
+  if (el.systemMessages) {
+    const timeoutRemain = Number(data?.turn_timeout?.remaining_seconds);
+    if (Number.isFinite(timeoutRemain)) {
+      const timeoutCurrent = String(data?.turn_timeout?.current_name || data?.turn_timeout?.current_account || data?.turn_timeout?.current_trip_display || '-').trim();
+      pushSystemLine(esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-', n: Math.max(0, timeoutRemain) })), 'system-timeout');
+    }
+    el.systemMessages.innerHTML = systemLines.length
+      ? systemLines.join('')
+      : `<p class="lighttxt">${esc(t('room.chat.empty'))}</p>`;
+  }
 
   el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
+  if (el.systemMessages) {
+    el.systemMessages.scrollTop = el.systemMessages.scrollHeight;
+  }
 }
 
 function setSelectOptions(selectEl, values, placeholder) {
@@ -1721,6 +1817,49 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+const FIELD_NUMBERS_BY_NAME = Object.freeze({
+  "Hermit's Cabin": [2, 3],
+  'Underworld Gate': [4, 5],
+  Church: [6],
+  Cemetery: [8],
+  'Weird Woods': [9],
+  'Erstwhile Altar': [10],
+});
+
+const FIELD_NUMBERS_BY_SLOT = Object.freeze([
+  [2, 3],
+  [4, 5],
+  [6],
+  [8],
+  [9],
+  [10],
+]);
+
+function normalizeFieldNumbers(field, slot) {
+  const rawNumbers = [];
+  if (Array.isArray(field?.numbers)) rawNumbers.push(...field.numbers);
+  if (Array.isArray(field?.number)) rawNumbers.push(...field.number);
+
+  const parsed = rawNumbers
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value))
+    .map((value) => Math.trunc(value));
+
+  const deduped = Array.from(new Set(parsed));
+  if (deduped.length > 0) return deduped;
+
+  const areaName = String(field?.name || '').trim();
+  if (FIELD_NUMBERS_BY_NAME[areaName]) {
+    return FIELD_NUMBERS_BY_NAME[areaName].slice();
+  }
+
+  if (Number.isInteger(slot) && FIELD_NUMBERS_BY_SLOT[slot]) {
+    return FIELD_NUMBERS_BY_SLOT[slot].slice();
+  }
+
+  return [];
+}
+
 function renderFieldCards(data, state = null) {
   const root = document;
   const cards = Array.from(root.querySelectorAll('.table-stage [data-field-slot]'));
@@ -1782,10 +1921,11 @@ function renderFieldCards(data, state = null) {
 
   const openFieldDetail = (slot, field, number, anchorEl) => {
     if (!field || !detailPanel || !detailName || !detailNumbers || !detailDescription) return;
+    const numbers = normalizeFieldNumbers(field, slot);
     activeFieldSlot = slot;
     activeFieldNumber = number;
     detailName.textContent = field.display_name || field.name || '場地資訊';
-    detailNumbers.innerHTML = (Array.isArray(field.numbers) ? field.numbers : [])
+    detailNumbers.innerHTML = numbers
       .map((value) => `<span class="stage-field-detail-number">${escapeHtml(value)}</span>`)
       .join('');
     detailDescription.textContent = field.description || '目前沒有額外說明。';
@@ -1830,7 +1970,7 @@ function renderFieldCards(data, state = null) {
     const numberListEl = cardEl.querySelector('.stage-field-number-list');
     const occupantsEl = cardEl.querySelector('.stage-field-occupants');
     const displayName = field?.display_name || field?.name || '未翻開';
-    const numbers = Array.isArray(field?.numbers) ? field.numbers : [];
+    const numbers = normalizeFieldNumbers(field, slot);
     const occupants = field ? (occupantsByFieldName.get(field.name) || []).slice(0, 8) : [];
     const normalizedAreaName = String(field?.name || '').trim();
     const isMoveTargetPrompt = Boolean(movePrompt.active && normalizedAreaName && movePromptSet.has(normalizedAreaName));
@@ -1861,7 +2001,9 @@ function renderFieldCards(data, state = null) {
 
     if (numberListEl) {
       if (!field || !numbers.length) {
-        numberListEl.innerHTML = '<span class="stage-field-number-static" aria-hidden="true">?</span>';
+        numberListEl.innerHTML = `
+          <span class="stage-field-number-static" aria-hidden="true">?</span>
+        `;
       } else {
         numberListEl.innerHTML = numbers
           .map((number) => `
@@ -1904,6 +2046,38 @@ function renderFieldCards(data, state = null) {
   } else if (detailPanel) {
     detailPanel.hidden = true;
   }
+}
+
+function patchPreviewCardsInRoom() {
+  if ((document.body?.dataset?.page || '') !== 'room-preview') return;
+  const cards = document.querySelectorAll('#roomCards .player-card');
+  cards.forEach((card) => {
+    const hpRow = card.querySelector('.player-card-hp');
+    const idBlock = card.querySelector('.player-id-block');
+
+    const colorCell = card.querySelector('.player-card-head .player-color-cell');
+    const nickname = hpRow?.querySelector('.player-card-nickname');
+    if (colorCell && hpRow && nickname) {
+      hpRow.insertBefore(colorCell, nickname);
+    }
+
+    const metaArea = card.querySelector('.player-card-meta');
+    const metaRole = card.querySelector('.player-card-meta-role');
+    if (idBlock && metaArea) idBlock.appendChild(metaArea);
+    if (idBlock && metaRole) idBlock.appendChild(metaRole);
+
+    const coloredDiamond = hpRow?.querySelector('.trip-prefix-diamond:not(.trip-prefix-diamond-fixed)');
+    const tripRow = card.querySelector('.player-card-role');
+    if (coloredDiamond && tripRow) {
+      tripRow.insertBefore(coloredDiamond, tripRow.firstChild);
+    }
+
+    card.querySelectorAll('.trip-prefix-diamond-fixed').forEach((el) => el.remove());
+    if (tripRow) {
+      const allTripDiamonds = Array.from(tripRow.querySelectorAll('.trip-prefix-diamond'));
+      allTripDiamonds.slice(1).forEach((el) => el.remove());
+    }
+  });
 }
 
 export function renderState({
@@ -1964,9 +2138,12 @@ export function renderState({
   const cardPrompt = getCardPromptState(state, data);
   const greenConfirm = getGreenConfirmPromptState(state, data);
   const pendingSteal = getPendingStealState(state, data);
+  const pendingKillLoot = getPendingKillLootState(state, data);
   const attackPrompt = getAttackPromptState(state, data);
   const playerPromptTargets = pendingDiceAction
     ? []
+    : pendingKillLoot.active
+    ? pendingKillLoot.deathAccounts
     : pendingSteal.active
     ? [pendingSteal.fromAccount]
     : greenConfirm.active
@@ -1987,7 +2164,7 @@ export function renderState({
         : attackPrompt.active
           ? attackPrompt.targetAccounts
           : [];
-  const playerPromptClass = (pendingSteal.active || areaPrompt.active || cardPrompt.active) ? 'area-target-prompt' : 'attack-target-prompt';
+  const playerPromptClass = (pendingKillLoot.active || pendingSteal.active || areaPrompt.active || cardPrompt.active) ? 'area-target-prompt' : 'attack-target-prompt';
   const handleEquipmentChipClick = ({ equipmentName, anchorEl }) => {
     openEquipmentCardDialog(equipmentName, anchorEl);
   };
@@ -1995,6 +2172,7 @@ export function renderState({
     openInvulnerabilityInfoDialog(source, anchorEl);
   };
   renderPlayerCards(el.roomCards, data, { view: 'room', enableVoteKick: true, targetAccounts: playerPromptTargets, targetPromptClass: playerPromptClass, onEquipmentChipClick: handleEquipmentChipClick, onShieldChipClick: handleShieldChipClick });
+  patchPreviewCardsInRoom();
   renderPlayerCards(el.battleCards, data, { view: 'flow', targetAccounts: playerPromptTargets, targetPromptClass: playerPromptClass, onEquipmentChipClick: handleEquipmentChipClick, onShieldChipClick: handleShieldChipClick });
 
   const playerTargets = orderedPlayerEntries(data)
@@ -2577,6 +2755,77 @@ export function bindRoomEvents({
       });
       renderState(data);
       toast(t('toast.steal_ok'));
+    } catch (error) {
+      if (error?.code === 'ROOM_NOT_FOUND') {
+        goToLobbyPage();
+        return;
+      }
+      console.error(error);
+    } finally {
+      stageNextStepBusy = false;
+      updateStageNextStepButtonState(state);
+    }
+  };
+
+  const resolvePendingKillLoot = async (targetAccount, dataSnapshot = latestRoomSnapshot) => {
+    if (!state.roomId || !state.account || stageNextStepBusy) return;
+    const pendingKillLoot = getPendingKillLootState(state, dataSnapshot);
+    const normalizedTarget = String(targetAccount || '').trim();
+    if (!pendingKillLoot.active || !normalizedTarget || !pendingKillLoot.deathAccounts.includes(normalizedTarget)) return;
+
+    const deadPlayer = dataSnapshot?.players?.[normalizedTarget] || null;
+    const equipmentNames = Array.isArray(deadPlayer?.equipment)
+      ? deadPlayer.equipment.map((value) => String(value || '').trim()).filter(Boolean)
+      : [];
+    if (!equipmentNames.length) return;
+
+    let takeAll = false;
+    let equipmentName = equipmentNames[0];
+
+    if (pendingKillLoot.allowFull && equipmentNames.length > 1) {
+      takeAll = window.confirm('此效果可一次奪取全部裝備，是否全拿？');
+    }
+
+    if (!takeAll) {
+      equipmentName = await showEquipmentChoiceDialog({
+        title: t('room.equipment_choice.title'),
+        message: t('room.equipment_choice.message', { name: deadPlayer?.name || normalizedTarget }),
+        options: equipmentNames.map(localizeEquipmentOption),
+        cancelLabel: t('room.area_choice.cancel'),
+      });
+      if (!equipmentName) {
+        toast(t('toast.area_choice_cancelled'));
+        return;
+      }
+    }
+
+    stageNextStepBusy = true;
+    updateStageNextStepButtonState(state, dataSnapshot);
+    try {
+      const payload = {
+        room_id: state.roomId,
+        account: state.account || undefined,
+        from_account: normalizedTarget,
+        take_all: takeAll,
+      };
+      if (!takeAll) {
+        payload.equipment_name = equipmentName;
+      }
+      const lootData = await dispatch('loot_from_kill', payload);
+      renderState(lootData);
+
+      const stillPending = Array.isArray(lootData?.pending_kill_loot?.death_accounts)
+        && lootData.pending_kill_loot.death_accounts.length > 0;
+      if (!stillPending) {
+        const nextData = await dispatch('next_step', {
+          room_id: state.roomId,
+          account: state.account || undefined,
+          action: false,
+          target: { kind: 'none' },
+        });
+        renderState(nextData);
+      }
+      toast(t('toast.loot_ok'));
     } catch (error) {
       if (error?.code === 'ROOM_NOT_FOUND') {
         goToLobbyPage();
@@ -3193,6 +3442,7 @@ export function bindRoomEvents({
     const cardPrompt = getCardPromptState(state, dataSnapshot);
     const greenConfirm = getGreenConfirmPromptState(state, dataSnapshot);
     const pendingSteal = getPendingStealState(state, dataSnapshot);
+    const pendingKillLoot = getPendingKillLootState(state, dataSnapshot);
     const attackPrompt = getAttackPromptState(state, dataSnapshot);
     const roomStatus = Number(dataSnapshot?.room?.room_status || 0);
     const isGameOngoing = roomStatus === 2;
@@ -3202,6 +3452,11 @@ export function bindRoomEvents({
     const hasNotRevealed = selfPlayer && !selfPlayer.character_reveal && selfPlayer.character;
 
     if (greenConfirm.active) {
+      return;
+    }
+
+    if (pendingKillLoot.active && pendingKillLoot.deathAccounts.includes(String(targetAccount || '').trim())) {
+      await resolvePendingKillLoot(targetAccount, dataSnapshot);
       return;
     }
 
