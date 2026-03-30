@@ -27,6 +27,8 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == '/api/room_events':
+            return self._handle_room_events(parsed.query)
         if parsed.path == '/api/game_records':
             return self._handle_game_records(parsed.query)
         if parsed.path == '/api/player_stats':
@@ -144,6 +146,86 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _write_sse_event(self, event_id: int, event_name: str, data):
+        payload = json.dumps(data, ensure_ascii=False)
+        chunks = [
+            f"id: {int(event_id)}\n",
+            f"event: {str(event_name or 'message')}\n",
+            f"data: {payload}\n\n",
+        ]
+        for chunk in chunks:
+            self.wfile.write(chunk.encode('utf-8'))
+        self.wfile.flush()
+
+    def _write_sse_comment(self, text: str = 'keepalive'):
+        self.wfile.write(f": {text}\n\n".encode('utf-8'))
+        self.wfile.flush()
+
+    def _handle_room_events(self, query: str):
+        params = self._query_params(query)
+        room_id_raw = (params.get('room_id') or [''])[0]
+        account = str((params.get('account') or [''])[0] or '').strip() or None
+        last_event_id_raw = str((params.get('last_event_id') or [''])[0] or '').strip()
+        header_last_event_id = str(self.headers.get('Last-Event-ID', '') or '').strip()
+        if not last_event_id_raw and header_last_event_id:
+            last_event_id_raw = header_last_event_id
+
+        try:
+            room_id = int(room_id_raw)
+            if room_id <= 0:
+                raise ValueError()
+        except Exception:
+            return self._send_json(HTTPStatus.BAD_REQUEST, {'error': 'room_id must be a positive integer'})
+
+        if not self.server.room_manager.get_room(room_id):
+            return self._send_json(HTTPStatus.NOT_FOUND, {'error': 'room not found'})
+
+        try:
+            last_event_id = max(0, int(last_event_id_raw or 0))
+        except Exception:
+            last_event_id = 0
+
+        self.send_response(HTTPStatus.OK)
+        self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
+        self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        self.send_header('Connection', 'keep-alive')
+        self.send_header('X-Accel-Buffering', 'no')
+        self.end_headers()
+
+        try:
+            room_data = self.server.room_manager.api_get_room_state({
+                'room_id': room_id,
+                'account': account,
+            })
+            if room_data.get('ok', False):
+                init_payload = {
+                    'room_id': room_id,
+                    'state': room_data.get('data'),
+                }
+                self._write_sse_event(last_event_id, 'room_state_changed', init_payload)
+
+            while True:
+                events = self.server.room_manager.wait_room_events(
+                    room_id,
+                    last_event_id,
+                    timeout_seconds=20.0,
+                )
+                if not events:
+                    if not self.server.room_manager.get_room(room_id):
+                        self._write_sse_event(last_event_id + 1, 'room_closed', {'room_id': room_id})
+                        return
+                    self._write_sse_comment('ping')
+                    continue
+                for event in events:
+                    event_id = int(event.get('id', 0) or 0)
+                    event_name = str(event.get('event', 'message') or 'message')
+                    self._write_sse_event(event_id, event_name, event.get('data'))
+                    last_event_id = max(last_event_id, event_id)
+                    if event_name == 'room_closed':
+                        return
+        except (BrokenPipeError, ConnectionResetError):
+            return
 
     def _query_params(self, query: str):
         return parse_qs(query, keep_blank_values=True)

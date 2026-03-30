@@ -5,6 +5,8 @@ import { clearRoomAccount } from '../session.js';
 import { apiFetch } from '../utils.js';
 
 let roomAutoRefreshTimer = null;
+let roomEventSource = null;
+let roomEventConnected = false;
 let activeFieldSlot = null;
 let activeFieldNumber = null;
 let fieldDetailOutsideHandlerBound = false;
@@ -1013,6 +1015,14 @@ function clearRoomAutoRefreshTimer() {
     window.clearInterval(roomAutoRefreshTimer);
     roomAutoRefreshTimer = null;
   }
+}
+
+function clearRoomEventSource() {
+  if (roomEventSource) {
+    roomEventSource.close();
+    roomEventSource = null;
+  }
+  roomEventConnected = false;
 }
 
 function formatAutoRefreshLabel(seconds, selected) {
@@ -3237,6 +3247,7 @@ export function bindRoomEvents({
 
   const syncAutoRefreshTimer = () => {
     clearRoomAutoRefreshTimer();
+    if (roomEventConnected) return;
     const seconds = Number(state.autoRefreshSeconds || 0);
     if (!seconds || !state.roomId) return;
 
@@ -3262,6 +3273,58 @@ export function bindRoomEvents({
     }, seconds * 1000);
   };
 
+  const connectRoomEventStream = () => {
+    clearRoomEventSource();
+    if (!state.roomId) return;
+    const roomId = Number(state.roomId || 0);
+    if (!roomId) return;
+
+    const query = new URLSearchParams({
+      room_id: String(roomId),
+    });
+    if (state.account) query.set('account', String(state.account));
+
+    roomEventSource = new EventSource(`/api/room_events?${query.toString()}`);
+
+    roomEventSource.addEventListener('open', () => {
+      roomEventConnected = true;
+      clearRoomAutoRefreshTimer();
+    });
+
+    roomEventSource.addEventListener('room_state_changed', (event) => {
+      try {
+        const payload = JSON.parse(String(event?.data || '{}'));
+        const statePayload = payload?.state || null;
+        if (!statePayload || typeof statePayload !== 'object') return;
+        const payloadRoomId = Number(statePayload?.room?.room_id || payload?.room_id || 0);
+        if (!payloadRoomId || payloadRoomId !== Number(state.roomId || 0)) return;
+        renderState(statePayload);
+      } catch (error) {
+        console.error('Failed to parse room event payload', error);
+      }
+    });
+
+    roomEventSource.addEventListener('room_closed', (event) => {
+      try {
+        const payload = JSON.parse(String(event?.data || '{}'));
+        const payloadRoomId = Number(payload?.room_id || 0);
+        if (payloadRoomId && payloadRoomId === Number(state.roomId || 0)) {
+          clearRoomEventSource();
+          clearRoomAutoRefreshTimer();
+          toast(t('toast.village_gone'), 'error');
+          goToLobbyPage();
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    });
+
+    roomEventSource.onerror = () => {
+      roomEventConnected = false;
+      syncAutoRefreshTimer();
+    };
+  };
+
   const applyAutoRefreshSetting = async (seconds) => {
     state.autoRefreshSeconds = AUTO_REFRESH_OPTIONS.includes(seconds) ? seconds : 0;
     persistSession(state);
@@ -3281,10 +3344,12 @@ export function bindRoomEvents({
 
   const isReplayPage = String(state?.page || '') === 'replay-room';
   if (isReplayPage) {
+    clearRoomEventSource();
     clearRoomAutoRefreshTimer();
     if (el.autoRefreshOptions) el.autoRefreshOptions.innerHTML = '';
   } else {
     renderAutoRefreshControls({ el, state, onSelect: applyAutoRefreshSetting });
+    connectRoomEventStream();
     syncAutoRefreshTimer();
   }
 
@@ -3303,6 +3368,8 @@ export function bindRoomEvents({
   });
 
   el.btnRoomBackLobby?.addEventListener('click', () => {
+    clearRoomEventSource();
+    clearRoomAutoRefreshTimer();
     goToLobbyPage();
   });
 
@@ -3321,6 +3388,7 @@ export function bindRoomEvents({
     if (!state.roomId || !state.account) return;
     const leavingRoomId = state.roomId;
     await dispatch('leave_room', { room_id: state.roomId, account: state.account });
+    clearRoomEventSource();
     clearRoomAutoRefreshTimer();
     clearRoomAccount(state, leavingRoomId);
     state.roomId = null;
@@ -3336,6 +3404,7 @@ export function bindRoomEvents({
     if (!state.roomId || !state.account) return;
     const abolishRoomId = state.roomId;
     await dispatch('abolish_room', { room_id: state.roomId, account: state.account });
+    clearRoomEventSource();
     clearRoomAutoRefreshTimer();
     clearRoomAccount(state, abolishRoomId);
     state.roomId = null;
@@ -3819,6 +3888,11 @@ export function bindRoomEvents({
       void sendChatMessage();
     });
   }
+
+  window.addEventListener('pagehide', () => {
+    clearRoomEventSource();
+    clearRoomAutoRefreshTimer();
+  });
 
   if (el.roomInfo) {
     el.roomInfo.dataset.bound = 'true';

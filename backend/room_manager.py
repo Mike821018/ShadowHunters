@@ -2,6 +2,7 @@ import random
 import base64
 import hashlib
 import os
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -100,6 +101,31 @@ class RoomManager:
         self.record_store = GameRecordStore(db_path=os.getenv('SHADOWHUNTERS_DB_PATH') or None)
         self.records_api = GameRecordsAPI(self.record_store)
         self.avatar_store = AvatarStore(self.root_dir)
+        self._room_event_lock = threading.RLock()
+        self._room_event_logs: Dict[int, List[Dict[str, Any]]] = {}
+        self._room_event_conds: Dict[int, threading.Condition] = {}
+        self._room_event_seq: Dict[int, int] = {}
+        self._room_event_log_limit = 300
+
+    _ROOM_STATE_EVENT_ACTIONS = {
+        'join_room',
+        'leave_room',
+        'start_game',
+        'next_step',
+        'card_effect',
+        'loot_from_kill',
+        'steal_equipment',
+        'set_green_card_choice',
+        'confirm_green_card',
+        'confirm_equipment',
+        'change_color',
+        'toggle_ready',
+        'vote_kick',
+        'roll_call',
+        'update_room_settings',
+        'reveal_character',
+        'send_chat',
+    }
 
     def get_api_schemas(self) -> Dict[str, Any]:
         return API_SCHEMAS
@@ -750,67 +776,177 @@ class RoomManager:
                         return card
         return None
 
+    def _event_room_id_from_dispatch(self, action: str, payload: Dict[str, Any], result: Dict[str, Any]) -> Optional[int]:
+        data = result.get('data') if isinstance(result, dict) else None
+        room_id_candidates = []
+        if isinstance(payload, dict):
+            room_id_candidates.append(payload.get('room_id'))
+        if isinstance(data, dict):
+            room_id_candidates.append(data.get('room_id'))
+            room_obj = data.get('room')
+            if isinstance(room_obj, dict):
+                room_id_candidates.append(room_obj.get('room_id'))
+        for candidate in room_id_candidates:
+            try:
+                rid = int(candidate)
+                if rid > 0:
+                    return rid
+            except Exception:
+                continue
+        if action == 'create_room' and isinstance(data, dict):
+            try:
+                rid = int(data.get('room_id') or 0)
+                if rid > 0:
+                    return rid
+            except Exception:
+                return None
+        return None
+
+    def _room_event_channel(self, room_id: int):
+        rid = int(room_id or 0)
+        if rid <= 0:
+            return None, None
+        with self._room_event_lock:
+            if rid not in self._room_event_logs:
+                self._room_event_logs[rid] = []
+            if rid not in self._room_event_conds:
+                self._room_event_conds[rid] = threading.Condition(self._room_event_lock)
+            return self._room_event_logs[rid], self._room_event_conds[rid]
+
+    def append_room_event(self, room_id: int, event: str, data: Any) -> Optional[Dict[str, Any]]:
+        rid = int(room_id or 0)
+        if rid <= 0:
+            return None
+        log, cond = self._room_event_channel(rid)
+        if log is None or cond is None:
+            return None
+        with self._room_event_lock:
+            seq = int(self._room_event_seq.get(rid, 0) or 0) + 1
+            self._room_event_seq[rid] = seq
+            item = {
+                'id': seq,
+                'event': str(event or 'room_state_changed'),
+                'data': data,
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+            }
+            log.append(item)
+            if len(log) > self._room_event_log_limit:
+                del log[:len(log) - self._room_event_log_limit]
+            cond.notify_all()
+            return item
+
+    def wait_room_events(self, room_id: int, last_event_id: int, timeout_seconds: float = 25.0) -> List[Dict[str, Any]]:
+        rid = int(room_id or 0)
+        if rid <= 0:
+            return []
+        log, cond = self._room_event_channel(rid)
+        if log is None or cond is None:
+            return []
+
+        last_id = max(0, int(last_event_id or 0))
+
+        def collect_pending() -> List[Dict[str, Any]]:
+            return [row for row in log if int(row.get('id', 0) or 0) > last_id]
+
+        with self._room_event_lock:
+            pending = collect_pending()
+            if pending:
+                return pending
+            cond.wait(timeout=max(0.1, float(timeout_seconds or 25.0)))
+            return collect_pending()
+
+    def _emit_room_state_event(self, room_id: int, viewer_account: Optional[str] = None):
+        game_room = self.get_room(room_id)
+        if not game_room:
+            return
+        payload = {
+            'room_id': int(room_id),
+            'state': self._serialize_room_state(game_room, viewer_account=viewer_account),
+        }
+        self.append_room_event(room_id, 'room_state_changed', payload)
+
+    def _emit_room_closed_event(self, room_id: int):
+        self.append_room_event(room_id, 'room_closed', {'room_id': int(room_id)})
+
+    def _post_dispatch_emit(self, action: str, payload: Dict[str, Any], result: Dict[str, Any]):
+        if not bool(result.get('ok', False)):
+            return
+        room_id = self._event_room_id_from_dispatch(action, payload, result)
+        if not room_id:
+            return
+        if action == 'abolish_room':
+            self._emit_room_closed_event(room_id)
+            return
+        if action not in self._ROOM_STATE_EVENT_ACTIONS:
+            return
+        viewer_account = str(payload.get('account') or payload.get('viewer_account') or '').strip() or None
+        self._emit_room_state_event(room_id, viewer_account=viewer_account)
+
     def api_dispatch(self, action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         try:
+            result: Dict[str, Any]
             if action == 'create_room':
-                return self.api_create_room(payload)
-            if action == 'list_rooms':
-                return self._success('list_rooms', self.list_rooms())
-            if action == 'join_room':
-                return self.api_join_room(payload)
-            if action == 'leave_room':
-                return self.api_leave_room(payload)
-            if action == 'login_room':
-                return self.api_login_room(payload)
-            if action == 'start_game':
-                return self.api_start_game(payload)
-            if action == 'next_step':
-                return self.api_next_step(payload)
-            if action == 'card_effect':
-                return self.api_card_effect(payload)
-            if action == 'loot_from_kill':
-                return self.api_loot_from_kill(payload)
-            if action == 'steal_equipment':
-                return self.api_steal_equipment(payload)
-            if action == 'set_green_card_choice':
-                return self.api_set_green_card_choice(payload)
-            if action == 'confirm_green_card':
-                return self.api_confirm_green_card(payload)
-            if action == 'confirm_equipment':
-                return self.api_confirm_equipment(payload)
-            if action == 'get_room_state':
-                return self.api_get_room_state(payload)
-            if action == 'change_color':
-                return self.api_change_color(payload)
-            if action == 'abolish_room':
-                return self.api_abolish_room(payload)
-            if action == 'toggle_ready':
-                return self.api_toggle_ready(payload)
-            if action == 'vote_kick':
-                return self.api_vote_kick(payload)
-            if action == 'roll_call':
-                return self.api_roll_call(payload)
-            if action == 'update_room_settings':
-                return self.api_update_room_settings(payload)
-            if action == 'reveal_character':
-                return self.api_reveal_character(payload)
-            if action == 'send_chat':
-                return self.api_send_chat(payload)
-            if action == 'register_trip':
-                return self.api_register_trip(payload)
-            if action == 'change_trip':
-                return self.api_change_trip(payload)
-            if action == 'claim_trip_records':
-                return self.api_claim_trip_records(payload)
-            if action == 'modify_trip_records':
-                return self.api_modify_trip_records(payload)
-            if action == 'delete_trip_records':
-                return self.api_delete_trip_records(payload)
-            if action == 'submit_trip_rating':
-                return self.api_submit_trip_rating(payload)
-            if action == 'upload_avatar':
-                return self.api_upload_avatar(payload)
-            return self._error(action, 'ACTION_NOT_SUPPORTED', 'action is not supported', 404)
+                result = self.api_create_room(payload)
+            elif action == 'list_rooms':
+                result = self._success('list_rooms', self.list_rooms())
+            elif action == 'join_room':
+                result = self.api_join_room(payload)
+            elif action == 'leave_room':
+                result = self.api_leave_room(payload)
+            elif action == 'login_room':
+                result = self.api_login_room(payload)
+            elif action == 'start_game':
+                result = self.api_start_game(payload)
+            elif action == 'next_step':
+                result = self.api_next_step(payload)
+            elif action == 'card_effect':
+                result = self.api_card_effect(payload)
+            elif action == 'loot_from_kill':
+                result = self.api_loot_from_kill(payload)
+            elif action == 'steal_equipment':
+                result = self.api_steal_equipment(payload)
+            elif action == 'set_green_card_choice':
+                result = self.api_set_green_card_choice(payload)
+            elif action == 'confirm_green_card':
+                result = self.api_confirm_green_card(payload)
+            elif action == 'confirm_equipment':
+                result = self.api_confirm_equipment(payload)
+            elif action == 'get_room_state':
+                result = self.api_get_room_state(payload)
+            elif action == 'change_color':
+                result = self.api_change_color(payload)
+            elif action == 'abolish_room':
+                result = self.api_abolish_room(payload)
+            elif action == 'toggle_ready':
+                result = self.api_toggle_ready(payload)
+            elif action == 'vote_kick':
+                result = self.api_vote_kick(payload)
+            elif action == 'roll_call':
+                result = self.api_roll_call(payload)
+            elif action == 'update_room_settings':
+                result = self.api_update_room_settings(payload)
+            elif action == 'reveal_character':
+                result = self.api_reveal_character(payload)
+            elif action == 'send_chat':
+                result = self.api_send_chat(payload)
+            elif action == 'register_trip':
+                result = self.api_register_trip(payload)
+            elif action == 'change_trip':
+                result = self.api_change_trip(payload)
+            elif action == 'claim_trip_records':
+                result = self.api_claim_trip_records(payload)
+            elif action == 'modify_trip_records':
+                result = self.api_modify_trip_records(payload)
+            elif action == 'delete_trip_records':
+                result = self.api_delete_trip_records(payload)
+            elif action == 'submit_trip_rating':
+                result = self.api_submit_trip_rating(payload)
+            elif action == 'upload_avatar':
+                result = self.api_upload_avatar(payload)
+            else:
+                result = self._error(action, 'ACTION_NOT_SUPPORTED', 'action is not supported', 404)
+            self._post_dispatch_emit(action, payload, result)
+            return result
         except ValueError as e:
             return self._error(action, 'BAD_REQUEST', str(e), 400)
         except Exception as e:
