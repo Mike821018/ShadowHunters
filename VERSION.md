@@ -1,5 +1,45 @@
 # ShadowHunters 版本紀錄
 
+## v0.1.6-test (2026-03-31)
+
+### 修正項目
+
+#### Issue 37 - 房間/回放 UI 對齊與操作優化
+- `frontend/src/pages/room.js`：
+  - 場地玩家色塊改為可點擊按鈕，點擊可聚焦對應玩家卡
+  - 系統訊息同步鏡像到聊天室（保留系統訊息面板）
+  - 預覽頁判定改為支援 `.room-preview-page`
+  - 遊戲中仍保留住民登入入口（回放模式排除）
+- `frontend/replay_room.html`：回放頁改為新版 preview 版型結構，加入 system panel
+- `frontend/room.html`：加入 `.room-preview-page` 共用版型 class
+- `frontend/src/theme.css`：
+  - 皇冠改為逆時針 45 度
+  - 玩家卡 hover 提升效果調整，避免覆蓋資訊
+  - 新增玩家卡 spotlight 與場地色塊 focus/hover 樣式
+  - preview/replay 共用 selector 擴充
+
+#### Issue 37 - 建房與紀錄查詢調整
+- `frontend/lobby.html`、`frontend/src/pages/lobby.js`、`backend/room_manager.py`：
+  - 擴充模式改為 B/E checkbox
+  - 支援 `expansion_only` 卡組模式
+- `frontend/records.html`、`frontend/src/pages/records.js`、`backend/http_server.py`、`backend/game_records_api.py`：
+  - 紀錄頁新增村名搜尋、清除、手動頁碼輸入
+  - API 新增 `search` 參數
+  - 紀錄村名優先使用 `room_name`（無值才 fallback）
+
+#### 後端移動骰流程
+- `backend/game/room.py`：新增 `_roll_move_destination`，一般移動與羅盤在骰到目前區域時自動重擲
+
+#### 倉庫清理
+- `.gitignore`：新增 `.db.bak*`、`frontend/backups/`、`*.bak` 忽略規則
+- 移除已追蹤備份檔，避免後續提交污染
+
+### 驗證數據
+- `run_tests.bat` 執行完成（EXIT:0）
+
+### 備註
+- Issue 37 仍有未完成與待驗證項目，已逐條回填於 `issue_list/issue_list_37.md`
+
 ## v0.1.5-test (2026-03-30)
 
 ### 修正項目
