@@ -7,6 +7,7 @@ import { apiFetch } from '../utils.js';
 let roomAutoRefreshTimer = null;
 let roomEventSource = null;
 let roomEventConnected = false;
+let roomEventFallbackSeconds = 0;
 let activeFieldSlot = null;
 let activeFieldNumber = null;
 let fieldDetailOutsideHandlerBound = false;
@@ -1023,6 +1024,7 @@ function clearRoomEventSource() {
     roomEventSource = null;
   }
   roomEventConnected = false;
+  roomEventFallbackSeconds = 0;
 }
 
 function formatAutoRefreshLabel(seconds, selected) {
@@ -3247,8 +3249,11 @@ export function bindRoomEvents({
 
   const syncAutoRefreshTimer = () => {
     clearRoomAutoRefreshTimer();
-    if (roomEventConnected) return;
-    const seconds = Number(state.autoRefreshSeconds || 0);
+    const configuredSeconds = Number(state.autoRefreshSeconds || 0);
+    const safetySeconds = roomEventConnected ? 5 : 0;
+    const seconds = configuredSeconds > 0
+      ? configuredSeconds
+      : Number(roomEventFallbackSeconds || safetySeconds || 0);
     if (!seconds || !state.roomId) return;
 
     roomAutoRefreshTimer = window.setInterval(async () => {
@@ -3281,6 +3286,7 @@ export function bindRoomEvents({
 
     const query = new URLSearchParams({
       room_id: String(roomId),
+      stream_id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     });
     if (state.account) query.set('account', String(state.account));
 
@@ -3288,19 +3294,29 @@ export function bindRoomEvents({
 
     roomEventSource.addEventListener('open', () => {
       roomEventConnected = true;
-      clearRoomAutoRefreshTimer();
+      roomEventFallbackSeconds = 0;
+      syncAutoRefreshTimer();
     });
 
-    roomEventSource.addEventListener('room_state_changed', (event) => {
+    roomEventSource.addEventListener('room_state_changed', async (event) => {
       try {
         const payload = JSON.parse(String(event?.data || '{}'));
-        const statePayload = payload?.state || null;
-        if (!statePayload || typeof statePayload !== 'object') return;
-        const payloadRoomId = Number(statePayload?.room?.room_id || payload?.room_id || 0);
+        const payloadRoomId = Number(payload?.room_id || 0);
         if (!payloadRoomId || payloadRoomId !== Number(state.roomId || 0)) return;
-        renderState(statePayload);
+        const latest = await dispatch('get_room_state', {
+          room_id: state.roomId,
+          account: state.account || undefined,
+        }, { silent: true });
+        renderState(latest);
       } catch (error) {
-        console.error('Failed to parse room event payload', error);
+        if (error?.code === 'ROOM_NOT_FOUND') {
+          clearRoomEventSource();
+          clearRoomAutoRefreshTimer();
+          toast(t('toast.village_gone'), 'error');
+          goToLobbyPage();
+          return;
+        }
+        console.error('Failed to sync room state from event', error);
       }
     });
 
@@ -3321,6 +3337,9 @@ export function bindRoomEvents({
 
     roomEventSource.onerror = () => {
       roomEventConnected = false;
+      if (!state.autoRefreshSeconds) {
+        roomEventFallbackSeconds = 5;
+      }
       syncAutoRefreshTimer();
     };
   };

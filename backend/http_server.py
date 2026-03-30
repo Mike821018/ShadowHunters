@@ -188,7 +188,12 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
 
         self.send_response(HTTPStatus.OK)
         self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
-        self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0, s-maxage=0, no-transform')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Expires', '0')
+        self.send_header('CDN-Cache-Control', 'no-store')
+        self.send_header('Cloudflare-CDN-Cache-Control', 'no-store')
+        self.send_header('Content-Encoding', 'identity')
         self.send_header('Connection', 'keep-alive')
         self.send_header('X-Accel-Buffering', 'no')
         self.end_headers()

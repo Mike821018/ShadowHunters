@@ -855,13 +855,13 @@ class RoomManager:
             cond.wait(timeout=max(0.1, float(timeout_seconds or 25.0)))
             return collect_pending()
 
-    def _emit_room_state_event(self, room_id: int, viewer_account: Optional[str] = None):
+    def _emit_room_state_event(self, room_id: int):
         game_room = self.get_room(room_id)
         if not game_room:
             return
         payload = {
             'room_id': int(room_id),
-            'state': self._serialize_room_state(game_room, viewer_account=viewer_account),
+            'room_status': int(getattr(game_room, 'room_status', 0) or 0),
         }
         self.append_room_event(room_id, 'room_state_changed', payload)
 
@@ -879,8 +879,7 @@ class RoomManager:
             return
         if action not in self._ROOM_STATE_EVENT_ACTIONS:
             return
-        viewer_account = str(payload.get('account') or payload.get('viewer_account') or '').strip() or None
-        self._emit_room_state_event(room_id, viewer_account=viewer_account)
+        self._emit_room_state_event(room_id)
 
     def api_dispatch(self, action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         try:
