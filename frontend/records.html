@@ -39,6 +39,20 @@
           <fieldset>
             <legend><strong data-i18n="records.table_title">村莊紀錄表</strong></legend>
             <div class="card-body">
+              <div class="records-toolbar">
+                <div class="records-search-controls">
+                  <input id="recordsSearchInput" class="txt records-search-input" type="text" data-i18n-placeholder="records.search_village_placeholder" placeholder="搜尋村子名稱" aria-label="搜尋村子名稱" />
+                  <button id="recordsSearchButton" class="btn" type="button" data-i18n="records.search">搜尋</button>
+                  <button id="recordsSearchClearButton" class="btn" type="button" data-i18n="records.search_clear">清除</button>
+                </div>
+                <div class="records-page-controls">
+                  <button id="recordsPrevPage" class="btn" type="button" data-i18n="identity.prev_page">上一頁</button>
+                  <label for="recordsPageInput" class="lighttxt" data-i18n="records.page_prefix">第</label>
+                  <input id="recordsPageInput" class="txt records-page-input" type="number" min="1" value="1" />
+                  <span id="recordsPageInfo" class="lighttxt" data-i18n="records.page_suffix">/ 1 頁</span>
+                  <button id="recordsNextPage" class="btn" type="button" data-i18n="identity.next_page">下一頁</button>
+                </div>
+              </div>
               <div class="rooms-table-wrap">
                 <table class="data-table" aria-label="村莊紀錄表">
                   <thead>
@@ -53,11 +67,6 @@
                   </thead>
                   <tbody id="recordsTableBody"></tbody>
                 </table>
-              </div>
-              <div class="inline-actions identity-pagination-bar">
-                <button id="recordsPrevPage" class="btn" type="button" data-i18n="identity.prev_page">上一頁</button>
-                <span id="recordsPageInfo" class="lighttxt">1 / 1</span>
-                <button id="recordsNextPage" class="btn" type="button" data-i18n="identity.next_page">下一頁</button>
               </div>
             </div>
           </fieldset>

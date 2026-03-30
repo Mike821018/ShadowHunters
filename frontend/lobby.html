@@ -127,11 +127,18 @@
                 <option value="30" data-i18n="lobby.create.turn_timeout_30min">30 分鐘</option>
               </select>
 
-              <label class="option-title" for="expansionModeSelect" data-i18n="lobby.create.expansion_mode_label">擴充形式</label>
-              <select id="expansionModeSelect" class="txt">
-                <option value="all" data-i18n="lobby.create.expansion_mode_all">使用</option>
-                <option value="no_extend" data-i18n="lobby.create.expansion_mode_no_extend">不使用</option>
-              </select>
+              <label class="option-title" data-i18n="lobby.create.expansion_mode_label">卡組選項</label>
+              <div class="stacked-fields">
+                <label class="checkbox-row checkbox-row-inline">
+                  <input type="checkbox" id="expansionBasicCheck" checked />
+                  <span data-i18n="lobby.create.expansion_mode_basic">B 基本卡組</span>
+                </label>
+                <label class="checkbox-row checkbox-row-inline">
+                  <input type="checkbox" id="expansionExtendCheck" checked />
+                  <span data-i18n="lobby.create.expansion_mode_extend">E 擴充卡組</span>
+                </label>
+                <span class="field-hint" data-i18n="lobby.create.expansion_mode_hint">（可同時勾選；至少要選一組）</span>
+              </div>
 
               <label class="option-title" for="enableInitialGreenCardCheck" data-i18n="lobby.create.initial_green_card_label">初始綠卡</label>
               <label class="checkbox-row">

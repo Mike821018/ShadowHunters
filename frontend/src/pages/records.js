@@ -84,13 +84,23 @@ function totalPages(pagination) {
   return Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
 }
 
-function updatePager(pagination, onPrev, onNext) {
+function updatePager(pagination, state, onPrev, onNext, onJump) {
   const info = document.getElementById('recordsPageInfo');
   const prev = document.getElementById('recordsPrevPage');
   const next = document.getElementById('recordsNextPage');
+  const pageInput = document.getElementById('recordsPageInput');
   const page = Number(pagination?.page || 1);
   const pages = totalPages(pagination);
   if (info) info.textContent = `${page} / ${pages}`;
+  if (pageInput) {
+    pageInput.value = String(page);
+    pageInput.max = String(pages);
+    pageInput.onchange = () => {
+      const nextPage = Math.max(1, Math.min(pages, Number(pageInput.value || page) || page));
+      state.page = nextPage;
+      onJump?.();
+    };
+  }
   if (prev) {
     prev.disabled = page <= 1;
     prev.onclick = onPrev;
@@ -114,17 +124,24 @@ export async function initRecordsPage({ toast }) {
     page: 1,
     pageSize: 20,
     limit: 500,
+    search: '',
   };
+
+  const searchInput = document.getElementById('recordsSearchInput');
+  const searchButton = document.getElementById('recordsSearchButton');
+  const searchClearButton = document.getElementById('recordsSearchClearButton');
 
   const loadPage = async () => {
     const params = new URLSearchParams();
     params.set('limit', String(state.limit));
     params.set('page', String(state.page));
     params.set('page_size', String(state.pageSize));
+    if (state.search) params.set('search', state.search);
     const result = await fetchJson(`/api/game_records?${params.toString()}`);
     renderRecordsTable(result.entries || []);
     updatePager(
       result.pagination || { page: state.page, page_size: state.pageSize, total: 0 },
+      state,
       async () => {
         state.page = Math.max(1, state.page - 1);
         await loadPage();
@@ -133,8 +150,30 @@ export async function initRecordsPage({ toast }) {
         state.page += 1;
         await loadPage();
       },
+      async () => {
+        await loadPage();
+      },
     );
   };
+
+  const submitSearch = async () => {
+    state.search = String(searchInput?.value || '').trim();
+    state.page = 1;
+    await loadPage();
+  };
+
+  searchButton?.addEventListener('click', submitSearch);
+  searchClearButton?.addEventListener('click', async () => {
+    if (searchInput) searchInput.value = '';
+    state.search = '';
+    state.page = 1;
+    await loadPage();
+  });
+  searchInput?.addEventListener('keydown', async (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    await submitSearch();
+  });
 
   try {
     await loadPage();

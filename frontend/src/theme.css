@@ -588,10 +588,22 @@ legend {
   border: 1px solid rgba(74, 100, 120, 0.22);
   background: rgba(240, 246, 251, 0.9);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  padding: 0;
+  cursor: pointer;
+  appearance: none;
 }
 
 .stage-field-occupant.is-empty {
   display: none;
+}
+
+.stage-field-occupant:not(.is-empty):hover {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35), 0 0 0 1px rgba(41, 98, 155, 0.18);
+}
+
+.stage-field-occupant:focus-visible {
+  outline: 2px solid #2f6fa3;
+  outline-offset: 1px;
 }
 
 .stage-field-number,
@@ -1663,9 +1675,17 @@ legend {
   grid-template-rows: auto auto auto auto auto 1fr;
 }
 
-.player-card:hover,
+.player-card:hover {
+  z-index: 1;
+}
+
 .player-card:focus-within {
   z-index: 40;
+}
+
+.player-card.is-spotlighted {
+  animation: jump-highlight-pulse 1.2s ease;
+  z-index: 30;
 }
 
 .player-card.current-turn {
@@ -1925,6 +1945,8 @@ legend {
   font-size: 20px;
   line-height: 1;
   z-index: 12;
+  transform: rotate(-45deg);
+  transform-origin: center;
 }
 
 .player-id-block {
@@ -3185,31 +3207,37 @@ legend {
 }
 
 /* Preview: make field cards horizontal (landscape) */
-[data-page="room-preview"] .table-stage {
+[data-page="room-preview"] .table-stage,
+.room-preview-page .table-stage {
   min-height: 100%;
   height: 100%;
 }
 
-[data-page="room-preview"] .stage-card-field {
+[data-page="room-preview"] .stage-card-field,
+.room-preview-page .stage-card-field {
   width: clamp(80px, 8vw, 98px);
   height: clamp(56px, 6vw, 72px);
   padding: 6px 5px 5px;
   gap: 4px;
 }
 
-[data-page="room-preview"] .stage-field-number-list {
+[data-page="room-preview"] .stage-field-number-list,
+.room-preview-page .stage-field-number-list {
   min-height: 20px;
   gap: 4px;
 }
 
 [data-page="room-preview"] .stage-field-number,
-[data-page="room-preview"] .stage-field-number-static {
+[data-page="room-preview"] .stage-field-number-static,
+.room-preview-page .stage-field-number,
+.room-preview-page .stage-field-number-static {
   width: 20px;
   height: 20px;
   font-size: 10px;
 }
 
-[data-page="room-preview"] .stage-field-occupants {
+[data-page="room-preview"] .stage-field-occupants,
+.room-preview-page .stage-field-occupants {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: 2px;
@@ -3217,41 +3245,63 @@ legend {
 }
 
 /* Preview: separate field cards #1 and #2 so they don't touch */
-[data-page="room-preview"] .stage-card-1 { left: 18%; }
-[data-page="room-preview"] .stage-card-2 { left: 33%; }
+[data-page="room-preview"] .stage-card-1,
+.room-preview-page .stage-card-1 { left: 18%; }
+[data-page="room-preview"] .stage-card-2,
+.room-preview-page .stage-card-2 { left: 33%; }
 
 /* Preview: shift deck/discard columns horizontally */
 [data-page="room-preview"] .stage-card-7,
 [data-page="room-preview"] .stage-card-8,
-[data-page="room-preview"] .stage-card-9 {
+[data-page="room-preview"] .stage-card-9,
+.room-preview-page .stage-card-7,
+.room-preview-page .stage-card-8,
+.room-preview-page .stage-card-9 {
   left: 71%;
 }
 
 [data-page="room-preview"] .stage-card-10,
 [data-page="room-preview"] .stage-card-11,
-[data-page="room-preview"] .stage-card-12 {
+[data-page="room-preview"] .stage-card-12,
+.room-preview-page .stage-card-10,
+.room-preview-page .stage-card-11,
+.room-preview-page .stage-card-12 {
   left: 83%;
 }
 
 /* Preview: move #3, #6 and dice upward by about 3/4 card distance */
-[data-page="room-preview"] .stage-card-3 { top: 34%; }
-[data-page="room-preview"] .stage-card-4 { top: 34%; }
-[data-page="room-preview"] .stage-card-5 { top: 60%; }
-[data-page="room-preview"] .stage-card-6 { top: 60%; }
-[data-page="room-preview"] .stage-center-badges { top: 46%; }
+[data-page="room-preview"] .stage-card-3,
+.room-preview-page .stage-card-3 { top: 34%; }
+[data-page="room-preview"] .stage-card-4,
+.room-preview-page .stage-card-4 { top: 34%; }
+[data-page="room-preview"] .stage-card-5,
+.room-preview-page .stage-card-5 { top: 60%; }
+[data-page="room-preview"] .stage-card-6,
+.room-preview-page .stage-card-6 { top: 60%; }
+[data-page="room-preview"] .stage-center-badges,
+.room-preview-page .stage-center-badges { top: 46%; }
 
 /* Preview: vertical fine-tuning for pile/control groups */
-[data-page="room-preview"] .stage-card-8 { top: 27%; }
-[data-page="room-preview"] .stage-card-11 { top: 27%; }
-[data-page="room-preview"] .stage-card-9 { top: 48%; }
-[data-page="room-preview"] .stage-card-12 { top: 48%; }
-[data-page="room-preview"] .stage-card-active { top: 67%; }
-[data-page="room-preview"] .stage-next-step-button { bottom: 16%; }
-[data-page="room-preview"] .stage-pile-title-discard { top: -18%; }
+[data-page="room-preview"] .stage-card-8,
+.room-preview-page .stage-card-8 { top: 27%; }
+[data-page="room-preview"] .stage-card-11,
+.room-preview-page .stage-card-11 { top: 27%; }
+[data-page="room-preview"] .stage-card-9,
+.room-preview-page .stage-card-9 { top: 48%; }
+[data-page="room-preview"] .stage-card-12,
+.room-preview-page .stage-card-12 { top: 48%; }
+[data-page="room-preview"] .stage-card-active,
+.room-preview-page .stage-card-active { top: 67%; }
+[data-page="room-preview"] .stage-next-step-button,
+.room-preview-page .stage-next-step-button { bottom: 16%; }
+[data-page="room-preview"] .stage-pile-title-discard,
+.room-preview-page .stage-pile-title-discard { top: -18%; }
 
 /* Preview: make 3-color deck/discard piles and active card horizontal */
 [data-page="room-preview"] .stage-card-pile,
-[data-page="room-preview"] .stage-card-active {
+[data-page="room-preview"] .stage-card-active,
+.room-preview-page .stage-card-pile,
+.room-preview-page .stage-card-active {
   width: clamp(64px, 6.8vw, 80px);
   height: clamp(40px, 4.4vw, 52px);
 }
@@ -3330,18 +3380,21 @@ legend {
    ============================================================ */
 
 /* --- Slot: remove forced 260px min-height --- */
-[data-page="room-preview"] .seat-slot {
+[data-page="room-preview"] .seat-slot,
+.room-preview-page .seat-slot {
   min-height: 148px;
 }
 
-[data-page="room-preview"] .seat-slot > .player-card {
+[data-page="room-preview"] .seat-slot > .player-card,
+.room-preview-page .seat-slot > .player-card {
   height: 148px;
   min-height: 148px;
   max-height: 148px;
 }
 
 /* --- Card shell: 2-col grid (nick | trip on row 2), tight padding --- */
-[data-page="room-preview"] .player-card {
+[data-page="room-preview"] .player-card,
+.room-preview-page .player-card {
   padding: 4px 5px;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -3350,7 +3403,8 @@ legend {
 }
 
 /* --- Row 1: header spans both columns --- */
-[data-page="room-preview"] .player-card-head {
+[data-page="room-preview"] .player-card-head,
+.room-preview-page .player-card-head {
   grid-column: 1 / -1;
   grid-row: 1;
   display: grid;
@@ -3361,24 +3415,28 @@ legend {
 }
 
 /* Colour cell hidden in header (DOM-patched to nickname row) */
-[data-page="room-preview"] .player-card-head .player-color-cell {
+[data-page="room-preview"] .player-card-head .player-color-cell,
+.room-preview-page .player-card-head .player-color-cell {
   display: none;
 }
 
 /* Avatar: original size */
-[data-page="room-preview"] .avatar-badge {
+[data-page="room-preview"] .avatar-badge,
+.room-preview-page .avatar-badge {
   width: 56px;
   height: 56px;
 }
 
 /* id-block: block layout — HP+status inline, then area/char on own lines */
-[data-page="room-preview"] .player-id-block {
+[data-page="room-preview"] .player-id-block,
+.room-preview-page .player-id-block {
   display: block;
   min-width: 0;
 }
 
 /* HP strong inline so status can follow on same line */
-[data-page="room-preview"] .player-id-block strong {
+[data-page="room-preview"] .player-id-block strong,
+.room-preview-page .player-id-block strong {
   display: inline;
   font-size: 12px;
   line-height: 1.35;
@@ -3386,7 +3444,8 @@ legend {
 }
 
 /* Status sits right after HP on the same line */
-[data-page="room-preview"] .player-status-inline {
+[data-page="room-preview"] .player-status-inline,
+.room-preview-page .player-status-inline {
   display: inline;
   margin-left: 5px;
   font-size: 12px;
@@ -3394,7 +3453,8 @@ legend {
 }
 
 /* Area row DOM-patched inside id-block */
-[data-page="room-preview"] .player-id-block .player-card-meta {
+[data-page="room-preview"] .player-id-block .player-card-meta,
+.room-preview-page .player-id-block .player-card-meta {
   display: block;
   margin-top: 1px;
   font-size: 12px;
@@ -3402,13 +3462,15 @@ legend {
 }
 
 /* Character row DOM-patched inside id-block */
-[data-page="room-preview"] .player-id-block .player-card-meta-role {
+[data-page="room-preview"] .player-id-block .player-card-meta-role,
+.room-preview-page .player-id-block .player-card-meta-role {
   margin-top: 1px;
   font-size: 12px;
 }
 
 /* --- Row 2 left: colour swatch + nickname (no diamond) --- */
-[data-page="room-preview"] .player-card-hp {
+[data-page="room-preview"] .player-card-hp,
+.room-preview-page .player-card-hp {
   grid-column: 1;
   grid-row: 2;
   margin-top: 2px;
@@ -3421,31 +3483,37 @@ legend {
 }
 
 /* Diamond moved to trip row – hide it here */
-[data-page="room-preview"] .player-card-hp .trip-prefix-diamond {
+[data-page="room-preview"] .player-card-hp .trip-prefix-diamond,
+.room-preview-page .player-card-hp .trip-prefix-diamond {
   display: none;
 }
 
 /* Colour swatch patched into this row */
-[data-page="room-preview"] .player-card-hp .player-color-cell {
+[data-page="room-preview"] .player-card-hp .player-color-cell,
+.room-preview-page .player-card-hp .player-color-cell {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
 }
 
 [data-page="room-preview"] .player-card-hp .color-chip-static,
-[data-page="room-preview"] .player-card-hp .color-chip-trigger {
+[data-page="room-preview"] .player-card-hp .color-chip-trigger,
+.room-preview-page .player-card-hp .color-chip-static,
+.room-preview-page .player-card-hp .color-chip-trigger {
   width: 12px;
   height: 12px;
   border-radius: 2px;
 }
 
-[data-page="room-preview"] .player-card-nickname {
+[data-page="room-preview"] .player-card-nickname,
+.room-preview-page .player-card-nickname {
   font-size: 13px;
   font-weight: 700;
 }
 
 /* --- Row 2 right: coloured diamond + trip --- */
-[data-page="room-preview"] .player-card-role {
+[data-page="room-preview"] .player-card-role,
+.room-preview-page .player-card-role {
   grid-column: 2;
   grid-row: 2;
   margin-top: 2px;
@@ -3460,19 +3528,22 @@ legend {
 }
 
 /* Hide original fixed-colour diamond (replaced by DOM-patched coloured one) */
-[data-page="room-preview"] .trip-prefix-diamond-fixed {
+[data-page="room-preview"] .trip-prefix-diamond-fixed,
+.room-preview-page .trip-prefix-diamond-fixed {
   display: none;
 }
 
 /* Coloured ◆ now lives in trip row */
-[data-page="room-preview"] .player-card-role .trip-prefix-diamond {
+[data-page="room-preview"] .player-card-role .trip-prefix-diamond,
+.room-preview-page .player-card-role .trip-prefix-diamond {
   flex-shrink: 0;
   font-size: 11px;
   line-height: 1;
 }
 
 /* --- Row 3: equipment (full-width, single-line scrollable) --- */
-[data-page="room-preview"] .equip-row {
+[data-page="room-preview"] .equip-row,
+.room-preview-page .equip-row {
   grid-column: 1 / -1;
   grid-row: 3;
   margin-top: 3px;
@@ -3488,36 +3559,45 @@ legend {
 /* --- Village info: remove card backgrounds, items on separate lines --- */
 [data-page="room-preview"] .village-info-row-primary,
 [data-page="room-preview"] .village-info-row-meta,
-[data-page="room-preview"] .village-info-row-actions {
+[data-page="room-preview"] .village-info-row-actions,
+.room-preview-page .village-info-row-primary,
+.room-preview-page .village-info-row-meta,
+.room-preview-page .village-info-row-actions {
   border: none;
   background: none;
   padding: 1px 0;
   border-radius: 0;
 }
 
-[data-page="room-preview"] .village-info-row-primary .village-info-item {
+[data-page="room-preview"] .village-info-row-primary .village-info-item,
+.room-preview-page .village-info-row-primary .village-info-item {
   display: block;
 }
 
-[data-page="room-preview"] .village-info-row-primary .village-info-item strong {
+[data-page="room-preview"] .village-info-row-primary .village-info-item strong,
+.room-preview-page .village-info-row-primary .village-info-item strong {
   display: block;
   margin-right: 0;
 }
 
-[data-page="room-preview"] .village-info-row-meta .village-info-item {
+[data-page="room-preview"] .village-info-row-meta .village-info-item,
+.room-preview-page .village-info-row-meta .village-info-item {
   display: inline-flex;
   align-items: center;
 }
 
-[data-page="room-preview"] .village-info-row-meta .village-info-item strong {
+[data-page="room-preview"] .village-info-row-meta .village-info-item strong,
+.room-preview-page .village-info-row-meta .village-info-item strong {
   display: inline;
 }
 
-[data-page="room-preview"] .village-info-value {
+[data-page="room-preview"] .village-info-value,
+.room-preview-page .village-info-value {
   display: block;
 }
 
-[data-page="room-preview"] .village-info-settings-line {
+[data-page="room-preview"] .village-info-settings-line,
+.room-preview-page .village-info-settings-line {
   display: block;
   width: 100%;
   color: #778;
@@ -3525,7 +3605,8 @@ legend {
   padding-left: 0;
 }
 
-[data-page="room-preview"] .village-info-settings {
+[data-page="room-preview"] .village-info-settings,
+.room-preview-page .village-info-settings {
   display: block;
   padding-left: 1em;
   color: #778;
@@ -3533,7 +3614,8 @@ legend {
 }
 
 /* Damage meter uses its own row styles to avoid coupling with village info rules */
-[data-page="room-preview"] .damage-meter-row {
+[data-page="room-preview"] .damage-meter-row,
+.room-preview-page .damage-meter-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -3545,21 +3627,25 @@ legend {
   padding: 8px 10px;
 }
 
-[data-page="room-preview"] .damage-meter-row + .damage-meter-row {
+[data-page="room-preview"] .damage-meter-row + .damage-meter-row,
+.room-preview-page .damage-meter-row + .damage-meter-row {
   margin-top: 8px;
 }
 
-[data-page="room-preview"] .damage-meter-item {
+[data-page="room-preview"] .damage-meter-item,
+.room-preview-page .damage-meter-item {
   display: inline-flex;
   align-items: center;
 }
 
-[data-page="room-preview"] .damage-meter-item strong {
+[data-page="room-preview"] .damage-meter-item strong,
+.room-preview-page .damage-meter-item strong {
   color: #245;
   margin-right: 6px;
 }
 
-[data-page="room-preview"] .equip-chip {
+[data-page="room-preview"] .equip-chip,
+.room-preview-page .equip-chip {
   width: 24px;
   height: 24px;
   min-width: 24px;

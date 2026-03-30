@@ -33,4 +33,7 @@ server.env
 frontend/assets/avatars/custom/
 backend/data/avatar_catalog.json
 backend/data/*.db
+backend/data/*.db.bak*
+frontend/backups/
+*.bak
 info.py

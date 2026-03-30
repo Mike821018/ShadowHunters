@@ -160,10 +160,11 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
         limit_raw = (params.get('limit') or ['100'])[0]
         page_raw = (params.get('page') or ['1'])[0]
         page_size_raw = (params.get('page_size') or ['20'])[0]
+        search = (params.get('search') or [''])[0]
         limit = int(limit_raw or 100)
         page = int(page_raw or 1)
         page_size = int(page_size_raw or 20)
-        result = self.server.room_manager.records_api.api_get_game_records(limit, page, page_size)
+        result = self.server.room_manager.records_api.api_get_game_records(limit, page, page_size, search=search)
         self._send_json(HTTPStatus.OK, result)
 
     def _handle_trip_directory(self, query: str):

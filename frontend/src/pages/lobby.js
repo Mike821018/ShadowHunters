@@ -55,6 +55,15 @@ export function bindLobbyEvents({
 }) {
   if (!el.createRoomForm || el.createRoomForm.dataset.bound === 'true') return;
 
+  const resolveExpansionMode = () => {
+    const useBasic = el.expansionBasicCheck?.checked !== false;
+    const useExtend = el.expansionExtendCheck?.checked !== false;
+    if (useBasic && useExtend) return 'all';
+    if (useBasic) return 'no_extend';
+    if (useExtend) return 'expansion_only';
+    return '';
+  };
+
   el.btnRefreshRooms?.addEventListener('click', refreshRooms);
 
   el.createRoomForm.addEventListener('submit', async (event) => {
@@ -67,7 +76,7 @@ export function bindLobbyEvents({
     const manager_trip = (el.managerTrip?.value || '').trim();
     const manager_trip_encrypted = el.managerTripEncryptedCheck?.checked ?? true;
     const is_chat_room = el.chatVillageCheck?.checked ?? false;
-    const expansion_mode = String(el.expansionModeSelect?.value || 'all');
+    const expansion_mode = resolveExpansionMode();
     const enable_initial_green_card = el.enableInitialGreenCardCheck?.checked ?? false;
     const turn_timeout_minutes = Math.max(1, Number.parseInt(el.turnTimeoutSelect?.value || '3', 10) || 3);
     if (!baseName) {
@@ -83,6 +92,10 @@ export function bindLobbyEvents({
     }
     if (room_comment && countChars(room_comment) > roomDescMaxChars) {
       toast(t('toast.room_desc_too_long'), 'error');
+      return;
+    }
+    if (!expansion_mode) {
+      toast(t('lobby.create.expansion_mode_required'), 'error');
       return;
     }
 
@@ -111,7 +124,8 @@ export function bindLobbyEvents({
     if (el.requireTripCheck) el.requireTripCheck.checked = false;
     if (el.hideTripCheck) el.hideTripCheck.checked = true;
     if (el.chatVillageCheck) el.chatVillageCheck.checked = false;
-    if (el.expansionModeSelect) el.expansionModeSelect.value = 'all';
+    if (el.expansionBasicCheck) el.expansionBasicCheck.checked = true;
+    if (el.expansionExtendCheck) el.expansionExtendCheck.checked = true;
     if (el.turnTimeoutSelect) el.turnTimeoutSelect.value = '3';
     if (el.enableInitialGreenCardCheck) el.enableInitialGreenCardCheck.checked = false;
     await refreshRooms();

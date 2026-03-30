@@ -428,11 +428,12 @@ class GameRecordsAPI:
         summary = self.record_store.get_summary_stats()
         return summary
 
-    def api_get_game_records(self, limit: int = 100, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
+    def api_get_game_records(self, limit: int = 100, page: int = 1, page_size: int = 20, search: str = '') -> Dict[str, Any]:
         """API: List game records in reverse chronological order (paged)."""
         safe_limit = max(1, min(int(limit or 100), 500))
         safe_page_size = max(1, min(int(page_size or 20), 100))
         safe_page = max(1, int(page or 1))
+        keyword = str(search or '').strip().lower()
         records = sorted(
             self.record_store.game_records.values(),
             key=lambda r: (int(getattr(r, 'room_id', 0) or 0), str(getattr(r, 'game_date', '') or '')),
@@ -447,6 +448,8 @@ class GameRecordsAPI:
         for record in records:
             options = []
             settings = record.game_settings or {}
+            village_name = str(settings.get('room_name') or '').strip() or f"{record.room_id}村"
+            village_comment = str(settings.get('room_comment') or '').strip()
             if settings.get('enable_initial_green_card'):
                 options.append('Initial Green Card')
             if settings.get('require_trip'):
@@ -454,10 +457,13 @@ class GameRecordsAPI:
             if str(settings.get('expansion_mode') or ''):
                 options.append(str(settings.get('expansion_mode')))
 
+            if keyword and keyword not in village_name.lower() and keyword not in village_comment.lower():
+                continue
+
             all_entries.append({
                 'record_id': record.record_id,
                 'room_id': record.room_id,
-                'village_name': f"{record.room_id}村",
+                'village_name': village_name,
                 'end_time': record.game_date,
                 'player_count': len(record.players or []),
                 'winner_code': _winner_code(record),

@@ -844,6 +844,19 @@ class room(Thread):
             return list(self.board.field)
         return [area for area in self.board.field if area is not current_area]
 
+    def _roll_move_destination(self, player_obj, max_attempts=12):
+        last_D4 = 1
+        last_D6 = 1
+        for attempt in range(1, max_attempts + 1):
+            D4, D6 = self.board.roll_dice(3)
+            last_D4 = D4
+            last_D6 = D6
+            new_area = player_obj.check_move(D4, D6)
+            if new_area is None:
+                continue
+            return D4, D6, new_area, attempt
+        return last_D4, last_D6, None, max_attempts
+
     def loot_from_kill(self, from_player, equipment=None, take_all=False):
         """
         擊殺後掠奪裝備流程（由前端在 status=5 呼叫）：
@@ -1039,9 +1052,11 @@ class room(Thread):
 
             elif has_compass:
                 # Compass 擲骰流程（由使用者逐次觸發，與一般移動一致）
-                D4, D6 = self.board.roll_dice(3)
-                self.add_system_message(f"[{p.name or p.account}] 羅盤擲骰：D4={D4} D6={D6}")
-                new_area = p.check_move(D4, D6)
+                D4, D6, new_area, roll_attempts = self._roll_move_destination(p)
+                if roll_attempts > 1:
+                    self.add_system_message(f"[{p.name or p.account}] 羅盤擲到目前區域，自動重擲後：D4={D4} D6={D6}")
+                else:
+                    self.add_system_message(f"[{p.name or p.account}] 羅盤擲骰：D4={D4} D6={D6}")
 
                 if new_area == 'Any':
                     self._compass_areas = self._get_any_move_options(p.area)
@@ -1061,15 +1076,16 @@ class room(Thread):
                         # update → 通知前端顯示兩個可選區域 (self._compass_areas)，等待玩家選擇
                         pass  # 保持 status=2，等待含 target 的選擇呼叫
                 else:
-                    # 擲到當前區域，需重骰（與一般移動相同）
-                    # update → 通知前端 Compass 骰出當前區域 (D4+D6 結果)，請重新擲骰
-                    pass  # 保持 status=2
+                    # 理論上不會抵達此處：骰到目前區域時會自動重骰。
+                    self.add_system_message(f"[{p.name or p.account}] 羅盤暫時無法判定區域，請再試一次")
 
             else:
                 # 一般移動：擲骰自動決定目的地
-                D4, D6 = self.board.roll_dice(3)
-                self.add_system_message(f"[{p.name or p.account}] 擲移動骰：D4={D4} D6={D6}")
-                new_area = p.check_move(D4, D6)
+                D4, D6, new_area, roll_attempts = self._roll_move_destination(p)
+                if roll_attempts > 1:
+                    self.add_system_message(f"[{p.name or p.account}] 擲到目前區域，自動重擲後：D4={D4} D6={D6}")
+                else:
+                    self.add_system_message(f"[{p.name or p.account}] 擲移動骰：D4={D4} D6={D6}")
                 if new_area == 'Any':
                     self._move_area_options = self._get_any_move_options(p.area)
                     self.add_system_message(f"[{p.name or p.account}] 擲出 7，可任選區域")
@@ -1081,9 +1097,8 @@ class room(Thread):
                     p.status = 3
                     # update → 通知前端玩家移動位置與可用區域效果
                 else:
-                    # 擲出當前區域號碼，需重骰，保持 status=2
-                    # update → 通知前端骰出當前區域 (D4+D6 結果)，請重新擲骰
-                    pass
+                    # 理論上不會抵達此處：骰到目前區域時會自動重骰。
+                    self.add_system_message(f"[{p.name or p.account}] 暫時無法判定移動區域，請再試一次")
 
         # ─── STATUS 3: 區域效果 ──────────────────────────────────────────────
         # [UI操作]

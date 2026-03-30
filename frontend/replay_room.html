@@ -6,7 +6,7 @@
     <title>暗影獵人｜回放房間</title>
     <link rel="stylesheet" href="./src/theme.css" />
   </head>
-  <body data-page="replay-room">
+  <body data-page="replay-room" class="room-preview-page">
     <div id="header">
       <div class="wrap s_clear">
         <h2>暗影獵人</h2>
@@ -29,8 +29,8 @@
     <div class="wrap s_clear" id="wrap">
       <main class="main">
         <section class="panel" tabindex="0">
-          <div class="room-top-row">
-            <fieldset>
+          <div class="room-preview-info-chat-row">
+            <fieldset class="room-preview-info-fieldset">
               <legend><strong id="roomTitle" data-i18n="room.info.title">村子資訊</strong></legend>
               <div class="card-body" id="roomInfo">
                 <ul id="villageInfoList" class="village-info-list">
@@ -39,7 +39,16 @@
               </div>
             </fieldset>
 
-            <fieldset>
+            <fieldset class="room-chat-fieldset">
+              <legend><strong data-i18n="room.stage.chat">聊天室</strong></legend>
+              <div class="card-body">
+                <div id="chatStage" class="room-stage-surface room-chat-surface" aria-live="polite">
+                  <div id="chatMessages" class="chat-messages" data-i18n-aria="room.chat.messages_aria" aria-label="聊天室訊息"></div>
+                </div>
+              </div>
+            </fieldset>
+
+            <fieldset class="room-preview-player-fieldset">
               <legend><strong data-i18n="room.cards.title">村民列表</strong></legend>
               <div class="card-body">
                 <div id="roomCards" class="player-cards" aria-live="polite"></div>
@@ -47,18 +56,9 @@
             </fieldset>
           </div>
 
-          <div class="room-top-row room-stage-row">
-            <fieldset class="room-chat-fieldset">
-              <legend><strong>聊天室</strong></legend>
-              <div class="card-body">
-                <div id="chatStage" class="room-stage-surface room-chat-surface" aria-live="polite">
-                  <div id="chatMessages" class="chat-messages" aria-label="聊天室訊息"></div>
-                </div>
-              </div>
-            </fieldset>
-
-            <fieldset>
-              <legend><strong>遊戲桌面</strong></legend>
+          <div class="room-top-row room-preview-stage-row">
+            <fieldset class="room-preview-game-fieldset">
+              <legend><strong data-i18n="room.stage.table">遊戲桌面</strong></legend>
               <div class="card-body">
                 <div id="gameStage" class="room-stage-surface room-game-surface" aria-live="polite">
                   <div class="table-stage" aria-label="遊戲桌面卡片佈局">
@@ -215,6 +215,15 @@
                       <p id="activeCardDialogDesc" class="active-card-dialog-desc"></p>
                     </form>
                   </dialog>
+                </div>
+              </div>
+            </fieldset>
+
+            <fieldset class="room-preview-system-fieldset">
+              <legend><strong>系統訊息</strong></legend>
+              <div class="card-body">
+                <div id="systemStage" class="room-stage-surface room-system-surface" aria-live="polite">
+                  <div id="systemMessages" class="system-messages" aria-label="系統訊息"></div>
                 </div>
               </div>
             </fieldset>

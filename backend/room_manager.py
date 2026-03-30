@@ -304,6 +304,8 @@ class RoomManager:
         normalized = str(mode or 'all').strip().lower()
         if normalized in ('replace', 'swap'):
             return 'all'
+        if normalized in ('expansion_only', 'extend_only', 'extend', 'expansion'):
+            return 'expansion_only'
         if normalized in ('no_extend', 'noextend', 'basic', 'base', 'none'):
             return 'no_extend'
         return 'all'
@@ -312,6 +314,10 @@ class RoomManager:
         mode = self._normalize_expansion_mode(expansion_mode)
         if mode == 'all':
             return list(classes)
+
+        if mode == 'expansion_only':
+            filtered = [cls for cls in classes if getattr(cls(), 'is_extend', False)]
+            return filtered if filtered else list(classes)
 
         filtered = [cls for cls in classes if not getattr(cls(), 'is_extend', False)]
         return filtered if filtered else list(classes)

@@ -18,6 +18,7 @@ let pendingAbilityActivation = null;
 let pendingDiceAction = null;
 let diceRollInterval = null;
 let diceRollTimeout = null;
+let playerCardSpotlightTimeout = null;
 
 function formatReplayDateTime(value) {
   const raw = String(value || '').trim();
@@ -599,6 +600,35 @@ function isReplayViewState(state, dataSnapshot = latestRoomSnapshot) {
   return String(state?.page || '') === 'replay-room' || Boolean(String(dataSnapshot?.room?.replay_notice || '').trim());
 }
 
+function isPreviewLayoutPage(state = null, dataSnapshot = latestRoomSnapshot) {
+  if (document.body?.classList?.contains('room-preview-page')) return true;
+  if ((document.body?.dataset?.page || '') === 'room-preview') return true;
+  return isReplayViewState(state, dataSnapshot);
+}
+
+function spotlightPlayerCard(account) {
+  const normalized = String(account || '').trim();
+  if (!normalized) return;
+  const escapedAccount = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+    ? CSS.escape(normalized)
+    : normalized.replace(/["\\]/g, '\\$&');
+  const playerCards = Array.from(document.querySelectorAll(`[data-player-account="${escapedAccount}"]`));
+  if (!playerCards.length) return;
+  const preferredCard = playerCards.find((card) => card.closest('#roomCards')) || playerCards[0];
+  playerCards.forEach((card) => card.classList.remove('is-spotlighted'));
+  preferredCard.classList.add('is-spotlighted');
+  preferredCard.setAttribute('tabindex', '-1');
+  preferredCard.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+  preferredCard.focus?.({ preventScroll: true });
+  if (playerCardSpotlightTimeout) {
+    window.clearTimeout(playerCardSpotlightTimeout);
+  }
+  playerCardSpotlightTimeout = window.setTimeout(() => {
+    playerCards.forEach((card) => card.classList.remove('is-spotlighted'));
+    playerCardSpotlightTimeout = null;
+  }, 1600);
+}
+
 function getDiscardEquipmentOptions(dataSnapshot = latestRoomSnapshot) {
   const piles = dataSnapshot?.card_piles || {};
   return Object.entries(piles).flatMap(([color, pileInfo]) => {
@@ -1116,7 +1146,8 @@ export function setVillageInfoMessage({ el, esc }, message) {
 
 export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage, state }, data) {
   if (!el.villageInfoList) return;
-  const isPreviewPage = /room_preview\.html$/i.test(window.location.pathname || '');
+  const isPreviewPage = isPreviewLayoutPage(state, data);
+  const isReplayView = isReplayViewState(state, data);
 
   const room = data?.room;
   if (!room) {
@@ -1135,9 +1166,9 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
         ? t('room.info.status_finished')
         : String(room.room_status ?? '-');
   const statusClass = status === 1 ? 'room-status recruiting' : status === 2 ? 'room-status playing' : 'room-status';
-  const canRegister = status === 1;
   const selfPlayer = state?.account ? data?.players?.[state.account] : null;
   const hasJoined = Boolean(selfPlayer);
+  const canRegister = !isReplayView && !hasJoined && status >= 1;
   const canLeave = hasJoined && status === 1;
   const isVillageManager = Boolean(selfPlayer?.is_village_manager);
   const isSelfReady = Boolean(selfPlayer?.is_ready);
@@ -1175,7 +1206,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
       </li>
       <li>
         <strong>${esc(t('room.info.status'))}</strong><span class="${statusClass}">${esc(statusText)}</span>
-        ${canLeave ? `<button id="btnLeaveVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.leave'))}</button>` : (canRegister && !hasJoined ? `<button id="btnOpenResidentRegister" class="btn btn-inline" type="button">${esc(t('room.info.open_register'))}</button>` : '')}
+        ${canLeave ? `<button id="btnLeaveVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.leave'))}</button>` : (canRegister ? `<button id="btnOpenResidentRegister" class="btn btn-inline" type="button">${esc(t('room.info.open_register'))}</button>` : '')}
       </li>
       <li>
         <strong>${esc(t('room.info.count'))}</strong>(${Number(room.player_count || 0)}/${maxPlayers})
@@ -1189,7 +1220,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
       ${boomedNoticeRow}
     `;
 
-    if (canRegister && !hasJoined) {
+    if (canRegister) {
       const btn = el.villageInfoList.querySelector('#btnOpenResidentRegister');
       btn?.addEventListener('click', () => goToRegisterPage(room.room_id));
     }
@@ -1209,7 +1240,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
       <span class="village-info-settings-line">(${esc(roomSettings)})</span>
     </li>
     <li class="village-info-row village-info-row-actions">
-      ${(canRegister && !hasJoined) ? `<button id="btnOpenResidentRegister" class="btn btn-inline" type="button">${esc(t('room.info.open_register'))}</button>` : ''}
+      ${canRegister ? `<button id="btnOpenResidentRegister" class="btn btn-inline" type="button">${esc(t('room.info.open_register'))}</button>` : ''}
       ${canLeave ? `<button id="btnLeaveVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.leave'))}</button>` : ''}
       ${canToggleReady ? `<button id="btnToggleReadyInline" class="btn btn-inline" type="button">${esc(isSelfReady ? t('room.ops.unready') : t('room.ops.ready'))}</button>` : ''}
       ${canRollCall ? `<button id="btnRollCallInline" class="btn btn-inline" type="button">${esc(t('room.ops.roll_call'))}</button>` : ''}
@@ -1219,7 +1250,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
     ${boomedNoticeRow}
   `;
 
-  if (canRegister && !hasJoined) {
+  if (canRegister) {
     const btn = el.villageInfoList.querySelector('#btnOpenResidentRegister');
     btn?.addEventListener('click', () => goToRegisterPage(room.room_id));
   }
@@ -1593,10 +1624,13 @@ function renderChatStage({ el, esc }, data, state) {
   const chatLines = [];
   const systemLines = [];
   const nowTs = Math.floor(Date.now() / 1000);
-  const pushSystemLine = (htmlText, extraClass = '', ts = nowTs) => {
+  const pushSystemLine = (htmlText, extraClass = '', ts = nowTs, mirrorToChat = false) => {
     const tsLabel = fmtTime(Number(ts) || nowTs);
     const cls = extraClass ? `system-line ${extraClass}` : 'system-line';
     systemLines.push(`<div class="${cls}">[${esc(tsLabel)}] ${htmlText}</div>`);
+    if (mirrorToChat) {
+      chatLines.push(`<div class="chat-line chat-line-system">[${esc(tsLabel)}] ${htmlText}</div>`);
+    }
   };
 
   messages.forEach((message) => {
@@ -1605,7 +1639,7 @@ function renderChatStage({ el, esc }, data, state) {
     const text = String(message?.text || '').trim();
     if (msgType === 'system') {
       const formatted = formatSystem(text, ts);
-      if (formatted) pushSystemLine(formatted, '', ts);
+      if (formatted) pushSystemLine(formatted, '', ts, true);
       return;
     }
     const account = String(message?.account || '').trim();
@@ -2030,9 +2064,16 @@ function renderFieldCards(data, state = null) {
           if (!occupant) return '<span class="stage-field-occupant is-empty" aria-hidden="true"></span>';
           const fill = PLAYER_COLOR_HEX[occupant.color] || '#c9d8e4';
           const border = occupant.color === 'White' ? '#9aa7b2' : 'rgba(0, 0, 0, 0.22)';
-          return `<span class="stage-field-occupant" title="${escapeHtml(`${occupant.name} / ${occupant.color || '-'}`)}" style="background:${fill}; border-color:${border};"></span>`;
+          return `<button class="stage-field-occupant" type="button" data-occupant-account="${escapeHtml(occupant.account)}" title="${escapeHtml(`${occupant.name} / ${occupant.color || '-'}`)}" aria-label="查看 ${escapeHtml(occupant.name)} 玩家資訊" style="background:${fill}; border-color:${border};"></button>`;
         })
         .join('');
+      occupantsEl.querySelectorAll('[data-occupant-account]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          spotlightPlayerCard(button.getAttribute('data-occupant-account') || '');
+        });
+      });
     }
   });
 
@@ -2049,7 +2090,7 @@ function renderFieldCards(data, state = null) {
 }
 
 function patchPreviewCardsInRoom() {
-  if ((document.body?.dataset?.page || '') !== 'room-preview') return;
+  if (!isPreviewLayoutPage()) return;
   const cards = document.querySelectorAll('#roomCards .player-card');
   cards.forEach((card) => {
     const hpRow = card.querySelector('.player-card-hp');
