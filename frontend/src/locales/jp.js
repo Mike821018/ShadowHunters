@@ -148,6 +148,7 @@ export default {
     tip5: '能力アイコン: ⚡ は能力使用可、🚫 は現在使用不可を示します。',
     tip6: '無敵アイコン: 🛡️ は無敵効果中です。押すと由来を確認できます。',
     tip7: '開局前カラー: 募集中に自分の色チップを押して、この試合の代表色を選べます。',
+    tip8: '開始フェーズで能力を使える役職は、「次の手順／サイコロ」の前に自分のプレイヤーカードを押して能力を発動してください。',
     identity_page_title: '身分登録ページの説明',
     identity_step1_title: 'TRIP 一覧',
     identity_step1_desc: '既存 TRIP を検索し、試合数、勝率、評価を確認し、TRIP を押して個人記録を開きます。',
@@ -291,9 +292,18 @@ export default {
     ops: {
       leave: '村を離れる',
       abolish: '村を廃村する',
+      edit_settings: '部屋設定を変更',
       ready: '準備完了',
       roll_call: '点呼',
       unready: '準備解除',
+    },
+    settings: {
+      updated: '部屋設定を更新しました',
+      expansion_mode_prompt: 'カードプールモードを入力してください（all / no_extend / expansion_only、B/E も可）',
+      turn_timeout_prompt: '暴斃時間（分）を入力してください（2/3/5/10/20/30）',
+      initial_green_prompt: '初期グリーンカードを有効化しますか？有効は1、無効は0を入力',
+      invalid_expansion_mode: 'カードプールモードの入力が無効です',
+      invalid_turn_timeout: '暴斃時間の入力が無効です',
     },
     cards: { title: '村民リスト' },
     stage: {

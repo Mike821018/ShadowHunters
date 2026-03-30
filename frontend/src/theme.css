@@ -606,6 +606,21 @@ legend {
   outline-offset: 1px;
 }
 
+.stage-occupant-name-popup {
+  position: fixed;
+  z-index: 260;
+  transform: translateX(-50%);
+  background: rgba(24, 45, 62, 0.94);
+  color: #fff;
+  border: 1px solid rgba(155, 201, 232, 0.45);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+  box-shadow: 0 6px 14px rgba(15, 32, 46, 0.28);
+}
+
 .stage-field-number,
 .stage-field-number-static,
 .stage-field-detail-number {

@@ -18,7 +18,7 @@ let pendingAbilityActivation = null;
 let pendingDiceAction = null;
 let diceRollInterval = null;
 let diceRollTimeout = null;
-let playerCardSpotlightTimeout = null;
+let occupantNamePopupTimer = null;
 
 function formatReplayDateTime(value) {
   const raw = String(value || '').trim();
@@ -606,27 +606,35 @@ function isPreviewLayoutPage(state = null, dataSnapshot = latestRoomSnapshot) {
   return isReplayViewState(state, dataSnapshot);
 }
 
-function spotlightPlayerCard(account) {
-  const normalized = String(account || '').trim();
-  if (!normalized) return;
-  const escapedAccount = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-    ? CSS.escape(normalized)
-    : normalized.replace(/["\\]/g, '\\$&');
-  const playerCards = Array.from(document.querySelectorAll(`[data-player-account="${escapedAccount}"]`));
-  if (!playerCards.length) return;
-  const preferredCard = playerCards.find((card) => card.closest('#roomCards')) || playerCards[0];
-  playerCards.forEach((card) => card.classList.remove('is-spotlighted'));
-  preferredCard.classList.add('is-spotlighted');
-  preferredCard.setAttribute('tabindex', '-1');
-  preferredCard.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-  preferredCard.focus?.({ preventScroll: true });
-  if (playerCardSpotlightTimeout) {
-    window.clearTimeout(playerCardSpotlightTimeout);
+function showOccupantNamePopup(name, anchorEl) {
+  const label = String(name || '').trim();
+  if (!label || !(anchorEl instanceof HTMLElement)) return;
+  let popup = document.getElementById('stageOccupantNamePopup');
+  if (!(popup instanceof HTMLElement)) {
+    popup = document.createElement('div');
+    popup.id = 'stageOccupantNamePopup';
+    popup.className = 'stage-occupant-name-popup';
+    popup.setAttribute('role', 'status');
+    popup.setAttribute('aria-live', 'polite');
+    document.body.appendChild(popup);
   }
-  playerCardSpotlightTimeout = window.setTimeout(() => {
-    playerCards.forEach((card) => card.classList.remove('is-spotlighted'));
-    playerCardSpotlightTimeout = null;
-  }, 1600);
+
+  popup.textContent = label;
+  popup.hidden = false;
+
+  const rect = anchorEl.getBoundingClientRect();
+  const top = Math.max(8, Math.round(rect.top - 34));
+  const left = Math.max(8, Math.round(rect.left + rect.width / 2));
+  popup.style.top = `${top}px`;
+  popup.style.left = `${left}px`;
+
+  if (occupantNamePopupTimer) {
+    window.clearTimeout(occupantNamePopupTimer);
+  }
+  occupantNamePopupTimer = window.setTimeout(() => {
+    if (popup) popup.hidden = true;
+    occupantNamePopupTimer = null;
+  }, 1200);
 }
 
 function getDiscardEquipmentOptions(dataSnapshot = latestRoomSnapshot) {
@@ -1171,6 +1179,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
   const canRegister = !isReplayView && !hasJoined && status >= 1;
   const canLeave = hasJoined && status === 1;
   const isVillageManager = Boolean(selfPlayer?.is_village_manager);
+  const canEditSettings = isVillageManager && status === 1;
   const isSelfReady = Boolean(selfPlayer?.is_ready);
   const canToggleReady = Boolean(selfPlayer) && status === 1 && !isChatRoom;
   const canAbolish = isVillageManager && status === 1;
@@ -1207,6 +1216,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
       <li>
         <strong>${esc(t('room.info.status'))}</strong><span class="${statusClass}">${esc(statusText)}</span>
         ${canLeave ? `<button id="btnLeaveVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.leave'))}</button>` : (canRegister ? `<button id="btnOpenResidentRegister" class="btn btn-inline" type="button">${esc(t('room.info.open_register'))}</button>` : '')}
+        ${canEditSettings ? `<button id="btnEditRoomSettingsInline" class="btn btn-inline" type="button">${esc(t('room.ops.edit_settings'))}</button>` : ''}
       </li>
       <li>
         <strong>${esc(t('room.info.count'))}</strong>(${Number(room.player_count || 0)}/${maxPlayers})
@@ -1242,6 +1252,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
     <li class="village-info-row village-info-row-actions">
       ${canRegister ? `<button id="btnOpenResidentRegister" class="btn btn-inline" type="button">${esc(t('room.info.open_register'))}</button>` : ''}
       ${canLeave ? `<button id="btnLeaveVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.leave'))}</button>` : ''}
+      ${canEditSettings ? `<button id="btnEditRoomSettingsInline" class="btn btn-inline" type="button">${esc(t('room.ops.edit_settings'))}</button>` : ''}
       ${canToggleReady ? `<button id="btnToggleReadyInline" class="btn btn-inline" type="button">${esc(isSelfReady ? t('room.ops.unready') : t('room.ops.ready'))}</button>` : ''}
       ${canRollCall ? `<button id="btnRollCallInline" class="btn btn-inline" type="button">${esc(t('room.ops.roll_call'))}</button>` : ''}
       ${canAbolish ? `<button id="btnAbolishVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.abolish'))}</button>` : ''}
@@ -2064,14 +2075,14 @@ function renderFieldCards(data, state = null) {
           if (!occupant) return '<span class="stage-field-occupant is-empty" aria-hidden="true"></span>';
           const fill = PLAYER_COLOR_HEX[occupant.color] || '#c9d8e4';
           const border = occupant.color === 'White' ? '#9aa7b2' : 'rgba(0, 0, 0, 0.22)';
-          return `<button class="stage-field-occupant" type="button" data-occupant-account="${escapeHtml(occupant.account)}" title="${escapeHtml(`${occupant.name} / ${occupant.color || '-'}`)}" aria-label="查看 ${escapeHtml(occupant.name)} 玩家資訊" style="background:${fill}; border-color:${border};"></button>`;
+          return `<button class="stage-field-occupant" type="button" data-occupant-account="${escapeHtml(occupant.account)}" data-occupant-name="${escapeHtml(occupant.name)}" title="${escapeHtml(`${occupant.name} / ${occupant.color || '-'}`)}" aria-label="查看 ${escapeHtml(occupant.name)}" style="background:${fill}; border-color:${border};"></button>`;
         })
         .join('');
       occupantsEl.querySelectorAll('[data-occupant-account]').forEach((button) => {
         button.addEventListener('click', (event) => {
           event.preventDefault();
           event.stopPropagation();
-          spotlightPlayerCard(button.getAttribute('data-occupant-account') || '');
+          showOccupantNamePopup(button.getAttribute('data-occupant-name') || '', button);
         });
       });
     }
@@ -3355,6 +3366,55 @@ export function bindRoomEvents({
     toast(t('toast.roll_call_done'));
   };
 
+  const editVillageSettings = async () => {
+    if (!state.roomId || !state.account) return;
+    const roomInfo = latestRoomSnapshot?.room || {};
+    const currentMode = String(roomInfo.expansion_mode || 'all');
+    const currentTimeout = Number(roomInfo.turn_timeout_minutes || 3);
+    const currentInitialGreen = Boolean(roomInfo.enable_initial_green_card);
+
+    const modeRaw = window.prompt(t('room.settings.expansion_mode_prompt'), currentMode);
+    if (modeRaw == null) return;
+    const modeInput = String(modeRaw || '').trim().toLowerCase();
+    let expansionMode = modeInput;
+    if (modeInput === 'b' || modeInput === 'basic') expansionMode = 'no_extend';
+    if (modeInput === 'e' || modeInput === 'extend' || modeInput === 'expansion') expansionMode = 'expansion_only';
+    if (!['all', 'no_extend', 'expansion_only'].includes(expansionMode)) {
+      toast(t('room.settings.invalid_expansion_mode'), 'error');
+      return;
+    }
+
+    const timeoutRaw = window.prompt(t('room.settings.turn_timeout_prompt'), String(currentTimeout));
+    if (timeoutRaw == null) return;
+    const timeoutMinutes = Number.parseInt(String(timeoutRaw || '').trim(), 10);
+    if (![2, 3, 5, 10, 20, 30].includes(timeoutMinutes)) {
+      toast(t('room.settings.invalid_turn_timeout'), 'error');
+      return;
+    }
+
+    const initialGreenRaw = window.prompt(t('room.settings.initial_green_prompt'), currentInitialGreen ? '1' : '0');
+    if (initialGreenRaw == null) return;
+    const enableInitialGreenCard = ['1', 'true', 'on', 'yes', 'y'].includes(String(initialGreenRaw || '').trim().toLowerCase());
+
+    try {
+      const data = await dispatch('update_room_settings', {
+        room_id: state.roomId,
+        account: state.account,
+        expansion_mode: expansionMode,
+        turn_timeout_minutes: timeoutMinutes,
+        enable_initial_green_card: enableInitialGreenCard,
+      });
+      renderState(data);
+      toast(t('room.settings.updated'));
+    } catch (error) {
+      if (error?.code === 'ROOM_NOT_FOUND') {
+        goToLobbyPage();
+        return;
+      }
+      console.error(error);
+    }
+  };
+
   el.btnLeaveRoom?.addEventListener('click', leaveVillage);
 
   el.villageInfoList?.addEventListener('click', (event) => {
@@ -3376,6 +3436,11 @@ export function bindRoomEvents({
     const rollCallTarget = event.target instanceof Element ? event.target.closest('#btnRollCallInline') : null;
     if (rollCallTarget) {
       rollCallVillage();
+      return;
+    }
+    const editSettingsTarget = event.target instanceof Element ? event.target.closest('#btnEditRoomSettingsInline') : null;
+    if (editSettingsTarget) {
+      editVillageSettings();
     }
   });
 

@@ -147,6 +147,7 @@ export default {
     tip5: '能力圖示：⚡ 代表能力可用，🚫 代表能力目前不可用。',
     tip6: '無敵圖示：🛡️ 代表當前有無敵效果，點擊可查看來源。',
     tip7: '開局前配色：招募階段可點自己的色塊，挑選本局代表顏色。',
+    tip8: '若你的角色是「回合開始可發動能力」類型，請先點自己的玩家卡發動能力，再按「下一步／擲骰」。',
     identity_page_title: '身分登錄頁說明',
     identity_step1_title: 'TRIP 一覽',
     identity_step1_desc: '可檢索已存在 TRIP、查看場數、勝率與評級，點擊 TRIP 可打開個人紀錄。',
@@ -290,9 +291,18 @@ export default {
     ops: {
       leave: '離開村子',
       abolish: '廢除村莊',
+      edit_settings: '修改房間設定',
       ready: '準備完成',
       roll_call: '點名',
       unready: '取消準備',
+    },
+    settings: {
+      updated: '房間設定已更新',
+      expansion_mode_prompt: '請輸入卡組模式（all / no_extend / expansion_only；也可輸入 B 或 E）',
+      turn_timeout_prompt: '請輸入暴斃時間（2/3/5/10/20/30 分鐘）',
+      initial_green_prompt: '是否啟用初始綠卡？輸入 1 啟用，0 關閉',
+      invalid_expansion_mode: '卡組模式輸入無效',
+      invalid_turn_timeout: '暴斃時間輸入無效',
     },
     cards: { title: '村民列表' },
     stage: {

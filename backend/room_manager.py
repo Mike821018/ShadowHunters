@@ -790,6 +790,8 @@ class RoomManager:
                 return self.api_vote_kick(payload)
             if action == 'roll_call':
                 return self.api_roll_call(payload)
+            if action == 'update_room_settings':
+                return self.api_update_room_settings(payload)
             if action == 'reveal_character':
                 return self.api_reveal_character(payload)
             if action == 'send_chat':
@@ -1102,6 +1104,47 @@ class RoomManager:
         game_room.add_system_message(f"村長 [{requester.name or account}] 發起點名，所有人需重新準備")
         game_room.touch_activity()
         return self._success('roll_call', self._serialize_room_state(game_room, viewer_account=account))
+
+    def api_update_room_settings(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        room_id = payload.get('room_id')
+        account = str(payload.get('account') or '').strip()
+        if room_id is None or not account:
+            return self._error('update_room_settings', 'INVALID_PAYLOAD', 'room_id and account are required', 400)
+
+        game_room = self.get_room(room_id)
+        if not game_room:
+            return self._error('update_room_settings', 'ROOM_NOT_FOUND', '房間不存在', 404)
+        if int(getattr(game_room, 'room_status', 0) or 0) != 1:
+            return self._error('update_room_settings', 'NOT_RECRUITING', '僅招募中可修改房間設定', 400)
+
+        requester = game_room.players.get(account)
+        if not requester:
+            return self._error('update_room_settings', 'PLAYER_NOT_FOUND', '玩家不存在', 404)
+        if not bool(requester.profile.get('is_village_manager', False)):
+            return self._error('update_room_settings', 'NOT_VILLAGE_MANAGER', '只有村長可以修改房間設定', 403)
+
+        expansion_mode = self._normalize_expansion_mode(payload.get('expansion_mode', getattr(game_room, 'expansion_mode', 'all')))
+        enable_initial_green_card = bool(payload.get('enable_initial_green_card', getattr(game_room, 'enable_initial_green_card', False)))
+        timeout_minutes_raw = payload.get('turn_timeout_minutes', int(getattr(game_room, 'turn_timeout_seconds', 180) or 180) // 60)
+        try:
+            timeout_minutes = int(timeout_minutes_raw or 3)
+        except Exception:
+            timeout_minutes = 3
+        timeout_minutes = max(2, min(30, timeout_minutes))
+        allowed_timeouts = {2, 3, 5, 10, 20, 30}
+        if timeout_minutes not in allowed_timeouts:
+            nearest = min(allowed_timeouts, key=lambda value: abs(value - timeout_minutes))
+            timeout_minutes = int(nearest)
+
+        game_room.expansion_mode = expansion_mode
+        game_room.enable_initial_green_card = enable_initial_green_card
+        game_room.turn_timeout_seconds = int(timeout_minutes * 60)
+        game_room.touch_activity()
+        game_room.add_system_message(
+            f"村長 [{requester.name or account}] 更新房間設定："
+            f"Mode={expansion_mode} / 初始綠卡={'On' if enable_initial_green_card else 'Off'} / 暴斃時間={timeout_minutes}分"
+        )
+        return self._success('update_room_settings', self._serialize_room_state(game_room, viewer_account=account))
 
     def api_reveal_character(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         room_id = payload.get('room_id')

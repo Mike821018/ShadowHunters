@@ -269,9 +269,9 @@ const CHARACTER_INFO = {
     names: { en: 'David', zh: '大衛', jp: 'デイビッド' },
     camp: { en: 'Civilian', zh: '中立', jp: 'ニュートラル' },
     win: {
-      en: 'Own 3 or more among Holy Robe / Silver Rosary / Talisman / Spear of Longinus.',
-      zh: '持有四件指定裝備中的任意 3 件以上。',
-      jp: '指定 4 装備のうち 3 種以上を所持する。',
+      en: 'Own 3 or more among these 4 equipments: Holy Robe / Silver Rosary / Talisman / Spear of Longinus.',
+      zh: '持有以下 4 件裝備中的任意 3 件以上：神聖法袍／秘銀念珠／辟邪護符／隆基努司之槍。',
+      jp: '次の4装備のうち任意3種以上を所持する：賢者のローブ／銀のロザリオ／護符／ロンギヌスの槍。',
     },
     ability: {
       en: 'Take one chosen equipment from discard (once).',

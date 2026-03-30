@@ -148,6 +148,7 @@ export default {
     tip5: 'Ability icons: ⚡ means ability ready, and 🚫 means ability unavailable right now.',
     tip6: 'Invulnerability icon: 🛡️ means an active invulnerability effect; click it to inspect the source.',
     tip7: 'Pre-game color: during recruitment, click your color chip to choose your color for this match.',
+    tip8: 'If your role can activate at start phase, click your own player card to trigger it before pressing Next Step or rolling dice.',
     identity_page_title: 'Identity Page Guide',
     identity_step1_title: 'TRIP Directory',
     identity_step1_desc: 'Search existing TRIPs, review games played, win rate, and rank, then click a TRIP to open its personal record.',
@@ -828,9 +829,18 @@ export default {
     tips: {
       tip1: 'Use Hermit cards and the public damage track to read factions early; that is one of the main information engines of Shadow Hunters.',
       tip2: 'Do not reveal too early. A revealed power can be strong, but it also tells your enemies exactly who you are.',
+      edit_settings: 'Edit Room Settings',
       tip3: 'Memorize what each area does, especially Forest of Hope and Despair and Erstwhile Altar, because they can swing the tempo immediately.',
       tip4: 'Neutrals are not random bystanders. Unusual behavior may mean someone is pushing a private win condition.',
       tip5: 'Multiple players can win at the same time, so check your own objective again before assuming only one side matters.',
+    },
+    settings: {
+      updated: 'Room settings updated',
+      expansion_mode_prompt: 'Enter card pool mode (all / no_extend / expansion_only; B or E is also accepted)',
+      turn_timeout_prompt: 'Enter boom timeout minutes (2/3/5/10/20/30)',
+      initial_green_prompt: 'Enable initial green card? Enter 1 for yes, 0 for no',
+      invalid_expansion_mode: 'Invalid card pool mode input',
+      invalid_turn_timeout: 'Invalid boom timeout input',
     },
     faq: {
       q1: 'Do I know my teammates at the start?',
