@@ -407,12 +407,7 @@ class room(Thread):
         # target='self' 的卡前端不傳目標，自動補上 current_player
         if target is None and str(getattr(card, 'target', '') or '') == 'self':
             target = self.current_player
-        if force_effect in (1, 2):
-            try:
-                return card.action(self.current_player, target, self, force_effect=force_effect)
-            except TypeError:
-                pass
-        return card.action(self.current_player, target, self)
+        return card.action(self.current_player, target, self, force_effect=force_effect or 0)
 
     def _capture_effect_snapshot(self):
         return {
@@ -700,11 +695,11 @@ class room(Thread):
         if int(getattr(self, 'room_status', 0) or 0) == 3:
             return [self.players[acc] for acc in self.winner_accounts if acc in self.players]
 
-        winners = []
+        primary_winners = []
 
         # 綠卡待確認期間，不允許一般 next_step 推進，避免被「跳過場地」覆蓋流程
         if self._pending_green_card:
-            return
+            return []
         for trip, p in self.players.items():
             # 規則：僅「暴斃」玩家不可獲勝；一般死亡玩家仍可依角色條件判定勝利。
             if bool(getattr(p, 'is_boomed', False)) or not p.character:
@@ -713,12 +708,17 @@ class room(Thread):
                 continue
             if dead_trigger and p.check_win_timing == 1:
                 if p.character.win_check(self, p, dead_trigger):
-                    winners.append(p)
+                    primary_winners.append(p)
             if equip_trigger and p == equip_trigger and p.check_win_timing == 2:
                 if p.character.win_check(self, p, None):
-                    winners.append(p)
-        if winners:
-            # 角色旗標化的「遊戲結束時」勝利條件統一在此檢查，避免硬編碼角色名稱。
+                    primary_winners.append(p)
+        if primary_winners:
+            # 第一輪判定先確認是否達成結束條件，接著切到結算狀態再做名單確認。
+            self.room_status = 3
+
+            winners = list(primary_winners)
+
+            # 第二輪結算：補上「遊戲結束時」才成立的勝利條件，確定最終勝者名單。
             winner_accounts_snapshot = {
                 str(getattr(w, 'account', '') or '')
                 for w in winners
@@ -738,7 +738,6 @@ class room(Thread):
                     winners.append(p)
                     winner_accounts_snapshot.add(account_key)
 
-            self.room_status = 3
             self.winner_accounts = []
             seen_accounts = set()
             for w in winners:
@@ -772,7 +771,8 @@ class room(Thread):
             if self.manager_ref and hasattr(self.manager_ref, 'records_api'):
                 self.manager_ref.records_api.on_game_end(self)
             # update → 通知前端 winners 獲勝，遊戲結束
-        return winners
+            return winners
+        return []
 
     def _can_activate_ability(self, p):
         """

@@ -7,12 +7,12 @@ class Card():
         self.type = '' # Equipment, Action
         self.target = '' # all, others, area, one, other, self
     
-    def action(self, user, target, rooms): # for action use, target=character
+    def action(self, user, target, rooms, force_effect=0) -> tuple:
         ret = 0 # 0: no effect, 1: death, 2: steal, 3: reveal, 4: choose area
         extra = [] # for death: [death players], for steal: [from_player, to_player], for reveal: [to_player]
         return ret, extra
 
-    def requires_choice(self, user, target, rooms):
+    def requires_choice(self, user, target, rooms) -> bool:
         return False
     
     def equip(self, target): # for equipment use, target=character
@@ -484,7 +484,7 @@ class HolyWaterOfHealing(Card):
         self.type = "Action"
         self.target = "self"
 
-    def action(self, user, target, rooms):
+    def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
         target.heal(2)
@@ -498,7 +498,7 @@ class Advent(Card):
         self.type = "Action"
         self.target = "self"
 
-    def action(self, user, target, rooms):
+    def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
         if target.character.camp == "Hunter":
@@ -514,7 +514,7 @@ class Chocolate(Card):
         self.type = "Action"
         self.target = "self"
 
-    def action(self, user, target, rooms):
+    def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
         if target.character.capital in ["A", "E", "U"]:
@@ -530,7 +530,7 @@ class Blessing(Card):
         self.type = "Action"
         self.target = "other"
 
-    def action(self, user, target, rooms):
+    def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
         _, dice_result = rooms.board.roll_dice(2) # 擲一顆六面骰
@@ -545,7 +545,7 @@ class ConcealedKnowledge(Card):
         self.type = "Action"
         self.target = "self"
 
-    def action(self, user, target, rooms):
+    def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
         target.extra_turn += 1
@@ -559,7 +559,7 @@ class GuardianAngel(Card):
         self.type = "Action"
         self.target = "self"
 
-    def action(self, user, target, rooms):
+    def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
         target.eqp_immortal = True
@@ -574,7 +574,7 @@ class FlareOfJudgement(Card):
         self.type = "Action"
         self.target = "others"
 
-    def action(self, user, target, rooms):
+    def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
         for player in rooms.players.values():
@@ -593,7 +593,7 @@ class DisenchantMirror(Card):
         self.type = "Action"
         self.target = "self"
 
-    def action(self, user, target, rooms):
+    def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
         if target.character and getattr(target.character, 'can_be_revealed_by_disenchant_mirror', False):
@@ -608,7 +608,7 @@ class FirstAid(Card):
         self.type = "Action"
         self.target = "one"
 
-    def action(self, user, target, rooms):
+    def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
         target.damage = 7
@@ -708,7 +708,7 @@ class VampireBat(Card):
         self.type = "Action"
         self.target = "other"
 
-    def action(self, user, target, rooms):
+    def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
         # 檢查目標是否裝備Talisman，如果有則免疫傷害
@@ -730,7 +730,7 @@ class BloodthirstySpider(Card):
         self.type = "Action"
         self.target = "other"
 
-    def action(self, user, target, rooms):
+    def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
         # 檢查目標是否裝備Talisman，如果有則免疫傷害
@@ -758,7 +758,7 @@ class MoodyGoblin(Card):
         self.type = "Action"
         self.target = "other"
 
-    def action(self, user, target, rooms):
+    def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
         if target.equipment_list:
@@ -775,7 +775,7 @@ class SpiritualDoll(Card):
         self.type = "Action"
         self.target = "other"
 
-    def action(self, user, target, rooms):
+    def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
         _, dice_result = rooms.board.roll_dice(2)
@@ -801,7 +801,7 @@ class Dynamite(Card):
         self.type = "Action"
         self.target = "area"
 
-    def action(self, user, target, rooms):
+    def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
         
@@ -865,7 +865,7 @@ class BananaPeel(Card):
         self.type = "Action"
         self.target = "other"
 
-    def action(self, user, target, rooms):
+    def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
         if rooms and hasattr(rooms, 'current_player'):

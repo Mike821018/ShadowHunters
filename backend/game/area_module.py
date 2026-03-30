@@ -9,7 +9,7 @@ class area():
         self.target = '' # all, others, area, one, other, self
         self.additional_choose = False
 
-    def action(self, user, target, action_type):
+    def action(self, user, target, action_type) -> tuple:
         ret = 0 # 0: no effect, 1: death, 2: steal
         extra = [] # for death: [death players], for steal: [from_player, to_player]
         return 0, []

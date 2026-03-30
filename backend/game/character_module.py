@@ -1,4 +1,5 @@
 from .setting import camp_setting
+from typing import Optional
 
 class Character():
     def __init__(self):
@@ -46,13 +47,13 @@ class Character():
         user.can_use_ability = self.can_use_ability
         user.character_reveal = True
 
-    def ability(self, user, target, rooms):
-        pass
-
-    def requires_green_card_choice(self, user, card, source, rooms):
+    def ability(self, user, target, rooms) -> bool:
         return False
 
-    def get_green_card_force_effect(self, user, card, source, rooms, choice=None):
+    def requires_green_card_choice(self, user, card, source, rooms) -> bool:
+        return False
+
+    def get_green_card_force_effect(self, user, card, source, rooms, choice=None) -> Optional[int]:
         return None
 
     def disable_ability(self):
@@ -396,7 +397,8 @@ class Allie(Character):
         ret = False
         # 勝利條件: 當遊戲結束時，你仍然存活
         # 實際觸發時機由 room._check_all_victory 的結算階段旗標控制。
-        ret = user.is_alive
+        if int(getattr(room, 'room_status', 0) or 0) == 3:
+            ret = user.is_alive
         return ret
 
 class Charles(Character):
@@ -470,8 +472,8 @@ class Bryan(Character):
                     ret = True
                     break
 
-        # 條件2: 結算階段（dead is None）若身處古代祭壇則獲勝。
-        if not ret and dead is None:
+        # 條件2: 僅在結算階段（room_status==3 且 dead is None）檢查古代祭壇勝利。
+        if not ret and dead is None and int(getattr(room, 'room_status', 0) or 0) == 3:
             area_obj = getattr(user, 'area', None)
             area_name = str(getattr(area_obj, 'name', '') or getattr(user, 'area_name', '') or '').strip()
             if area_name == "Erstwhile Altar":
