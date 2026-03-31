@@ -1,5 +1,38 @@
 # ShadowHunters 版本紀錄
 
+## v0.1.7-test (2026-03-31)
+
+### 修正項目
+
+#### Issue 39 - 規則頁文案、收攏與多語系同步
+- `frontend/guide.html`、`frontend/src/locales/zh.js`、`frontend/src/locales/en.js`、`frontend/src/locales/jp.js`：
+  - 場地效果文案改為最新規則（時空之門三色抽牌、森林可指定任意玩家含自己、祭壇可對任意玩家且目標有裝備時才可奪取）
+  - 場地骰點欄位改為圓圈樣式並置中，顯示實際骰值（2/3、4/5、6、8、9、10）
+  - 指南中 `step3_desc` 與場地表格 fallback 文案同步，移除舊範例殘留與刷新閃現舊字串問題
+  - 場地欄位標題調整為 `編號 / No. / No.`
+- `frontend/src/app.js`、`frontend/src/theme.css`：
+  - 規則頁與操作說明頁加入可控收攏機制（大區塊與子區塊）
+  - 依需求精準調整收攏例外：
+    - 角色與陣營：僅「各人數陣營配置」可收攏且預設收起
+    - 遊戲流程：「場地系統與攻擊範圍」固定展開
+    - 卡牌系統子區塊固定展開
+  - 操作說明步驟列取消灰底與子收攏，回復一般清單呈現
+
+#### 身分登錄頁初始化與舊資料相容修正
+- `frontend/src/pages/register.js`：
+  - 未登入或無房間情境進入身分登錄頁時，不再彈出全域初始化失敗通知
+  - 房間狀態查詢失敗改為靜默退回，保留 TRIP 一覽/個人紀錄可用
+- `backend/game_records_api.py`：
+  - 修正 TRIP 個人紀錄中暴斃局 `result_code` 計算，改為顯示「實際勝利陣營」的灰底徽章
+  - 補強舊紀錄相容：若歷史資料缺 `winner_players`，會 fallback 解析 `winner_camp` 推導勝利陣營
+
+### 驗證數據
+- `run_tests.bat` 執行完成（EXIT:0）
+- 針對 TRIP `Tg5ODBjN`、room `531` 驗證：`boomed=True` 時 `result_code` 已為 `hunter`，與實際勝方一致
+
+### 備註
+- 本版本為 `v0.1.6-test` 後續修正版本，仍屬測試階段
+
 ## v0.1.6-test (2026-03-31)
 
 ### 修正項目
