@@ -1241,6 +1241,26 @@ legend {
   text-transform: lowercase;
 }
 
+.avatar-upload-file-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.avatar-upload-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .avatar-upload-preview-card {
   width: fit-content;
   min-width: 84px;
@@ -2118,6 +2138,10 @@ legend {
   overflow: hidden;
 }
 
+.player-card-role > .trip-prefix-diamond {
+  margin-left: 0px;
+}
+
 .player-role-info {
   position: relative;
   min-width: 0;
@@ -2337,6 +2361,7 @@ legend {
 /* Color picker */
 .color-picker {
   position: relative;
+  display: inline-block;
 }
 
 .color-chip-trigger,
@@ -2350,11 +2375,18 @@ legend {
 
 .color-chip-trigger {
   cursor: pointer;
-  list-style: none;
+  padding: 0;
+  background-clip: padding-box;
+  appearance: none;
 }
 
-.color-chip-trigger::-webkit-details-marker {
-  display: none;
+.color-chip-trigger:hover {
+  transform: translateY(-1px);
+}
+
+.color-chip-trigger:focus-visible {
+  outline: 2px solid #2f7db2;
+  outline-offset: 2px;
 }
 
 .color-picker-row {
@@ -2372,6 +2404,7 @@ legend {
   gap: 5px;
   align-items: center;
   min-width: 120px;
+  box-shadow: 0 10px 24px rgba(20, 35, 52, 0.16);
 }
 
 .color-swatch {
@@ -3653,7 +3686,7 @@ legend {
 .room-preview-page .player-card {
   padding: 4px 5px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr);
   grid-template-rows: auto auto 1fr;
   gap: 0;
 }
@@ -3765,6 +3798,9 @@ legend {
 .room-preview-page .player-card-nickname {
   font-size: 13px;
   font-weight: 700;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
 }
 
 /* --- Row 2 right: coloured diamond + trip --- */
@@ -3779,8 +3815,24 @@ legend {
   gap: 2px;
   min-width: 0;
   overflow: hidden;
-  padding-left: 10px;
-  border-left: 1px solid var(--line);
+}
+
+[data-page="room-preview"] .player-card-role > .trip-prefix-diamond,
+.room-preview-page .player-card-role > .trip-prefix-diamond {
+  margin-left: 0;
+}
+
+[data-page="room-preview"] .player-card-role .player-trip-link,
+[data-page="room-preview"] .player-card-role .player-role-name,
+.room-preview-page .player-card-role .player-trip-link,
+.room-preview-page .player-card-role .player-role-name {
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: normal;
+  line-height: 1.2;
 }
 
 /* Hide original fixed-colour diamond (replaced by DOM-patched coloured one) */

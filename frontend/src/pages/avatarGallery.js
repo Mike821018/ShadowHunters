@@ -170,13 +170,26 @@ function compressImageFileToDataUrl(file, { canvasSize = 56, mimeType = 'image/p
 
 function bindUploadPreview(toast) {
   const fileInput = document.getElementById('avatarUploadFile');
+  const filePickButton = document.getElementById('btnAvatarUploadPickFile');
+  const fileNameLabel = document.getElementById('avatarUploadFileName');
   const preview = document.getElementById('avatarUploadPreview');
   const meta = document.getElementById('avatarUploadMeta');
   const nameInput = document.getElementById('avatarUploadName');
   const colorInput = document.getElementById('avatarUploadColor');
   if (!fileInput || !preview || !meta) return;
 
+  const syncFileLabel = () => {
+    if (!fileNameLabel) return;
+    const file = fileInput.files?.[0];
+    fileNameLabel.textContent = file ? file.name : t('avatar.no_file');
+  };
+
+  filePickButton?.addEventListener('click', () => {
+    fileInput.click();
+  });
+
   renderUploadPreviewCard({ name: nameInput?.value || '', color: colorInput?.value || '#9aa4ad' });
+  syncFileLabel();
 
   nameInput?.addEventListener('input', () => {
     const img = preview.querySelector('img');
@@ -189,6 +202,7 @@ function bindUploadPreview(toast) {
 
   fileInput.addEventListener('change', () => {
     const file = fileInput.files?.[0];
+    syncFileLabel();
     if (!file) {
       renderUploadPreviewCard({ name: nameInput?.value || '', color: colorInput?.value || '#9aa4ad' });
       meta.textContent = t('avatar.upload_meta_idle');
@@ -374,6 +388,8 @@ export async function initAvatarGalleryPage({ toast, dispatch }) {
           uploadForm.reset();
           applyI18n(uploadForm);
           renderUploadPreviewCard({ name: '', color: '#9aa4ad' });
+          const uploadFileName = document.getElementById('avatarUploadFileName');
+          if (uploadFileName) uploadFileName.textContent = t('avatar.no_file');
           const uploadMeta = document.getElementById('avatarUploadMeta');
           if (uploadMeta) uploadMeta.textContent = t('avatar.upload_meta_idle');
           const colorInput = document.getElementById('avatarUploadColor');

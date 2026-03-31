@@ -171,7 +171,7 @@ function bindIdentityTools({ el, toast, dispatch }) {
     identityState.password = String(password || '');
     if (el.tripAuthStatus) {
       el.tripAuthStatus.textContent = identityState.trip
-        ? `目前操作 TRIP：${identityState.trip}`
+        ? t('identity.managed_trip_current', { trip: identityState.trip })
         : t('identity.trip_auth_idle');
     }
   };
@@ -243,7 +243,7 @@ function bindIdentityTools({ el, toast, dispatch }) {
     const message = criteriaMap[normalized]
       ? `${localizedLevel}\n${criteriaMap[normalized]}`
       : (fallbackByLang[lang] || fallbackByLang.zh);
-    if (titleEl) titleEl.textContent = `評級說明：${skillLevelLabel(skillLevel)}`;
+    if (titleEl) titleEl.textContent = t('identity.skill_level_title_with_level', { level: skillLevelLabel(skillLevel) });
     if (messageEl) messageEl.textContent = message;
     if (dialog instanceof HTMLDialogElement) {
       dialog.showModal();
@@ -713,7 +713,7 @@ function bindIdentityTools({ el, toast, dispatch }) {
           identityState.ratingPage = 1;
           await openTripProfile(trip, 'nicknames');
         } catch {
-          toast('TRIP 個人紀錄載入失敗', 'error');
+          toast(t('identity.trip_profile_load_failed'), 'error');
         }
       });
     });
@@ -734,7 +734,7 @@ function bindIdentityTools({ el, toast, dispatch }) {
       renderTripDirectory(data.entries || [], data.pagination || { page: 1, page_size: 20, total: 0 });
     } catch {
       renderTripDirectory([], { page: 1, page_size: 20, total: 0 });
-      toast('TRIP 一覽載入失敗', 'error');
+      toast(t('identity.trip_directory_load_failed'), 'error');
     }
   };
 

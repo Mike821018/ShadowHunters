@@ -1185,6 +1185,10 @@ class room(Thread):
         # [UI回傳] 攻擊 → next_step(action=True,  target=<目標player>)
         #          跳過 → next_step(action=False)
         elif p.status == 4:
+            # 綠卡待確認期間，不允許進入攻擊階段
+            if self._pending_green_card:
+                return
+            
             attackable_targets = self._get_attackable_targets(p)
 
             if not attackable_targets:
@@ -1474,6 +1478,15 @@ class room(Thread):
         [UI回傳] steal_equipment(from_player, to_player, <選定的 equipment 物件>)
         """
         self.touch_turn_action()
+        
+        # 驗證 from_player 和 to_player + equipment 有效性
+        if not from_player or not to_player or equipment is None:
+            return False
+        
+        # 驗證 equipment 確實在 from_player 的裝備中
+        if equipment not in getattr(from_player, 'equipment_list', []):
+            return False
+        
         from_player.divest(equipment)
         to_player.equip(equipment)
         _green_card_names = frozenset({'Aid', 'Anger', 'Blackmail', 'Bully', 'Exorcism', 'Greed', 'Huddle',

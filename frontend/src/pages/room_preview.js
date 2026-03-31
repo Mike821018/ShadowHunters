@@ -274,6 +274,27 @@ function buildReplayRoomState(record) {
   };
 }
 
+function formatPreviewCardSetSummary(mode) {
+  const normalized = String(mode || 'all').trim();
+  if (normalized === 'no_extend') return `${t('room.info.card_pool')}:[B]`;
+  if (normalized === 'expansion_only') return `${t('room.info.card_pool')}:[E]`;
+  return `${t('room.info.card_pool')}:[B]+[E]`;
+}
+
+function formatPreviewToggleSummary(value) {
+  return value ? t('room.info.setting_on') : t('room.info.setting_off');
+}
+
+function formatPreviewRoomSettingsSummary(room) {
+  const boomTimeoutMinutes = Number(room?.turn_timeout_minutes || 3);
+  return [
+    `${t('room.info.trip_rule')}:${formatPreviewToggleSummary(Boolean(room?.require_trip))}`,
+    formatPreviewCardSetSummary(room?.expansion_mode || 'all'),
+    `${t('room.info.initial_green_card')}:${formatPreviewToggleSummary(Boolean(room?.enable_initial_green_card))}`,
+    `${t('room.info.boom_timeout')}:${t('room.info.boom_timeout_fmt_minutes', { n: boomTimeoutMinutes })}`,
+  ].join(' / ');
+}
+
 function setPendingDiceAction(action) {
   pendingDiceAction = action || null;
   if (latestRoomSnapshot) renderState(latestRoomSnapshot);
@@ -1124,14 +1145,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
   const canRollCall = isVillageManager && status === 1 && !isChatRoom;
   const villageName = withVillageSuffix(room.room_name || '');
   const villageDescription = room.room_comment || room.village_description || room.description || '-';
-  const initialGreenCard = room.enable_initial_green_card ? 'On' : 'Off';
-  const boomTimeoutMinutes = Number(room.turn_timeout_minutes || 3);
-  const roomSettings = [
-    `TRIP:${room.require_trip ? 'On' : 'Off'}`,
-    `Mode:${String(room.expansion_mode || 'all')}`,
-    `初始綠卡:${initialGreenCard}`,
-    `暴斃時間:${boomTimeoutMinutes}分`,
-  ].join(' / ');
+  const roomSettings = formatPreviewRoomSettingsSummary(room);
   const replayNotice = String(room.replay_notice || '').trim();
   const turnTimeout = data?.turn_timeout || null;
   const timeoutRemain = Number(turnTimeout?.remaining_seconds);
@@ -1225,10 +1239,10 @@ function renderSystemStage({ el, esc }, data, state) {
   const boomedName = String(boomedNotice?.name || boomedNotice?.trip_display || '').trim();
 
   const timeoutWarnMsg = (status === 2 && Number.isFinite(timeoutRemain))
-    ? `[${fmtTime(Math.floor(Date.now() / 1000))}] 回合超時：${esc(timeoutCurrent)} 剩餘 ${Math.max(0, timeoutRemain)} 秒`
+    ? `[${fmtTime(Math.floor(Date.now() / 1000))}] ${t('room.info.turn_timeout')}${t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-', n: Math.max(0, timeoutRemain) })}`
     : null;
   const boomedWarnMsg = (status === 2 && boomedName)
-    ? `[${fmtTime(Math.floor(Date.now() / 1000))}] 暴斃通知：${esc(boomedName)} 已因超時暴斃`
+    ? `[${fmtTime(Math.floor(Date.now() / 1000))}] ${t('room.info.boomed_notice')}${t('room.info.boomed_notice_fmt', { name: boomedName })}`
     : null;
 
   const htmlLines = [];
@@ -1432,11 +1446,11 @@ function renderChatStage({ el, esc }, data, state) {
     if (!plainCardName) return '';
     if (GREEN_CARD_SOURCE_NAMES.has(plainCardName)) {
       if (canRevealGreenCardName('', targetLabel)) {
-        return `卡片 ${esc(getLocalizedCardName(plainCardName))}`;
+        return t('room.system.card_source', { card: esc(getLocalizedCardName(plainCardName)) });
       }
-      return '卡片 (???)';
+      return t('room.system.card_source_hidden');
     }
-    return `卡片 ${esc(getLocalizedCardName(plainCardName))}`;
+    return t('room.system.card_source', { card: esc(getLocalizedCardName(plainCardName)) });
   };
 
   // Transform a system message text for display.
@@ -1456,139 +1470,139 @@ function renderChatStage({ el, esc }, data, state) {
     if (/^\[.+\] 在 .+ 對 \[.+\] 執行效果：(?:Heal|Hurt)$/.test(text)) return null;
 
     // -- Room creation --
-    if (/^村莊已建立：/.test(text)) return `村莊建立於 ${fmtDate(ts)}`;
+    if (/^村莊已建立：/.test(text)) return t('room.system.village_created_at', { date: fmtDate(ts) });
 
     // -- Join / Leave --
-    if ((m = text.match(/^\[(.+)\] 進入了村莊$/))) return `${pid(esc(m[1]), m[1])} 來到村莊大廳`;
-    if ((m = text.match(/^\[(.+)\] 離開了村莊$/))) return `${pid(esc(m[1]), m[1])} 離開村莊大廳`;
+    if ((m = text.match(/^\[(.+)\] 進入了村莊$/))) return t('room.system.joined_lobby', { player: pid(esc(m[1]), m[1]) });
+    if ((m = text.match(/^\[(.+)\] 離開了村莊$/))) return t('room.system.left_lobby', { player: pid(esc(m[1]), m[1]) });
 
     // -- Kick votes --
     if ((m = text.match(/^\[(.+)\] 投票剔除 \[(.+)\]/)))
-      return `${pid(esc(m[1]), m[1])} 投票剔除 ${pid(esc(m[2]), m[2])}`;
+      return t('room.system.voted_kick', { actor: pid(esc(m[1]), m[1]), target: pid(esc(m[2]), m[2]) });
     if ((m = text.match(/^\[(.+)\] 已被投票剔除$/)))
-      return `${pid(esc(m[1]), m[1])} 已被投票剔除`;
+      return t('room.system.kicked', { target: pid(esc(m[1]), m[1]) });
     if ((m = text.match(/^村長 \[(.+)\] 剔除了 \[(.+)\]$/)))
-      return `村長 ${pid(esc(m[1]), m[1])} 剔除了 ${pid(esc(m[2]), m[2])}`;
+      return t('room.system.manager_kicked', { actor: pid(esc(m[1]), m[1]), target: pid(esc(m[2]), m[2]) });
     if ((m = text.match(/^村長 \[(.+)\] 發起點名/)))
-      return '村長發起點名，請盡速準備完成';
+      return t('room.system.roll_call');
 
     // -- Initial green card --
     if ((m = text.match(/^\[(.+)\]\s*初始綠卡：(.+)$/))) {
-      return `初始綠卡：${esc(getLocalizedCardName(String(m[2] || '').trim()))}`;
+      return t('room.system.initial_green_card', { card: esc(getLocalizedCardName(String(m[2] || '').trim())) });
     }
     if ((m = text.match(/^初始綠卡：(.+)$/))) {
-      return `初始綠卡：${esc(getLocalizedCardName(String(m[1] || '').trim()))}`;
+      return t('room.system.initial_green_card', { card: esc(getLocalizedCardName(String(m[1] || '').trim())) });
     }
 
     // -- Move dice --
-    if ((m = text.match(/^\[(.+)\] 擲移動骰：(.+)$/))) return `${pidRole(esc(m[1]), m[1])} 擲出 ${esc(m[2])}`;
+    if ((m = text.match(/^\[(.+)\] 擲移動骰：(.+)$/))) return t('room.system.rolled_value', { player: pidRole(esc(m[1]), m[1]), value: esc(m[2]) });
     if ((m = text.match(/^\[(.+)\] 擲出 7，可任選區域$/))) return null;
 
     // -- Compass roll --
-    if ((m = text.match(/^\[(.+)\] 羅盤擲骰：(.+)$/))) return `${pidRole(esc(m[1]), m[1])} 羅盤擲出 ${esc(m[2])}`;
+    if ((m = text.match(/^\[(.+)\] 羅盤擲骰：(.+)$/))) return t('room.system.compass_rolled_value', { player: pidRole(esc(m[1]), m[1]), value: esc(m[2]) });
     if ((m = text.match(/^\[(.+)\] 羅盤擲出 7，可任選區域$/))) return null;
     if ((m = text.match(/^\[(.+)\] 羅盤擲到區域：(.+)$/))) {
       const area = areaLabel(m[2]);
-      return `${pidRole(esc(m[1]), m[1])} 羅盤擲到 ${area}`;
+      return t('room.system.compass_area', { player: pidRole(esc(m[1]), m[1]), area });
     }
 
     // -- Move to area (normal / choice / compass / ability) --
     if ((m = text.match(/^\[(.+)\] (?:移動到|選擇移動到|使用神祕羅盤移動到|發動能力並移動到) (.+)$/))) {
       const area = areaLabel(m[2]);
-      return `${pidRole(esc(m[1]), m[1])} 移動至 ${area}`;
+      return t('room.system.moved_to', { player: pidRole(esc(m[1]), m[1]), area });
     }
 
     // -- Draw card --
     if ((m = text.match(/^\[(.+)\] 在 .+ 抽到 (.+?)（(.+)\)$/))) {
       const colorStr = cardColorLabel(m[3]);
       const cardName = String(m[3] || '') === 'Green' ? greenCardLabel(m[2], m[1], '') : esc(getLocalizedCardName(m[2]));
-      return `${pidRole(esc(m[1]), m[1])} 抽取 ${colorStr}(${cardName})`;
+      return t('room.system.drew_card', { player: pidRole(esc(m[1]), m[1]), color: colorStr, card: cardName });
     }
 
     // -- Green card: assign to target --
     if ((m = text.match(/^\[(.+)\] 指定 \[(.+)\] 接收綠卡 (.+)$/)))
-      return `${pidRole(esc(m[2]), m[2])} 執行 綠卡(${greenCardLabel(m[3], m[1], m[2])})`;
+      return t('room.system.execute_green', { player: pidRole(esc(m[2]), m[2]), card: greenCardLabel(m[3], m[1], m[2]) });
 
     // -- Use action card (with color embedded by backend) --
     if ((m = text.match(/^\[(.+)\] 使用卡片 (.+?)（(.+?)），目標：\[(.+)\]$/))) {
       const colorStr = cardColorLabel(m[3]);
       const cardName = String(m[3] || '') === 'Green' ? greenCardLabel(m[2], m[1], m[4]) : esc(getLocalizedCardName(m[2]));
-      if (m[4] === '-') return `${pidRole(esc(m[1]), m[1])} 使用 ${colorStr}(${cardName})`;
-      return `${pidRole(esc(m[4]), m[4])} 執行 ${colorStr}(${cardName})`;
+      if (m[4] === '-') return t('room.system.used_card', { player: pidRole(esc(m[1]), m[1]), color: colorStr, card: cardName });
+      return t('room.system.target_used_card', { player: pidRole(esc(m[4]), m[4]), color: colorStr, card: cardName });
     }
 
     // -- Area action effect (Erstwhile Altar "use", or unknown effects) --
     if ((m = text.match(/^\[(.+)\] 在 (.+) 對 \[(.+)\] 執行效果：(.+)$/))) {
       const area = areaLabel(m[2]);
-      return `${pidRole(esc(m[1]), m[1])} 對 ${pidRole(esc(m[3]), m[3])} 發動 ${area} 效果`;
+      return t('room.system.area_effect', { actor: pidRole(esc(m[1]), m[1]), target: pidRole(esc(m[3]), m[3]), area });
     }
 
     // -- Ability effect damage with attacker: [受傷者] 因為 [攻擊者](CharName) 角色能力效果受到 N 點傷害 --
     if ((m = text.match(/^\[(.+?)\] 因為 \[(.+?)\]\((.+?)\) 角色能力效果受到 (\d+) 點傷害$/))) {
-      return `${pidRole(esc(m[1]), m[1])} 因為 ${pidRole(esc(m[2]), m[2], getCharacterLocalizedName(m[3], lang))} 角色能力效果受到 ${esc(m[4])} 傷害`;
+      return t('room.system.ability_damage', { target: pidRole(esc(m[1]), m[1]), source: pidRole(esc(m[2]), m[2], getCharacterLocalizedName(m[3], lang)), amount: esc(m[4]) });
     }
     if ((m = text.match(/^\[(.+?)\] 因為 \[(.+?)\]\((.+?)\) 角色能力效果恢復 (\d+) 點傷害$/))) {
-      return `${pidRole(esc(m[1]), m[1])} 因為 ${pidRole(esc(m[2]), m[2], getCharacterLocalizedName(m[3], lang))} 角色能力效果治癒 ${esc(m[4])} 傷害`;
+      return t('room.system.ability_heal', { target: pidRole(esc(m[1]), m[1]), source: pidRole(esc(m[2]), m[2], getCharacterLocalizedName(m[3], lang)), amount: esc(m[4]) });
     }
 
     // -- Area/card effect result messages (generated by backend) --
     if ((m = text.match(/^\[(.+)\] 因為 (.+) 效果(治癒|恢復) (\d+) 點傷害$/))) {
       const sourceLabel = resolveCardEffectSource(m[2], m[1]) || areaLabel(m[2]);
-      return `${pidRole(esc(m[1]), m[1])} 因為 ${sourceLabel} 效果${esc(m[3])} ${esc(m[4])} 傷害`;
+      return t('room.system.effect_healed', { player: pidRole(esc(m[1]), m[1]), source: sourceLabel, amount: esc(m[4]) });
     }
     if ((m = text.match(/^\[(.+)\] 因為 (.+) 效果受到 (\d+) 點傷害$/))) {
       const sourceLabel = resolveCardEffectSource(m[2], m[1]) || areaLabel(m[2]);
-      return `${pidRole(esc(m[1]), m[1])} 因為 ${sourceLabel} 效果受到 ${esc(m[3])} 傷害`;
+      return t('room.system.effect_damaged', { player: pidRole(esc(m[1]), m[1]), source: sourceLabel, amount: esc(m[3]) });
     }
 
     if ((m = text.match(/^\[(.+)\] 因為 白卡\(Blessing\) 恢復 (\d+) 點傷害$/)))
-      return `${pidRole(esc(m[1]), m[1])} 因為 ${cardColorLabel('White')}(${esc(getLocalizedCardName('Blessing'))}) 恢復 ${esc(m[2])} 點傷害`;
+      return t('room.system.blessing_healed', { player: pidRole(esc(m[1]), m[1]), card: `${cardColorLabel('White')}(${esc(getLocalizedCardName('Blessing'))})`, amount: esc(m[2]) });
     if ((m = text.match(/^\[(.+)\] 因為 白卡\(First Aid\) 傷害變為 (\d+)$/)))
-      return `${pidRole(esc(m[1]), m[1])} 因為 卡片 ${esc(getLocalizedCardName('First Aid'))} 傷害變為${esc(m[2])}`;
+      return t('room.system.first_aid_set', { player: pidRole(esc(m[1]), m[1]), card: esc(getLocalizedCardName('First Aid')), amount: esc(m[2]) });
 
     // -- Declare attack --
     if ((m = text.match(/^\[(.+)\] 宣告攻擊 \[(.+)\]$/)))
-      return `${pid(esc(m[1]), m[1])} 對 ${pid(esc(m[2]), m[2])} 發動攻擊`;
+      return t('room.system.declared_attack', { attacker: pid(esc(m[1]), m[1]), target: pid(esc(m[2]), m[2]) });
 
     // -- Attack roll (hide damage value, show dice only) --
     if ((m = text.match(/^\[(.+)\] 攻擊擲骰：(.+?)，傷害=\d+$/)))
-      return `${pidRole(esc(m[1]), m[1])} 擲出 ${esc(m[2])}`;
+      return t('room.system.rolled_value', { player: pidRole(esc(m[1]), m[1]), value: esc(m[2]) });
 
     // -- Deal damage from attack --
     if ((m = text.match(/^\[(.+)\] 對 \[(.+)\] 造成 (\d+) 點傷害$/)))
-      return `${pid(esc(m[2]), m[2])} 被 ${pid(esc(m[1]), m[1])} 攻擊受到 ${esc(m[3])} 傷害`;
+      return t('room.system.took_attack_damage', { target: pid(esc(m[2]), m[2]), attacker: pid(esc(m[1]), m[1]), amount: esc(m[3]) });
 
     // -- Equipment --
     if ((m = text.match(/^\[(.+)\] 裝備了 (.+)$/)))
-      return `${pidRole(esc(m[1]), m[1])} 裝備了 ${esc(getLocalizedCardName(m[2]))}`;
+      return t('room.system.equipped', { player: pidRole(esc(m[1]), m[1]), card: esc(getLocalizedCardName(m[2])) });
         // -- Green-card steal: [to] 因為 卡片 X 效果 從 [from] 取得裝備 Y --
         if ((m = text.match(/^\[(.+)\] 因為 卡片 (.+) 效果 從 \[(.+)\] 取得裝備 (.+)$/))) {
           const cardLabel = GREEN_CARD_SOURCE_NAMES.has(m[2])
-            ? (canRevealGreenCardName(m[3], m[1]) ? `卡片 ${esc(getLocalizedCardName(m[2]))}` : '卡片 (???)')
-            : `卡片 ${esc(getLocalizedCardName(m[2]))}`;
-          return `${pidRole(esc(m[1]), m[1])} 因為 ${cardLabel} 效果 從 ${pidRole(esc(m[3]), m[3])} 取得裝備 ${esc(getLocalizedCardName(m[4]))}`;
+            ? (canRevealGreenCardName(m[3], m[1]) ? t('room.system.card_source', { card: esc(getLocalizedCardName(m[2])) }) : t('room.system.card_source_hidden'))
+            : t('room.system.card_source', { card: esc(getLocalizedCardName(m[2])) });
+          return t('room.system.took_equipment_from_card', { player: pidRole(esc(m[1]), m[1]), card_source: cardLabel, from: pidRole(esc(m[3]), m[3]), card: esc(getLocalizedCardName(m[4])) });
         }
     if ((m = text.match(/^\[(.+)\] 從 \[(.+)\] 取得裝備 (.+)$/)))
-      return `${pidRole(esc(m[1]), m[1])} 從 ${pidRole(esc(m[2]), m[2])} 取得裝備 ${esc(getLocalizedCardName(m[3]))}`;
+      return t('room.system.took_equipment', { player: pidRole(esc(m[1]), m[1]), from: pidRole(esc(m[2]), m[2]), card: esc(getLocalizedCardName(m[3])) });
     if ((m = text.match(/^\[(.+)\] 掠奪了 \[(.+)\] 的全部裝備$/)))
-      return `${pidRole(esc(m[1]), m[1])} 掠奪了 ${pidRole(esc(m[2]), m[2])} 的全部裝備`;
+      return t('room.system.looted_all', { looter: pidRole(esc(m[1]), m[1]), target: pidRole(esc(m[2]), m[2]) });
     if ((m = text.match(/^\[(.+)\] 掠奪 \[(.+)\] 的裝備 (.+)$/)))
-      return `${pidRole(esc(m[1]), m[1])} 掠奪了 ${pidRole(esc(m[2]), m[2])} 的裝備 ${esc(getLocalizedCardName(m[3]))}`;
+      return t('room.system.looted_one', { looter: pidRole(esc(m[1]), m[1]), target: pidRole(esc(m[2]), m[2]), card: esc(getLocalizedCardName(m[3])) });
 
     // -- Skip attack --
     if ((m = text.match(/^\[(.+)\] 本回合放棄攻擊$/)))
-      return `${pidRole(esc(m[1]), m[1])} 本回合跳過攻擊`;
+      return t('room.system.skipped_attack', { player: pidRole(esc(m[1]), m[1]) });
 
     // -- Character / death --
     if ((m = text.match(/^\[(.+)\] 死亡，身份揭示為 (.+)$/)))
-      return `${pid(esc(m[1]), m[1])} 死亡，身份揭示為 ${esc(getCharacterLocalizedName(m[2], lang))}`;
+      return t('room.system.died_revealed', { player: pid(esc(m[1]), m[1]), role: esc(getCharacterLocalizedName(m[2], lang)) });
     if ((m = text.match(/^\[(.+)\] 回合超時，判定暴斃$/)))
-      return `${pid(esc(m[1]), m[1])} 回合超時暴斃`;
+      return t('room.system.timed_out_boom', { player: pid(esc(m[1]), m[1]) });
     if ((m = text.match(/^\[(.+)\] 主動揭示身份：(.+)$/)))
-      return `${pidRole(esc(m[1]), m[1])} 揭示身份：${esc(getCharacterLocalizedName(m[2], lang))}`;
+      return t('room.system.revealed_identity', { player: pidRole(esc(m[1]), m[1]), role: esc(getCharacterLocalizedName(m[2], lang)) });
 
     // -- Game start --
-    if (/^遊戲開始，/.test(text)) return '遊戲開始';
+    if (/^遊戲開始，/.test(text)) return t('room.system.game_started');
 
     // -- Game end winners --
     if ((m = text.match(/^遊戲結束，勝利者：(.+)$/))) {
@@ -1602,7 +1616,7 @@ function renderChatStage({ el, esc }, data, state) {
           const label = String(player?.name || account || '').trim() || account;
           return pidRole(label, account);
         });
-        return `遊戲結束，勝利者：${winnerTokens.join('、')}`;
+        return t('room.system.game_ended_winners', { winners: winnerTokens.join('、') });
       }
 
       const labels = String(m[1] || '')
@@ -1616,7 +1630,7 @@ function renderChatStage({ el, esc }, data, state) {
         }
         return pidRole(label, label);
       });
-      return `遊戲結束，勝利者：${winners.join('、')}`;
+      return t('room.system.game_ended_winners', { winners: winners.join('、') });
     }
 
     // -- Default: escape text and highlight [name] patterns in blue --

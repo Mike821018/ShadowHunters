@@ -94,7 +94,11 @@
                   <div id="avatarUploadColorPresets" class="avatar-upload-color-presets" role="group" aria-label="Avatar color presets"></div>
                   <input id="avatarUploadColor" class="txt avatar-upload-color-input" type="text" value="#9aa4ad" inputmode="text" spellcheck="false" placeholder="#9aa4ad" aria-label="Avatar color hex code" />
                 </div>
-                <input id="avatarUploadFile" class="txt" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
+                <div class="avatar-upload-file-row">
+                  <input id="avatarUploadFile" class="txt avatar-upload-file-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
+                  <button id="btnAvatarUploadPickFile" class="btn" type="button" data-i18n="avatar.choose_file">選擇檔案</button>
+                  <span id="avatarUploadFileName" class="lighttxt" data-i18n="avatar.no_file">尚未選擇檔案</span>
+                </div>
                 <button class="btn" type="submit" data-i18n="avatar.upload_submit">確認上傳</button>
               </form>
               <div class="avatar-upload-preview-block">

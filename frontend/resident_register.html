@@ -38,10 +38,10 @@
         <section class="panel" tabindex="0">
           <fieldset>
             <div class="card-body">
-              <div class="menu-tabs identity-page-tabs" role="tablist" aria-label="身分分頁">
-                <button id="identityTabBtnDirectory" class="tab current" type="button" data-tab-target="identityTabPaneDirectory" role="tab" aria-selected="true">TRIP 一覽</button>
-                <button id="identityTabBtnProfile" class="tab" type="button" data-tab-target="identityTabPaneProfile" role="tab" aria-selected="false">TRIP 個人紀錄</button>
-                <button id="identityTabBtnManage" class="tab" type="button" data-tab-target="identityTabPaneManage" role="tab" aria-selected="false">TRIP 管理</button>
+              <div class="menu-tabs identity-page-tabs" role="tablist" data-i18n-aria="common.nav.identity">
+                <button id="identityTabBtnDirectory" class="tab current" type="button" data-tab-target="identityTabPaneDirectory" role="tab" aria-selected="true" data-i18n="identity.trip_directory">TRIP 一覽</button>
+                <button id="identityTabBtnProfile" class="tab" type="button" data-tab-target="identityTabPaneProfile" role="tab" aria-selected="false" data-i18n="identity.trip_profile">TRIP 個人紀錄</button>
+                <button id="identityTabBtnManage" class="tab" type="button" data-tab-target="identityTabPaneManage" role="tab" aria-selected="false" data-i18n="identity.trip_tools">TRIP 管理</button>
               </div>
             </div>
           </fieldset>
@@ -49,30 +49,30 @@
 
         <section id="identityTabPaneDirectory" class="panel identity-tab-pane current" tabindex="0" role="tabpanel" aria-labelledby="identityTabBtnDirectory">
           <fieldset>
-            <legend><strong>TRIP 一覽</strong></legend>
+            <legend><strong data-i18n="identity.trip_directory">TRIP 一覽</strong></legend>
             <div class="card-body identity-tools-grid">
               <div class="inline-actions">
-                <input id="tripSearchInput" class="txt" type="text" placeholder="搜尋 TRIP" />
-                <button id="tripSearchButton" class="btn" type="button">搜尋</button>
+                <input id="tripSearchInput" class="txt" type="text" placeholder="搜尋 TRIP" data-i18n-placeholder="identity.trip_search_placeholder" />
+                <button id="tripSearchButton" class="btn" type="button" data-i18n="identity.search">搜尋</button>
               </div>
               <div class="rooms-table-wrap">
-                <table class="data-table" aria-label="TRIP 一覽">
+                <table class="data-table" data-i18n-aria="identity.trip_directory">
                   <thead>
                     <tr>
                       <th>#</th>
-                      <th>TRIP</th>
-                      <th>場數</th>
-                      <th>勝率</th>
-                      <th id="tripDirectorySkillHeader">評級</th>
+                      <th data-i18n="identity.col_trip">TRIP</th>
+                      <th data-i18n="identity.col_games">場數</th>
+                      <th data-i18n="identity.col_win_rate">勝率</th>
+                      <th id="tripDirectorySkillHeader" data-i18n="identity.col_skill">評級</th>
                     </tr>
                   </thead>
                   <tbody id="tripDirectoryTbody"></tbody>
                 </table>
               </div>
               <div class="inline-actions">
-                <button id="tripDirectoryPrevPage" class="btn" type="button">上一頁</button>
+                <button id="tripDirectoryPrevPage" class="btn" type="button" data-i18n="identity.prev_page">上一頁</button>
                 <span id="tripDirectoryPageInfo" class="lighttxt">1 / 1</span>
-                <button id="tripDirectoryNextPage" class="btn" type="button">下一頁</button>
+                <button id="tripDirectoryNextPage" class="btn" type="button" data-i18n="identity.next_page">下一頁</button>
               </div>
             </div>
           </fieldset>
@@ -80,47 +80,47 @@
 
         <section id="identityTabPaneManage" class="panel identity-tab-pane" tabindex="0" role="tabpanel" aria-labelledby="identityTabBtnManage">
           <fieldset>
-            <legend><strong>TRIP 管理</strong></legend>
+            <legend><strong data-i18n="identity.trip_tools">TRIP 管理</strong></legend>
             <div class="card-body identity-tools-grid">
               <p id="tripAuthStatus" class="identity-auth-status lighttxt"></p>
 
               <form id="tripRegisterForm" class="identity-inline-form">
-                <strong>TRIP 登記 / 驗證</strong>
-                <input id="tripRegisterTrip" class="txt" type="text" maxlength="20" placeholder="TRIP" />
-                <input id="tripRegisterPassword" class="txt" type="password" maxlength="20" placeholder="密碼" />
-                <button class="btn" type="submit">送出</button>
+                <strong data-i18n="identity.trip_register">TRIP 登記 / 驗證</strong>
+                <input id="tripRegisterTrip" class="txt" type="text" maxlength="20" placeholder="TRIP" data-i18n-placeholder="identity.col_trip" />
+                <input id="tripRegisterPassword" class="txt" type="password" maxlength="20" placeholder="密碼" data-i18n-placeholder="identity.password" />
+                <button class="btn" type="submit" data-i18n="identity.apply">送出</button>
               </form>
 
               <form id="tripChangeForm" class="identity-inline-form">
-                <strong>TRIP 更改</strong>
-                <input id="tripChangeOldTrip" class="txt" type="text" maxlength="20" placeholder="舊 TRIP" />
-                <input id="tripChangeOldPassword" class="txt" type="password" maxlength="20" placeholder="舊密碼" />
-                <input id="tripChangeNewTrip" class="txt" type="text" maxlength="20" placeholder="新 TRIP" />
-                <input id="tripChangeNewPassword" class="txt" type="password" maxlength="20" placeholder="新密碼" />
-                <button class="btn" type="submit">更改</button>
+                <strong data-i18n="identity.trip_change">TRIP 更改</strong>
+                <input id="tripChangeOldTrip" class="txt" type="text" maxlength="20" placeholder="舊 TRIP" data-i18n-placeholder="identity.old_trip" />
+                <input id="tripChangeOldPassword" class="txt" type="password" maxlength="20" placeholder="舊密碼" data-i18n-placeholder="identity.old_password" />
+                <input id="tripChangeNewTrip" class="txt" type="text" maxlength="20" placeholder="新 TRIP" data-i18n-placeholder="identity.new_trip" />
+                <input id="tripChangeNewPassword" class="txt" type="password" maxlength="20" placeholder="新密碼" data-i18n-placeholder="identity.new_password" />
+                <button class="btn" type="submit" data-i18n="identity.trip_change">更改</button>
               </form>
 
               <form id="tripClaimForm" class="identity-inline-form">
-                <strong>認領紀錄</strong>
-                <input id="tripClaimAccount" class="txt" type="text" maxlength="20" placeholder="舊帳號" />
-                <input id="tripClaimPassword" class="txt" type="password" maxlength="20" placeholder="舊密碼" />
-                <input id="tripClaimRoomId" class="txt" type="number" min="1" placeholder="房號（可選）" />
-                <button class="btn" type="submit">認領</button>
+                <strong data-i18n="identity.trip_claim">認領紀錄</strong>
+                <input id="tripClaimAccount" class="txt" type="text" maxlength="20" placeholder="舊帳號" data-i18n-placeholder="identity.account" />
+                <input id="tripClaimPassword" class="txt" type="password" maxlength="20" placeholder="舊密碼" data-i18n-placeholder="identity.old_password" />
+                <input id="tripClaimRoomId" class="txt" type="number" min="1" placeholder="房號（可選）" data-i18n-placeholder="identity.room_optional" />
+                <button class="btn" type="submit" data-i18n="identity.trip_claim">認領</button>
               </form>
 
               <form id="tripModifyForm" class="identity-inline-form">
-                <strong>修改紀錄</strong>
-                <input id="tripModifyAccount" class="txt" type="text" maxlength="20" placeholder="舊帳號" />
-                <input id="tripModifyPassword" class="txt" type="password" maxlength="20" placeholder="舊密碼" />
-                <input id="tripModifyRoomId" class="txt" type="number" min="1" placeholder="房號（可選）" />
-                <button class="btn" type="submit">修改</button>
+                <strong data-i18n="identity.trip_modify">修改紀錄</strong>
+                <input id="tripModifyAccount" class="txt" type="text" maxlength="20" placeholder="舊帳號" data-i18n-placeholder="identity.account" />
+                <input id="tripModifyPassword" class="txt" type="password" maxlength="20" placeholder="舊密碼" data-i18n-placeholder="identity.old_password" />
+                <input id="tripModifyRoomId" class="txt" type="number" min="1" placeholder="房號（可選）" data-i18n-placeholder="identity.room_optional" />
+                <button class="btn" type="submit" data-i18n="identity.trip_modify">修改</button>
               </form>
 
               <form id="tripDeleteForm" class="identity-inline-form">
-                <strong>刪除紀錄</strong>
-                <input id="tripDeleteNickname" class="txt" type="text" maxlength="20" placeholder="暱稱" />
-                <input id="tripDeleteRoomId" class="txt" type="number" min="1" placeholder="房號（可選）" />
-                <button class="btn" type="submit">刪除</button>
+                <strong data-i18n="identity.trip_delete">刪除紀錄</strong>
+                <input id="tripDeleteNickname" class="txt" type="text" maxlength="20" placeholder="暱稱" data-i18n-placeholder="identity.nickname" />
+                <input id="tripDeleteRoomId" class="txt" type="number" min="1" placeholder="房號（可選）" data-i18n-placeholder="identity.room_optional" />
+                <button class="btn" type="submit" data-i18n="identity.trip_delete">刪除</button>
               </form>
             </div>
           </fieldset>
@@ -128,79 +128,79 @@
 
         <section id="identityTabPaneProfile" class="panel identity-tab-pane" tabindex="0" role="tabpanel" aria-labelledby="identityTabBtnProfile">
           <fieldset>
-            <legend><strong>TRIP 個人紀錄</strong></legend>
+            <legend><strong data-i18n="identity.trip_profile">TRIP 個人紀錄</strong></legend>
             <div class="card-body">
-              <p id="tripProfileHint" class="lighttxt">TRIP：-</p>
+              <p id="tripProfileHint" class="lighttxt" data-i18n="identity.trip_profile_hint">TRIP：-</p>
               <div id="tripProfileAccounts"></div>
 
-              <div class="menu-tabs identity-page-tabs" role="tablist" aria-label="TRIP 個人紀錄分頁">
-                <button id="tripProfileTabBtnNicknames" class="tab current" type="button" data-tab-target="tripProfileNicknamesPane" role="tab" aria-selected="true">暱稱</button>
-                <button id="tripProfileTabBtnGames" class="tab" type="button" data-tab-target="tripProfileGamesPane" role="tab" aria-selected="false">遊玩紀錄</button>
-                <button id="tripProfileTabBtnRatings" class="tab" type="button" data-tab-target="tripProfileRatingsPane" role="tab" aria-selected="false">評價紀錄</button>
+              <div class="menu-tabs identity-page-tabs" role="tablist" data-i18n-aria="identity.trip_profile">
+                <button id="tripProfileTabBtnNicknames" class="tab current" type="button" data-tab-target="tripProfileNicknamesPane" role="tab" aria-selected="true" data-i18n="identity.profile_tab_nicknames">暱稱</button>
+                <button id="tripProfileTabBtnGames" class="tab" type="button" data-tab-target="tripProfileGamesPane" role="tab" aria-selected="false" data-i18n="identity.profile_tab_games">遊玩紀錄</button>
+                <button id="tripProfileTabBtnRatings" class="tab" type="button" data-tab-target="tripProfileRatingsPane" role="tab" aria-selected="false" data-i18n="identity.profile_tab_ratings">評價紀錄</button>
               </div>
 
               <div id="tripProfileNicknamesPane" class="identity-tab-pane current" role="tabpanel">
                 <div class="rooms-table-wrap">
-                  <table class="data-table" aria-label="TRIP 暱稱紀錄">
+                  <table class="data-table" data-i18n-aria="identity.profile_tab_nicknames">
                     <thead>
                       <tr>
-                        <th>#</th>
-                        <th>暱稱</th>
-                        <th>使用次數</th>
+                        <th data-i18n="identity.col_index">#</th>
+                        <th data-i18n="identity.col_nickname">暱稱</th>
+                        <th data-i18n="identity.col_use_count">使用次數</th>
                       </tr>
                     </thead>
                     <tbody id="tripProfileNicknamesTbody"></tbody>
                   </table>
                 </div>
                 <div class="inline-actions">
-                  <button id="tripNicknamesPrevPage" class="btn" type="button">上一頁</button>
+                  <button id="tripNicknamesPrevPage" class="btn" type="button" data-i18n="identity.prev_page">上一頁</button>
                   <span id="tripNicknamesPageInfo" class="lighttxt">1 / 1</span>
-                  <button id="tripNicknamesNextPage" class="btn" type="button">下一頁</button>
+                  <button id="tripNicknamesNextPage" class="btn" type="button" data-i18n="identity.next_page">下一頁</button>
                 </div>
               </div>
 
               <div id="tripProfileGamesPane" class="identity-tab-pane" role="tabpanel">
                 <div class="rooms-table-wrap identity-trip-games-table">
-                  <table class="data-table identity-trip-games-grid" aria-label="TRIP 遊玩紀錄">
+                  <table class="data-table identity-trip-games-grid" data-i18n-aria="identity.profile_tab_games">
                     <thead>
                       <tr>
-                        <th>村號</th>
-                        <th>暱稱</th>
-                        <th>角色</th>
-                        <th>生死</th>
-                        <th>勝利</th>
-                        <th>暴斃</th>
-                        <th>評價</th>
+                        <th data-i18n="identity.col_room_id">村號</th>
+                        <th data-i18n="identity.col_nickname">暱稱</th>
+                        <th data-i18n="identity.col_character">角色</th>
+                        <th data-i18n="identity.col_status">生死</th>
+                        <th data-i18n="identity.col_winner">勝利</th>
+                        <th data-i18n="identity.col_boomed">暴斃</th>
+                        <th data-i18n="identity.col_rating">評價</th>
                       </tr>
                     </thead>
                     <tbody id="tripProfileGamesTbody"></tbody>
                   </table>
                 </div>
                 <div class="inline-actions">
-                  <button id="tripGamesPrevPage" class="btn" type="button">上一頁</button>
+                  <button id="tripGamesPrevPage" class="btn" type="button" data-i18n="identity.prev_page">上一頁</button>
                   <span id="tripGamesPageInfo" class="lighttxt">1 / 1</span>
-                  <button id="tripGamesNextPage" class="btn" type="button">下一頁</button>
+                  <button id="tripGamesNextPage" class="btn" type="button" data-i18n="identity.next_page">下一頁</button>
                 </div>
               </div>
 
               <div id="tripProfileRatingsPane" class="identity-tab-pane" role="tabpanel">
                 <div class="rooms-table-wrap identity-ratings-table">
-                  <table class="data-table" aria-label="TRIP 評價紀錄">
+                  <table class="data-table" data-i18n-aria="identity.profile_tab_ratings">
                     <thead>
                       <tr>
-                        <th>村號</th>
-                        <th>TRIP</th>
-                        <th>評價</th>
-                        <th>內容</th>
+                        <th data-i18n="identity.col_room_id">村號</th>
+                        <th data-i18n="identity.col_trip">TRIP</th>
+                        <th data-i18n="identity.col_rating">評價</th>
+                        <th data-i18n="identity.col_comment">內容</th>
                       </tr>
                     </thead>
                     <tbody id="tripProfileRatingsTbody"></tbody>
                   </table>
                 </div>
                 <div class="inline-actions">
-                  <button id="tripRatingsPrevPage" class="btn" type="button">上一頁</button>
+                  <button id="tripRatingsPrevPage" class="btn" type="button" data-i18n="identity.prev_page">上一頁</button>
                   <span id="tripRatingsPageInfo" class="lighttxt">1 / 1</span>
-                  <button id="tripRatingsNextPage" class="btn" type="button">下一頁</button>
+                  <button id="tripRatingsNextPage" class="btn" type="button" data-i18n="identity.next_page">下一頁</button>
                 </div>
               </div>
             </div>
@@ -212,11 +212,11 @@
     <dialog id="skillLevelDialog" class="area-choice-dialog" aria-labelledby="skillLevelDialogTitle">
       <form method="dialog" class="area-choice-form">
         <div class="area-choice-header">
-          <strong id="skillLevelDialogTitle">評級說明</strong>
+          <strong id="skillLevelDialogTitle" data-i18n="identity.skill_level_title">評級說明</strong>
         </div>
         <p id="skillLevelDialogMessage" class="area-choice-message">-</p>
         <div class="area-choice-actions">
-          <button class="btn area-choice-button neutral" type="submit">關閉</button>
+          <button class="btn area-choice-button neutral" type="submit" data-i18n="identity.close">關閉</button>
         </div>
       </form>
     </dialog>

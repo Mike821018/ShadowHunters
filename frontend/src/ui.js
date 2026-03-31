@@ -187,13 +187,13 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
         const swatches = PLAYER_COLORS.map((c) => {
           const taken = Object.entries(players).some(([acc, pl]) => acc !== account && pl.color === c);
           const selected = p.color === c;
-          return `<button class="color-swatch${selected ? ' selected' : ''}${taken ? ' taken' : ''}" data-pick-color="${c}" style="background:${colorHex(c)}" title="${c}" aria-pressed="${selected}"${taken ? ' disabled' : ''}></button>`;
+          return `<button class="color-swatch${selected ? ' selected' : ''}${taken ? ' taken' : ''}" type="button" data-pick-color="${c}" style="background:${colorHex(c)}" title="${c}" aria-pressed="${selected}"${taken ? ' disabled' : ''}></button>`;
         }).join('');
         colorControlHtml = `
-          <details class="color-picker">
-            <summary class="color-chip-trigger" style="background:${cardColor}" title="${esc(t('ui.color_picker_label'))}"></summary>
-            <div class="color-picker-row" role="group" aria-label="${esc(t('ui.color_picker_label'))}">${swatches}</div>
-          </details>
+          <div class="color-picker" data-color-picker>
+            <button class="color-chip-trigger" type="button" style="background:${cardColor}" title="${esc(t('ui.color_picker_label'))}" aria-label="${esc(t('ui.color_picker_label'))}" aria-expanded="false"></button>
+            <div class="color-picker-row" role="group" aria-label="${esc(t('ui.color_picker_label'))}" hidden>${swatches}</div>
+          </div>
         `;
       }
 
@@ -271,9 +271,37 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
     }
   }
 
+  container.querySelectorAll('[data-color-picker]').forEach((picker) => {
+    const toggle = picker.querySelector('.color-chip-trigger');
+    const panel = picker.querySelector('.color-picker-row');
+    if (!(toggle instanceof HTMLElement) || !(panel instanceof HTMLElement)) return;
+
+    toggle.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const isOpen = !panel.hasAttribute('hidden');
+
+      container.querySelectorAll('[data-color-picker] .color-picker-row').forEach((row) => {
+        if (!(row instanceof HTMLElement)) return;
+        row.setAttribute('hidden', '');
+      });
+      container.querySelectorAll('[data-color-picker] .color-chip-trigger').forEach((button) => {
+        if (!(button instanceof HTMLElement)) return;
+        button.setAttribute('aria-expanded', 'false');
+      });
+
+      if (!isOpen) {
+        panel.removeAttribute('hidden');
+        toggle.setAttribute('aria-expanded', 'true');
+      }
+    });
+  });
+
   if (onColorChange) {
     container.querySelectorAll('[data-pick-color]').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
         const color = btn.getAttribute('data-pick-color');
         if (color) onColorChange(color);
       });
