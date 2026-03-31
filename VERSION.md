@@ -18,6 +18,15 @@
     - 卡牌系統子區塊固定展開
   - 操作說明步驟列取消灰底與子收攏，回復一般清單呈現
 
+#### 建房村長功能與卡組設定補充（本次已實作）
+- `frontend/src/pages/lobby.js`、`backend/room_manager.py`：
+  - 建房 payload 持續帶入並處理 `manager_trip`、`manager_trip_encrypted`，支援村長 TRIP 驗證流程
+  - 房間狀態內回傳 `manager_trip_enabled` 與 `manager_trip_encrypted` 旗標，前端可正確顯示/判斷村長設定
+  - 住民資料補上 `is_village_manager` 判定，對應村長識別功能
+- `frontend/src/pages/lobby.js`、`backend/room_manager.py`、`frontend/src/ui.js`：
+  - 卡組設定改為 B/E 雙勾選來源，後端透過 `_resolve_expansion_mode_from_payload` 兼容舊 `expansion_mode` 並正規化
+  - 系統訊息卡組摘要格式改為 `Card:[B]+[E]`（依勾選組合顯示），與前端建房設定一致
+
 #### 身分登錄頁初始化與舊資料相容修正
 - `frontend/src/pages/register.js`：
   - 未登入或無房間情境進入身分登錄頁時，不再彈出全域初始化失敗通知
