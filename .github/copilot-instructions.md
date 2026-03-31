@@ -19,3 +19,7 @@ At the beginning of a new session:
 
 ## Scope Rule
 Only document what was actually changed in this session. Do not include speculative or unfinished changes in `VERSION.md` or `issue_list/`.
+
+## issue_list Git Rule (Critical)
+- Update `issue_list/` locally as part of task tracking.
+- Do **not** commit or push `issue_list/` files unless the user explicitly asks to include them in git history.
