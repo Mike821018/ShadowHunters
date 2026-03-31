@@ -1,5 +1,31 @@
 # ShadowHunters 版本紀錄
 
+## v0.1.8-test (2026-03-31)
+
+### 修正項目
+
+#### Issue 40 - 房間資訊/系統訊息在地化與操作頁調整
+- `frontend/src/locales/zh.js`、`frontend/src/locales/en.js`、`frontend/src/locales/jp.js`、`frontend/src/pages/room.js`、`frontend/src/pages/room_preview.js`：
+  - 補齊 `room.system.*` 訊息鍵值與模板，包含移動、抽牌、卡片效果、戰鬥、裝備、死亡揭示等事件
+  - `resolveCardEffectSource()` 與 `formatSystem()` 全面改為 i18n 模板呼叫，移除中文硬編碼句型
+- `frontend/operation.html`、`frontend/src/locales/zh.js`、`frontend/src/locales/en.js`、`frontend/src/locales/jp.js`：
+  - 操作流程步驟順序與文案同步更新（踢人流程前移、3 票門檻、4 人全員準備自動開局等）
+
+#### Issue 40 - Room Preview 玩家卡片暱稱/TRIP 顯示修正
+- `frontend/src/theme.css`：
+  - room preview 玩家卡片第二列欄位比例調整為 `1.15 : 0.85`
+  - 移除 TRIP 額外偏移，恢復菱形與文字原位
+  - TRIP 固定單行顯示，不換行，超長時省略號截斷
+
+#### 專案流程治理
+- `.github/copilot-instructions.md`：新增 Completion Gate 規範，要求每次修正任務必須同步更新 `issue_list/` 與 `VERSION.md`，缺一則不視為完成。
+
+### 驗證數據
+- `frontend/src/theme.css`、`frontend/src/pages/room.js`、`frontend/src/pages/room_preview.js`、`frontend/src/locales/*.js` 錯誤檢查通過
+
+### 備註
+- 本版本延續 `v0.1.7-test`，主要聚焦在 Issue 40 顯示層與多語系收斂，以及流程紀錄規範落地。
+
 ## v0.1.7-test (2026-03-31)
 
 ### 修正項目
