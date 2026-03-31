@@ -127,6 +127,9 @@ class RoomManager:
         'send_chat',
     }
 
+    _CARD_SET_BASIC = 'B'
+    _CARD_SET_EXTEND = 'E'
+
     def get_api_schemas(self) -> Dict[str, Any]:
         return API_SCHEMAS
 
@@ -336,16 +339,93 @@ class RoomManager:
             return 'no_extend'
         return 'all'
 
+    def _expansion_mode_to_card_flags(self, mode: Any) -> Dict[str, bool]:
+        normalized = self._normalize_expansion_mode(mode)
+        if normalized == 'no_extend':
+            return {'use_basic': True, 'use_extend': False}
+        if normalized == 'expansion_only':
+            return {'use_basic': False, 'use_extend': True}
+        return {'use_basic': True, 'use_extend': True}
+
+    def _card_flags_to_expansion_mode(self, use_basic: bool, use_extend: bool) -> str:
+        if use_basic and use_extend:
+            return 'all'
+        if use_basic:
+            return 'no_extend'
+        if use_extend:
+            return 'expansion_only'
+        # Keep backend defensive: if both disabled, fallback to all.
+        return 'all'
+
+    def _format_card_set_summary(self, mode: Any) -> str:
+        flags = self._expansion_mode_to_card_flags(mode)
+        parts: List[str] = []
+        if flags['use_basic']:
+            parts.append(f'[{self._CARD_SET_BASIC}]')
+        if flags['use_extend']:
+            parts.append(f'[{self._CARD_SET_EXTEND}]')
+        return f"Card:{'+'.join(parts)}" if parts else 'Card:-'
+
+    def _coerce_optional_bool(self, value: Any) -> Optional[bool]:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return value
+        normalized = str(value).strip().lower()
+        if normalized in ('1', 'true', 'yes', 'y', 'on'):
+            return True
+        if normalized in ('0', 'false', 'no', 'n', 'off'):
+            return False
+        return None
+
+    def _resolve_expansion_mode_from_payload(self, payload: Dict[str, Any], default_mode: Any = 'all') -> str:
+        # Keep compatibility with existing expansion_mode, while supporting
+        # future card-set style payloads from frontend.
+        fallback_mode = self._normalize_expansion_mode(default_mode)
+        base_flags = self._expansion_mode_to_card_flags(fallback_mode)
+
+        use_basic = None
+        for key in ('use_basic_card_set', 'card_set_basic', 'use_basic'):
+            use_basic = self._coerce_optional_bool(payload.get(key))
+            if use_basic is not None:
+                break
+
+        use_extend = None
+        for key in ('use_extend_card_set', 'card_set_extend', 'use_extend'):
+            use_extend = self._coerce_optional_bool(payload.get(key))
+            if use_extend is not None:
+                break
+
+        if use_basic is None and use_extend is None:
+            return self._normalize_expansion_mode(payload.get('expansion_mode', fallback_mode))
+
+        final_use_basic = base_flags['use_basic'] if use_basic is None else use_basic
+        final_use_extend = base_flags['use_extend'] if use_extend is None else use_extend
+        return self._card_flags_to_expansion_mode(final_use_basic, final_use_extend)
+
+    def _character_card_set_code(self, character_cls: Any) -> str:
+        try:
+            char = character_cls()
+        except Exception:
+            return self._CARD_SET_BASIC
+
+        raw = getattr(char, 'card_set', None) or getattr(char, 'set_code', None)
+        code = str(raw or '').strip().upper()
+        if code in (self._CARD_SET_BASIC, self._CARD_SET_EXTEND):
+            return code
+        return self._CARD_SET_EXTEND if bool(getattr(char, 'is_extend', False)) else self._CARD_SET_BASIC
+
     def _resolve_camp_classes(self, classes, expansion_mode: str):
-        mode = self._normalize_expansion_mode(expansion_mode)
-        if mode == 'all':
-            return list(classes)
+        flags = self._expansion_mode_to_card_flags(expansion_mode)
+        selected_sets = set()
+        if flags['use_basic']:
+            selected_sets.add(self._CARD_SET_BASIC)
+        if flags['use_extend']:
+            selected_sets.add(self._CARD_SET_EXTEND)
+        if not selected_sets:
+            selected_sets = {self._CARD_SET_BASIC, self._CARD_SET_EXTEND}
 
-        if mode == 'expansion_only':
-            filtered = [cls for cls in classes if getattr(cls(), 'is_extend', False)]
-            return filtered if filtered else list(classes)
-
-        filtered = [cls for cls in classes if not getattr(cls(), 'is_extend', False)]
+        filtered = [cls for cls in classes if self._character_card_set_code(cls) in selected_sets]
         return filtered if filtered else list(classes)
 
     def _serialize_room(self, game_room: room.room) -> Dict[str, Any]:
@@ -963,7 +1043,7 @@ class RoomManager:
             manager_trip = self.encrypt_trip_like_higu(manager_trip)
             manager_trip_encrypted = True
         is_chat_room = bool(payload.get('is_chat_room', False))
-        expansion_mode = self._normalize_expansion_mode(payload.get('expansion_mode', 'all'))
+        expansion_mode = self._resolve_expansion_mode_from_payload(payload, default_mode='all')
         enable_initial_green_card = bool(payload.get('enable_initial_green_card', False))
         turn_timeout_minutes = int(payload.get('turn_timeout_minutes', 3) or 3)
         if not room_name:
@@ -1258,7 +1338,10 @@ class RoomManager:
         if not bool(requester.profile.get('is_village_manager', False)):
             return self._error('update_room_settings', 'NOT_VILLAGE_MANAGER', '只有村長可以修改房間設定', 403)
 
-        expansion_mode = self._normalize_expansion_mode(payload.get('expansion_mode', getattr(game_room, 'expansion_mode', 'all')))
+        expansion_mode = self._resolve_expansion_mode_from_payload(
+            payload,
+            default_mode=getattr(game_room, 'expansion_mode', 'all'),
+        )
         enable_initial_green_card = bool(payload.get('enable_initial_green_card', getattr(game_room, 'enable_initial_green_card', False)))
         timeout_minutes_raw = payload.get('turn_timeout_minutes', int(getattr(game_room, 'turn_timeout_seconds', 180) or 180) // 60)
         try:
@@ -1277,7 +1360,7 @@ class RoomManager:
         game_room.touch_activity()
         game_room.add_system_message(
             f"村長 [{requester.name or account}] 更新房間設定："
-            f"Mode={expansion_mode} / 初始綠卡={'On' if enable_initial_green_card else 'Off'} / 暴斃時間={timeout_minutes}分"
+            f"{self._format_card_set_summary(expansion_mode)} / 初始綠卡={'On' if enable_initial_green_card else 'Off'} / 暴斃時間={timeout_minutes}分"
         )
         return self._success('update_room_settings', self._serialize_room_state(game_room, viewer_account=account))
 

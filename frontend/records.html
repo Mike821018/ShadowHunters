@@ -21,7 +21,7 @@
         </div>
         <div id="menu">
           <ul class="menu-tabs" role="navigation" aria-label="主功能">
-            <li><a class="tab" href="./lobby.html" data-i18n="common.nav.lobby">大廳</a></li>
+            <li><a class="tab" href="./lobby.html" data-i18n="common.nav.lobby">遊戲大廳</a></li>
             <li><a class="tab" href="./guide.html" data-i18n="common.nav.rules">遊戲規則</a></li>
             <li><a class="tab" href="./operation.html" data-i18n="common.nav.operation">操作說明</a></li>
             <li><a class="tab current" href="./records.html" aria-current="page" data-i18n="common.nav.records">紀錄閱覽</a></li>
@@ -40,17 +40,17 @@
             <legend><strong data-i18n="records.table_title">村莊紀錄表</strong></legend>
             <div class="card-body">
               <div class="records-toolbar">
-                <div class="records-search-controls">
-                  <input id="recordsSearchInput" class="txt records-search-input" type="text" data-i18n-placeholder="records.search_village_placeholder" placeholder="搜尋村子名稱" aria-label="搜尋村子名稱" />
-                  <button id="recordsSearchButton" class="btn" type="button" data-i18n="records.search">搜尋</button>
-                  <button id="recordsSearchClearButton" class="btn" type="button" data-i18n="records.search_clear">清除</button>
-                </div>
                 <div class="records-page-controls">
                   <button id="recordsPrevPage" class="btn" type="button" data-i18n="identity.prev_page">上一頁</button>
                   <label for="recordsPageInput" class="lighttxt" data-i18n="records.page_prefix">第</label>
                   <input id="recordsPageInput" class="txt records-page-input" type="number" min="1" value="1" />
                   <span id="recordsPageInfo" class="lighttxt" data-i18n="records.page_suffix">/ 1 頁</span>
                   <button id="recordsNextPage" class="btn" type="button" data-i18n="identity.next_page">下一頁</button>
+                  <div class="records-search-controls">
+                    <input id="recordsSearchInput" class="txt records-search-input" type="text" data-i18n-placeholder="records.search_village_placeholder" placeholder="搜尋村子名稱" aria-label="搜尋村子名稱" />
+                    <button id="recordsSearchButton" class="btn" type="button" data-i18n="records.search">搜尋</button>
+                    <button id="recordsSearchClearButton" class="btn" type="button" data-i18n="records.search_clear">清除</button>
+                  </div>
                 </div>
               </div>
               <div class="rooms-table-wrap">

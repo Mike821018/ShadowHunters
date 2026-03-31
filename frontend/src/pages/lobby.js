@@ -64,7 +64,23 @@ export function bindLobbyEvents({
     return '';
   };
 
+  const ensureExpansionSelection = (changedCheckbox = null) => {
+    const useBasic = el.expansionBasicCheck?.checked !== false;
+    const useExtend = el.expansionExtendCheck?.checked !== false;
+    if (useBasic || useExtend) return true;
+    if (changedCheckbox) changedCheckbox.checked = true;
+    toast(t('lobby.create.expansion_mode_required'), 'error');
+    return false;
+  };
+
   el.btnRefreshRooms?.addEventListener('click', refreshRooms);
+
+  el.expansionBasicCheck?.addEventListener('change', () => {
+    ensureExpansionSelection(el.expansionBasicCheck);
+  });
+  el.expansionExtendCheck?.addEventListener('change', () => {
+    ensureExpansionSelection(el.expansionExtendCheck);
+  });
 
   el.createRoomForm.addEventListener('submit', async (event) => {
     event.preventDefault();

@@ -65,7 +65,7 @@
 #### Issue 32 - 修正 character_module / card_module / area_module 錯誤
 - `card_module.py` Greed、Prediction 卡片：將上家查找邏輯中錯用的 `target.trip` 改為正確的 `target.account`（`action_order` 儲存 account，非 trip）
 - `area_module.py`：將拼字錯誤屬性 `attitional_choose` 正名為 `additional_choose`
-- 大庁移除開發用模式切換按鈕（AUTO/HTTP/DEMO）及右上角狀態文字，固定為 HTTP 模式
+- 大廳移除開發用模式切換按鈕（AUTO/HTTP/DEMO）及右上角狀態文字，固定為 HTTP 模式
 
 #### 安全修復 (2026-03-29)
 - 修復 Demo 模式 `buildRoomState` 展開玩家物件時將密碼包含在連線回應中的問題

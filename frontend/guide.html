@@ -21,7 +21,7 @@
         </div>
         <div id="menu">
           <ul class="menu-tabs" role="navigation" aria-label="主功能">
-            <li><a class="tab" href="./lobby.html" data-i18n="common.nav.lobby">大廳</a></li>
+            <li><a class="tab" href="./lobby.html" data-i18n="common.nav.lobby">遊戲大廳</a></li>
             <li><a class="tab current" href="./guide.html" aria-current="page" data-i18n="common.nav.rules">遊戲規則</a></li>
             <li><a class="tab" href="./operation.html" data-i18n="common.nav.operation">操作說明</a></li>
             <li><a class="tab" href="./records.html" data-i18n="common.nav.records">紀錄閱覽</a></li>
@@ -41,12 +41,12 @@
             <h2 data-i18n="guide.section.overview">遊戲概述</h2>
             <div class="card-body">
               <h3 data-i18n="guide.overview.title">暗影獵人是什麼？</h3>
-              <p data-i18n="guide.overview.desc">《暗影獵人》是 4-8 人的隱藏身分桌遊。玩家會分屬獵人、暗影或中立角色，在彼此不知道真實身分的情況下，透過移動、區域效果、裝備、攻擊與綠卡逐步確認敵友並完成各自的勝利條件。</p>
+              <p data-i18n="guide.overview.desc">《暗影獵人》是 4-8 人的隱藏身分桌遊。玩家會分屬獵人、暗影或中立角色，在彼此不知道真實身分的情況下，透過移動、場地效果、裝備、攻擊與綠卡逐步確認敵友並完成各自的勝利條件。</p>
             </div>
           </section>
 
           <!-- Game Roles Section -->
-          <section class="panel guide-section">
+          <section class="panel guide-section no-subsection-collapse">
             <h2 data-i18n="guide.section.roles">角色與陣營</h2>
             <div class="card-body">
               <h3 data-i18n="guide.roles.three_camps">三大陣營</h3>
@@ -66,7 +66,7 @@
                 <p data-i18n="guide.roles.civilians_desc">中立角色不屬於獵人或暗影，每張角色卡都有自己的專屬勝利條件。有些要求存活，有些要求擊倒特定人物，也可能和其他陣營同時獲勝。</p>
               </div>
 
-              <div class="guide-subsection">
+              <div class="guide-subsection allow-subsection-collapse">
                 <h4 data-i18n="guide.roles.camp_setup">各人數陣營配置</h4>
                 <div class="rooms-table-wrap" style="margin-top: 8px;">
                   <table class="data-table" aria-label="各人數陣營配置">
@@ -109,7 +109,7 @@
                 </li>
                 <li>
                   <strong data-i18n="guide.gameplay.step3_title">場地效果 (Area Effect)</strong>
-                  <span data-i18n="guide.gameplay.step3_desc">抵達區域後，可以選擇是否執行該區域效果，例如抽白卡、抽黑卡、抽隱士卡，或對指定玩家造成 2 傷害 / 回復 1 傷害。</span>
+                  <span data-i18n="guide.gameplay.step3_desc">抵達場地後，可以選擇是否執行該場地效果。</span>
                 </li>
                 <li>
                   <strong data-i18n="guide.gameplay.step4_title">攻擊階段 (Attack Phase)</strong>
@@ -125,31 +125,86 @@
                 </li>
               </ol>
 
-              <div class="guide-subsection">
-                <h4 data-i18n="guide.gameplay.areas_title">六個場地</h4>
-                <p data-i18n="guide.gameplay.areas_desc">六個場地包含 隱士小屋、教堂、墓園、時空之門、希望與絕望的森林、古代祭壇。它們分別對應情報、白卡、黑卡、自由抽牌、傷害/治療、奪取裝備等核心效果。</p>
+              <div class="guide-subsection no-subsection-collapse-item">
+                <h4 data-i18n="guide.gameplay.area_system_title">場地系統與攻擊範圍</h4>
+                <p data-i18n="guide.gameplay.area_system_intro">開場時六個場地會先隨機洗牌，依序排成環形，並以相鄰兩張卡組成三個攻擊範圍。</p>
+                <p data-i18n="guide.gameplay.area_system_pairing">你可以攻擊與你位於同一攻擊範圍（同區域）的玩家。</p>
+                <p data-i18n="guide.gameplay.area_system_optional">進入場地後，可以選擇是否執行該場地效果。</p>
+                <div class="rooms-table-wrap" style="margin-top: 8px;">
+                  <table class="data-table guide-area-table" aria-label="場地效果說明">
+                    <thead>
+                      <tr>
+                        <th data-i18n="guide.gameplay.area_col_no">編號</th>
+                        <th data-i18n="guide.gameplay.area_col_name">場地</th>
+                        <th data-i18n="guide.gameplay.area_col_effect">效果</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>
+                          <span class="guide-area-dice-wrap">
+                            <span class="stage-field-number-static">2</span>
+                            <span class="stage-field-number-static">3</span>
+                          </span>
+                        </td>
+                        <td data-i18n="guide.gameplay.area_hermit_name">隱士小屋</td>
+                        <td data-i18n="guide.gameplay.area_hermit_effect">抽一張綠卡。</td>
+                      </tr>
+                      <tr>
+                        <td><span class="guide-area-dice-wrap"><span class="stage-field-number-static">6</span></span></td>
+                        <td data-i18n="guide.gameplay.area_church_name">教堂</td>
+                        <td data-i18n="guide.gameplay.area_church_effect">抽一張白卡。</td>
+                      </tr>
+                      <tr>
+                        <td><span class="guide-area-dice-wrap"><span class="stage-field-number-static">8</span></span></td>
+                        <td data-i18n="guide.gameplay.area_cemetery_name">墓園</td>
+                        <td data-i18n="guide.gameplay.area_cemetery_effect">抽一張黑卡。</td>
+                      </tr>
+                      <tr>
+                        <td>
+                          <span class="guide-area-dice-wrap">
+                            <span class="stage-field-number-static">4</span>
+                            <span class="stage-field-number-static">5</span>
+                          </span>
+                        </td>
+                        <td data-i18n="guide.gameplay.area_gate_name">時空之門</td>
+                        <td data-i18n="guide.gameplay.area_gate_effect">抽一張白卡、綠卡或黑卡。</td>
+                      </tr>
+                      <tr>
+                        <td><span class="guide-area-dice-wrap"><span class="stage-field-number-static">9</span></span></td>
+                        <td data-i18n="guide.gameplay.area_woods_name">希望與絕望的森林</td>
+                        <td data-i18n="guide.gameplay.area_woods_effect">指定任意一名玩家（包含自己），造成 2 傷害或回復 1 傷害。</td>
+                      </tr>
+                      <tr>
+                        <td><span class="guide-area-dice-wrap"><span class="stage-field-number-static">10</span></span></td>
+                        <td data-i18n="guide.gameplay.area_altar_name">古代祭壇</td>
+                        <td data-i18n="guide.gameplay.area_altar_effect">奪取任意一名玩家的一件裝備（若有的話）。</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </section>
 
           <!-- Card System Section -->
-          <section class="panel guide-section">
+          <section class="panel guide-section no-subsection-collapse">
             <h2 data-i18n="guide.section.cards">卡牌系統</h2>
             <div class="card-body">
               <h3 data-i18n="guide.cards.types">卡牌類型</h3>
               
               <div class="guide-subsection">
-                <h4 data-i18n="guide.cards.green_cards">綠卡 / 隱士卡 (Hermit Cards)</h4>
+                <h4 data-i18n="guide.cards.green_cards">綠卡（隱士卡）</h4>
                 <p data-i18n="guide.cards.green_desc">隱士卡主要用來測試他人陣營。抽到後會交給一名玩家，由對方依照卡面條件判定是否承受效果，因此也是辨識身分的重要來源。</p>
               </div>
 
               <div class="guide-subsection">
-                <h4 data-i18n="guide.cards.white_cards">白卡 (White Cards)</h4>
+                <h4 data-i18n="guide.cards.white_cards">白卡</h4>
                 <p data-i18n="guide.cards.white_desc">白卡通常偏向保護、支援與回復，其中包含即時使用的一次性卡與會留在場上的裝備卡。</p>
               </div>
 
               <div class="guide-subsection">
-                <h4 data-i18n="guide.cards.black_cards">黑卡 (Black Cards)</h4>
+                <h4 data-i18n="guide.cards.black_cards">黑卡</h4>
                 <p data-i18n="guide.cards.black_desc">黑卡通常偏向傷害、干擾與進攻，也同樣包含一次性效果與武器裝備。攻擊型裝備常會改變射程或命中規則。</p>
               </div>
 
@@ -229,9 +284,9 @@
             <h2 data-i18n="guide.section.tips">遊戲技巧</h2>
             <div class="card-body">
               <ul class="guide-tips">
-                <li data-i18n="guide.tips.tip1">優先利用隱士卡與傷害軌跡判讀他人陣營，這是暗影獵人最重要的資訊來源。</li>
+                <li data-i18n="guide.tips.tip1">優先利用隱士卡與傷害軌跡判讀他人陣營，這是《暗影獵人》最重要的資訊來源。</li>
                 <li data-i18n="guide.tips.tip2">不要過早翻角。公開能力雖強，但也會讓敵人立刻確認你的陣營。</li>
-                <li data-i18n="guide.tips.tip3">記住每個區域的用途，尤其是希望與絕望的森林與古代祭壇，常常直接改變場上節奏。</li>
+                <li data-i18n="guide.tips.tip3">記住每個場地的用途，尤其是希望與絕望的森林與古代祭壇，常常直接改變場上節奏。</li>
                 <li data-i18n="guide.tips.tip4">中立角色不一定是路人。若有人行為極端不合常理，可能是在衝自己的個人勝利條件。</li>
                 <li data-i18n="guide.tips.tip5">多名玩家可以同時獲勝，所以結束前要重新確認自己是否也滿足條件。</li>
               </ul>

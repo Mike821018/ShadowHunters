@@ -130,6 +130,63 @@ function setLocalizedPageTitle() {
   if (headerBrand) headerBrand.textContent = brand;
 }
 
+function initGuideSectionCollapse() {
+  if (state.page !== 'guide' && state.page !== 'operation') return;
+  document.querySelectorAll('.guide-section').forEach(section => {
+    const h2 = section.querySelector(':scope > h2');
+    const body = section.querySelector(':scope > .card-body');
+    if (!h2 || !body) return;
+    h2.classList.add('guide-collapsible');
+    h2.setAttribute('tabindex', '0');
+    h2.setAttribute('role', 'button');
+    h2.setAttribute('aria-expanded', 'true');
+    const onToggle = () => {
+      const collapsed = body.classList.toggle('guide-section-collapsed');
+      h2.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    };
+    h2.addEventListener('click', onToggle);
+    h2.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        onToggle();
+      }
+    });
+  });
+}
+
+function initGuideSubsectionCollapse() {
+  if (state.page !== 'guide' && state.page !== 'operation') return;
+
+  document.querySelectorAll('.guide-subsection').forEach(subsection => {
+    if (subsection.classList.contains('no-subsection-collapse-item')) return;
+    if (subsection.closest('.guide-section.no-subsection-collapse') && !subsection.classList.contains('allow-subsection-collapse')) return;
+    const title = subsection.querySelector(':scope > h4');
+    if (!title) return;
+    const bodyNodes = Array.from(subsection.children).filter(node => node !== title);
+    if (!bodyNodes.length) return;
+
+    title.classList.add('guide-subsection-collapsible');
+    title.setAttribute('tabindex', '0');
+    title.setAttribute('role', 'button');
+    title.setAttribute('aria-expanded', 'false');
+    bodyNodes.forEach(node => node.classList.add('guide-subsection-collapsed'));
+
+    const onToggle = () => {
+      const collapsed = bodyNodes[0].classList.toggle('guide-subsection-collapsed');
+      bodyNodes.slice(1).forEach(node => node.classList.toggle('guide-subsection-collapsed', collapsed));
+      title.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    };
+    title.addEventListener('click', onToggle);
+    title.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        onToggle();
+      }
+    });
+  });
+
+}
+
 function renderGuideCardCatalogs() {
   if (state.page !== 'guide') return;
 
@@ -163,14 +220,34 @@ function renderGuideCardCatalogs() {
   };
 
   const renderCharacterTable = () => {
-    const rows = getAllCharacterInfos()
+    const characterRows = getAllCharacterInfos()
       .map(({ key, info }) => {
+        const englishName = String(info?.names?.en || key || '').trim() || String(key || '').trim() || '-';
+        const initial = englishName.charAt(0).toUpperCase() || '?';
+        const { hp, isExpansion } = parseCharacterMeta(key);
+        return {
+          key,
+          info,
+          englishName,
+          initial,
+          hp,
+          isExpansion,
+        };
+      })
+      .sort((a, b) => {
+        const initialCompare = a.initial.localeCompare(b.initial, 'en', { sensitivity: 'base' });
+        if (initialCompare !== 0) return initialCompare;
+        if (a.isExpansion !== b.isExpansion) return a.isExpansion ? 1 : -1;
+        return a.englishName.localeCompare(b.englishName, 'en', { sensitivity: 'base' });
+      });
+
+    const rows = characterRows
+      .map(({ key, info, hp, isExpansion }) => {
         const camp = info?.camp?.[lang] || info?.camp?.en || '-';
         const campClass = String(info?.camp?.en || '').trim().toLowerCase() || 'civilian';
         const badge = String(key || '?').trim().charAt(0).toUpperCase() || '?';
         const win = info?.win?.[lang] || info?.win?.en || '-';
         const ability = info?.ability?.[lang] || info?.ability?.en || '-';
-        const { hp, isExpansion } = parseCharacterMeta(key);
         const localizedName = getCharacterLocalizedName(key, lang);
         return `
           <tr>
@@ -234,6 +311,8 @@ async function boot() {
   applyI18n();
   setLocalizedPageTitle();
   renderGuideCardCatalogs();
+  initGuideSectionCollapse();
+  initGuideSubsectionCollapse();
   bindLangSwitcher(currentLang);
 
   restoreSession(state);

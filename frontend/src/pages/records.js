@@ -44,6 +44,112 @@ function formatDateTime(raw) {
   return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
 }
 
+function parseOptionBadges(rawOptions) {
+  const text = String(rawOptions || '').trim();
+  if (!text || text === '-') return { badges: [], extras: [] };
+  const tokens = text.split('/').map((part) => String(part || '').trim()).filter(Boolean);
+  const badgeSet = new Set();
+  const extras = [];
+  tokens.forEach((token) => {
+    const normalized = token.toLowerCase();
+    if (normalized === 'initial green card') {
+      badgeSet.add('G');
+      return;
+    }
+    if (normalized === 'all') {
+      badgeSet.add('B');
+      badgeSet.add('E');
+      return;
+    }
+    if (normalized === 'no_extend') {
+      badgeSet.add('B');
+      return;
+    }
+    if (normalized === 'expansion_only') {
+      badgeSet.add('E');
+      return;
+    }
+    extras.push(token);
+  });
+  return { badges: Array.from(badgeSet), extras };
+}
+
+function optionBadgeMeta(code) {
+  if (code === 'G') {
+    return {
+      className: 'records-option-badge records-option-badge-green',
+      title: t('records.badge_green_title'),
+      desc: t('records.badge_green_desc'),
+    };
+  }
+  if (code === 'B') {
+    return {
+      className: 'records-option-badge records-option-badge-blue',
+      title: t('records.badge_basic_title'),
+      desc: t('records.badge_basic_desc'),
+    };
+  }
+  if (code === 'E') {
+    return {
+      className: 'records-option-badge records-option-badge-blue',
+      title: t('records.badge_extend_title'),
+      desc: t('records.badge_extend_desc'),
+    };
+  }
+  return {
+    className: 'records-option-badge',
+    title: code,
+    desc: code,
+  };
+}
+
+function renderOptionsCell(rawOptions) {
+  const { badges, extras } = parseOptionBadges(rawOptions);
+  if (!badges.length && !extras.length) return '<span class="lighttxt">-</span>';
+  const badgeHtml = badges.map((code) => {
+    const meta = optionBadgeMeta(code);
+    return `<button type="button" class="${meta.className}" data-option-badge="${code}" data-option-title="${meta.title}" data-option-desc="${meta.desc}" aria-label="${meta.title}" title="${meta.title}">${code}</button>`;
+  }).join('');
+  const extrasHtml = extras.map((token) => `<span class="records-option-extra">${token}</span>`).join('');
+  return `<span class="records-option-wrap">${badgeHtml}${extrasHtml}</span>`;
+}
+
+function bindOptionBadgePopover(host) {
+  if (!host) return;
+  host.querySelectorAll('[data-option-badge]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const source = event.currentTarget;
+      if (!(source instanceof HTMLElement)) return;
+      const existing = document.getElementById('recordsOptionPopover');
+      if (existing) existing.remove();
+
+      const title = String(source.getAttribute('data-option-title') || '').trim();
+      const desc = String(source.getAttribute('data-option-desc') || '').trim();
+      const pop = document.createElement('div');
+      pop.id = 'recordsOptionPopover';
+      pop.className = 'records-option-popover';
+      pop.innerHTML = `<strong>${title}</strong><p>${desc}</p>`;
+      document.body.appendChild(pop);
+
+      const rect = source.getBoundingClientRect();
+      pop.style.left = `${Math.max(8, rect.left + (rect.width / 2))}px`;
+      pop.style.top = `${Math.max(8, rect.bottom + 8)}px`;
+
+      window.setTimeout(() => {
+        const close = (ev) => {
+          const target = ev.target;
+          if (target instanceof Element && (target.closest('#recordsOptionPopover') || target.closest('[data-option-badge]'))) return;
+          pop.remove();
+          window.removeEventListener('click', close, true);
+        };
+        window.addEventListener('click', close, true);
+      }, 0);
+    });
+  });
+}
+
 function renderRecordsTable(entries) {
   const tbody = document.getElementById('recordsTableBody');
   if (!tbody) return;
@@ -68,12 +174,13 @@ function renderRecordsTable(entries) {
       <td>${endTimeText || '-'}</td>
       <td>${entry.player_count ?? '-'}</td>
       <td>${winnerCell(entry.winner_code)}</td>
-      <td>${entry.options || '-'}</td>
+      <td>${renderOptionsCell(entry.options)}</td>
     `;
     tr.classList.add('room-row');
     tr.addEventListener('click', () => {
       window.location.href = villageLink;
     });
+    bindOptionBadgePopover(tr);
     tbody.appendChild(tr);
   });
 }

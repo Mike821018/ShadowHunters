@@ -1153,6 +1153,28 @@ export function setVillageInfoMessage({ el, esc }, message) {
   }
 }
 
+function expansionModeToCardFlags(mode) {
+  const normalized = String(mode || 'all').trim();
+  if (normalized === 'no_extend') return { useBasic: true, useExtend: false };
+  if (normalized === 'expansion_only') return { useBasic: false, useExtend: true };
+  return { useBasic: true, useExtend: true };
+}
+
+function cardFlagsToExpansionMode(useBasic, useExtend) {
+  if (useBasic && useExtend) return 'all';
+  if (useBasic) return 'no_extend';
+  if (useExtend) return 'expansion_only';
+  return '';
+}
+
+function formatCardSetSummary(mode) {
+  const { useBasic, useExtend } = expansionModeToCardFlags(mode);
+  const parts = [];
+  if (useBasic) parts.push('[B]');
+  if (useExtend) parts.push('[E]');
+  return parts.length ? `Card:${parts.join('+')}` : 'Card:-';
+}
+
 export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage, state }, data) {
   if (!el.villageInfoList) return;
   const isPreviewPage = isPreviewLayoutPage(state, data);
@@ -1189,9 +1211,55 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
   const villageDescription = room.room_comment || room.village_description || room.description || '-';
   const initialGreenCard = room.enable_initial_green_card ? 'On' : 'Off';
   const boomTimeoutMinutes = Number(room.turn_timeout_minutes || 3);
+  const expansionMode = String(room.expansion_mode || 'all');
+  const { useBasic, useExtend } = expansionModeToCardFlags(expansionMode);
+  const settingsDialog = canEditSettings
+    ? `
+      <dialog id="btnEditRoomSettingsDialog" class="village-settings-dialog" aria-label="${esc(t('room.ops.edit_settings'))}">
+        <form method="dialog" class="village-settings-dialog-form">
+          <div class="village-settings-dialog-header">
+            <strong>${esc(t('room.ops.edit_settings'))}</strong>
+            <button class="btn btn-inline" type="submit" data-close-village-settings>×</button>
+          </div>
+          <div class="village-settings-inline">
+        <span class="village-settings-group village-settings-group-cards">
+          <strong>${esc(t('lobby.create.expansion_mode_label'))}</strong>
+          <label class="checkbox-row checkbox-row-inline room-settings-checkbox">
+            <input type="checkbox" data-setting-basic-check ${useBasic ? 'checked' : ''} />
+            <span>${esc(t('lobby.create.expansion_mode_basic'))}</span>
+          </label>
+          <label class="checkbox-row checkbox-row-inline room-settings-checkbox">
+            <input type="checkbox" data-setting-extend-check ${useExtend ? 'checked' : ''} />
+            <span>${esc(t('lobby.create.expansion_mode_extend'))}</span>
+          </label>
+          <span class="field-hint room-settings-hint">${esc(t('lobby.create.expansion_mode_hint'))}</span>
+        </span>
+        <span class="village-settings-group village-settings-group-timeout">
+          <strong>${esc(t('lobby.create.turn_timeout_label'))}</strong>
+          <select class="txt room-settings-select" data-setting-timeout-select>
+            <option value="2" ${boomTimeoutMinutes === 2 ? 'selected' : ''}>${esc(t('lobby.create.turn_timeout_2min'))}</option>
+            <option value="3" ${boomTimeoutMinutes === 3 ? 'selected' : ''}>${esc(t('lobby.create.turn_timeout_3min'))}</option>
+            <option value="5" ${boomTimeoutMinutes === 5 ? 'selected' : ''}>${esc(t('lobby.create.turn_timeout_5min'))}</option>
+            <option value="10" ${boomTimeoutMinutes === 10 ? 'selected' : ''}>${esc(t('lobby.create.turn_timeout_10min'))}</option>
+            <option value="20" ${boomTimeoutMinutes === 20 ? 'selected' : ''}>${esc(t('lobby.create.turn_timeout_20min'))}</option>
+            <option value="30" ${boomTimeoutMinutes === 30 ? 'selected' : ''}>${esc(t('lobby.create.turn_timeout_30min'))}</option>
+          </select>
+        </span>
+        <span class="village-settings-group village-settings-group-green">
+          <strong>${esc(t('lobby.create.initial_green_card_label'))}</strong>
+          <label class="checkbox-row checkbox-row-inline room-settings-checkbox">
+            <input type="checkbox" data-setting-initial-green-check ${room.enable_initial_green_card ? 'checked' : ''} />
+            <span>On</span>
+          </label>
+          <span class="field-hint room-settings-hint">${esc(t('lobby.create.initial_green_card_hint'))}</span>
+        </span>
+          </div>
+        </form>
+      </dialog>`
+    : '';
   const roomSettings = [
     `TRIP:${room.require_trip ? 'On' : 'Off'}`,
-    `Mode:${String(room.expansion_mode || 'all')}`,
+    formatCardSetSummary(expansionMode),
     `初始綠卡:${initialGreenCard}`,
     `暴斃時間:${boomTimeoutMinutes}分`,
   ].join(' / ');
@@ -1226,6 +1294,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
       </li>
       <li><strong>${esc(t('room.info.name'))}</strong>${esc(villageName || '-')}</li>
       <li><strong>${esc(t('room.info.desc'))}</strong>${esc(villageDescription)}</li>
+      ${settingsDialog}
       ${replayNotice ? `<li><strong>${esc(t('room.info.replay_notice'))}</strong>${esc(replayNotice)}</li>` : ''}
       ${timeoutWarnRow}
       ${boomedNoticeRow}
@@ -1241,6 +1310,8 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
   el.villageInfoList.innerHTML = `
     <li class="village-info-row village-info-row-primary">
       <span class="village-info-item"><strong>${esc(t('room.info.name'))}</strong>${esc(villageName || '-')}</span>
+    </li>
+    <li class="village-info-row village-info-row-primary village-info-row-desc">
       <span class="village-info-item"><strong>${esc(t('room.info.desc'))}</strong>${esc(villageDescription)}</span>
       ${replayNotice ? `<span class="village-info-item village-info-replay"><strong>${esc(t('room.info.replay_notice'))}</strong>${esc(replayNotice)}</span>` : ''}
     </li>
@@ -1258,6 +1329,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
       ${canRollCall ? `<button id="btnRollCallInline" class="btn btn-inline" type="button">${esc(t('room.ops.roll_call'))}</button>` : ''}
       ${canAbolish ? `<button id="btnAbolishVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.abolish'))}</button>` : ''}
     </li>
+    ${settingsDialog}
     ${timeoutWarnRow}
     ${boomedNoticeRow}
   `;
@@ -2178,10 +2250,17 @@ export function renderState({
 
   if (sessionDirty) persistSession(state);
 
-  if (el.startGameForm) {
-    const startFieldset = el.startGameForm.closest('fieldset');
-    if (startFieldset) startFieldset.hidden = Boolean(data?.room?.is_chat_room);
-  }
+  const isChatRoom = Boolean(data?.room?.is_chat_room);
+  const chatHiddenFieldsets = [
+    document.querySelector('.room-preview-game-fieldset'),
+    document.querySelector('.room-preview-system-fieldset'),
+    document.getElementById('damageMeter')?.closest('fieldset'),
+  ];
+  chatHiddenFieldsets.forEach((fieldset) => {
+    if (!(fieldset instanceof HTMLElement)) return;
+    fieldset.hidden = isChatRoom;
+    fieldset.style.display = isChatRoom ? 'none' : '';
+  });
 
   renderVillageInfo(data);
   renderChatStage({ el, esc }, data, state);
@@ -3368,43 +3447,16 @@ export function bindRoomEvents({
     toast(t('toast.roll_call_done'));
   };
 
-  const editVillageSettings = async () => {
+  const updateVillageSettings = async (patch = {}) => {
     if (!state.roomId || !state.account) return;
     const roomInfo = latestRoomSnapshot?.room || {};
-    const currentMode = String(roomInfo.expansion_mode || 'all');
-    const currentTimeout = Number(roomInfo.turn_timeout_minutes || 3);
-    const currentInitialGreen = Boolean(roomInfo.enable_initial_green_card);
-
-    const modeRaw = window.prompt(t('room.settings.expansion_mode_prompt'), currentMode);
-    if (modeRaw == null) return;
-    const modeInput = String(modeRaw || '').trim().toLowerCase();
-    let expansionMode = modeInput;
-    if (modeInput === 'b' || modeInput === 'basic') expansionMode = 'no_extend';
-    if (modeInput === 'e' || modeInput === 'extend' || modeInput === 'expansion') expansionMode = 'expansion_only';
-    if (!['all', 'no_extend', 'expansion_only'].includes(expansionMode)) {
-      toast(t('room.settings.invalid_expansion_mode'), 'error');
-      return;
-    }
-
-    const timeoutRaw = window.prompt(t('room.settings.turn_timeout_prompt'), String(currentTimeout));
-    if (timeoutRaw == null) return;
-    const timeoutMinutes = Number.parseInt(String(timeoutRaw || '').trim(), 10);
-    if (![2, 3, 5, 10, 20, 30].includes(timeoutMinutes)) {
-      toast(t('room.settings.invalid_turn_timeout'), 'error');
-      return;
-    }
-
-    const initialGreenRaw = window.prompt(t('room.settings.initial_green_prompt'), currentInitialGreen ? '1' : '0');
-    if (initialGreenRaw == null) return;
-    const enableInitialGreenCard = ['1', 'true', 'on', 'yes', 'y'].includes(String(initialGreenRaw || '').trim().toLowerCase());
-
     try {
       const data = await dispatch('update_room_settings', {
         room_id: state.roomId,
         account: state.account,
-        expansion_mode: expansionMode,
-        turn_timeout_minutes: timeoutMinutes,
-        enable_initial_green_card: enableInitialGreenCard,
+        expansion_mode: patch.expansion_mode ?? String(roomInfo.expansion_mode || 'all'),
+        turn_timeout_minutes: patch.turn_timeout_minutes ?? Number(roomInfo.turn_timeout_minutes || 3),
+        enable_initial_green_card: patch.enable_initial_green_card ?? Boolean(roomInfo.enable_initial_green_card),
       });
       renderState(data);
       toast(t('room.settings.updated'));
@@ -3442,7 +3494,54 @@ export function bindRoomEvents({
     }
     const editSettingsTarget = event.target instanceof Element ? event.target.closest('#btnEditRoomSettingsInline') : null;
     if (editSettingsTarget) {
-      editVillageSettings();
+      const dialog = el.villageInfoList?.querySelector('#btnEditRoomSettingsDialog');
+      if (dialog instanceof HTMLDialogElement) {
+        try {
+          dialog.showModal();
+        } catch {
+          dialog.setAttribute('open', 'open');
+        }
+      }
+      return;
+    }
+    const closeSettingsTarget = event.target instanceof Element ? event.target.closest('[data-close-village-settings]') : null;
+    if (closeSettingsTarget) {
+      const dialog = el.villageInfoList?.querySelector('#btnEditRoomSettingsDialog');
+      if (dialog instanceof HTMLDialogElement && dialog.open) {
+        dialog.close();
+      }
+    }
+  });
+
+  el.villageInfoList?.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    if (target.matches('[data-setting-timeout-select]')) {
+      const timeout = Number.parseInt(String((target).value || ''), 10);
+      if ([2, 3, 5, 10, 20, 30].includes(timeout)) {
+        updateVillageSettings({ turn_timeout_minutes: timeout });
+      }
+      return;
+    }
+
+    if (target.matches('[data-setting-initial-green-check]')) {
+      updateVillageSettings({ enable_initial_green_card: Boolean(target.checked) });
+      return;
+    }
+
+    if (target.matches('[data-setting-basic-check], [data-setting-extend-check]')) {
+      const basicCheck = el.villageInfoList?.querySelector('[data-setting-basic-check]');
+      const extendCheck = el.villageInfoList?.querySelector('[data-setting-extend-check]');
+      const useBasic = Boolean(basicCheck?.checked);
+      const useExtend = Boolean(extendCheck?.checked);
+      const nextMode = cardFlagsToExpansionMode(useBasic, useExtend);
+      if (!nextMode) {
+        target.checked = true;
+        toast(t('lobby.create.expansion_mode_required'), 'error');
+        return;
+      }
+      updateVillageSettings({ expansion_mode: nextMode });
     }
   });
 
@@ -3592,7 +3691,7 @@ export function bindRoomEvents({
       return;
     }
 
-    if (pendingAbilityActivation) {
+    if (pendingAbilityActivation && isGameOngoing) {
       if (isSelfCard) {
         clearPendingAbilityActivation();
         toast(t('toast.character_ability_cancelled'));

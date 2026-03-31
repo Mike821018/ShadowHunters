@@ -946,6 +946,37 @@ legend {
   padding: 14px;
 }
 
+.records-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.records-page-controls,
+.records-search-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.records-page-controls {
+  width: 100%;
+}
+
+.records-search-controls {
+  margin-left: auto;
+}
+
+.records-search-input {
+  width: min(260px, 46vw);
+}
+
+.records-page-input {
+  width: 72px;
+  text-align: center;
+}
+
 .records-summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -1013,6 +1044,71 @@ legend {
   color: #525a64;
   background: #eef1f5;
   border-color: #c4ccd5;
+}
+
+.records-option-wrap {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.records-option-badge {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid #c2d7e7;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  background: #f5fbff;
+  color: #2b5a78;
+}
+
+.records-option-badge-green {
+  background: #eaf8ee;
+  border-color: #95d3a5;
+  color: #1b7a3a;
+}
+
+.records-option-badge-blue {
+  background: #eaf3ff;
+  border-color: #97b9ef;
+  color: #1e4f94;
+}
+
+.records-option-extra {
+  font-size: 12px;
+  color: #4b6070;
+}
+
+.records-option-popover {
+  position: fixed;
+  z-index: 420;
+  transform: translateX(-50%);
+  max-width: min(320px, calc(100vw - 16px));
+  border: 1px solid #c9d9e5;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #27475f;
+  box-shadow: 0 16px 34px rgba(20, 44, 67, 0.2);
+  padding: 8px 10px;
+}
+
+.records-option-popover strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.records-option-popover p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 #tripProfileGamesTbody td:nth-child(5) {
@@ -1378,7 +1474,7 @@ legend {
 .active-card-dialog {
   position: fixed;
   inset: auto auto auto auto;
-  z-index: 30;
+  z-index: 200;
   margin: 0;
   width: min(300px, calc(100vw - 24px));
   border: 1px solid #d6e4ef;
@@ -2125,6 +2221,11 @@ legend {
   display: block;
 }
 
+.player-card:has(.player-role-info:hover),
+.player-card:has(.player-role-info:focus-within) {
+  z-index: 40;
+}
+
 .equip-row {
   margin-top: 8px;
   display: flex;
@@ -2552,12 +2653,94 @@ legend {
   font-size: 13px;
 }
 
+.village-settings-inline,
+.village-info-row-settings {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f7fbff;
+  padding: 8px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.village-settings-dialog {
+  border: 1px solid #c4d7e5;
+  border-radius: 8px;
+  padding: 0;
+  width: min(780px, calc(100vw - 24px));
+  box-shadow: 0 16px 36px rgba(23, 46, 66, 0.22);
+}
+
+.village-settings-dialog::backdrop {
+  background: rgba(16, 32, 46, 0.36);
+}
+
+.village-settings-dialog-form {
+  padding: 10px;
+}
+
+.village-settings-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.village-info-row-desc {
+  margin-top: -2px;
+}
+
+.village-settings-group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.room-settings-hint {
+  width: 100%;
+  margin-top: 2px;
+}
+
+.room-settings-checkbox {
+  margin-top: 0;
+}
+
+.room-settings-select {
+  width: 120px;
+}
+
+.room-settings-btn {
+  min-width: 52px;
+}
+
+.room-settings-btn.is-active {
+  border-color: #2f7db2;
+  background: #dff0ff;
+  color: #174f7a;
+}
+
 .village-info-list li.room-timeout-warning {
   color: #b72323;
   background: #fff0f0;
   border: 1px solid #f2c4c4;
   border-radius: 4px;
   padding: 4px 8px;
+}
+
+.guide-area-table th:first-child,
+.guide-area-table td:first-child {
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.guide-area-dice-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .village-info-list li.room-timeout-warning strong {
@@ -3037,6 +3220,38 @@ legend {
   border-radius: 8px 8px 0 0;
 }
 
+.guide-section > h2.guide-collapsible {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0;
+}
+
+.guide-section > h2.guide-collapsible::after {
+  content: '▲';
+  font-size: 13px;
+  opacity: 0.5;
+  flex-shrink: 0;
+  margin-left: 8px;
+  transition: transform 0.15s;
+}
+
+.guide-section > h2.guide-collapsible[aria-expanded="false"]::after {
+  content: '▼';
+}
+
+.guide-section > h2.guide-collapsible[aria-expanded="false"] {
+  border-radius: 8px;
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.guide-section > .card-body.guide-section-collapsed {
+  display: none;
+}
+
 .guide-section h3 {
   margin: 0 0 12px;
   font-size: 16px;
@@ -3060,6 +3275,30 @@ legend {
   border-radius: 4px;
 }
 
+.guide-subsection > h4.guide-subsection-collapsible {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0;
+}
+
+.guide-subsection > h4.guide-subsection-collapsible::after {
+  content: '▲';
+  font-size: 12px;
+  opacity: 0.5;
+  margin-left: 8px;
+}
+
+.guide-subsection > h4.guide-subsection-collapsible[aria-expanded="false"]::after {
+  content: '▼';
+}
+
+.guide-subsection > .guide-subsection-collapsed {
+  display: none;
+}
+
 .guide-steps {
   margin: 12px 0;
   padding-left: 24px;
@@ -3074,12 +3313,14 @@ legend {
   color: #1565c0;
 }
 
+
 .guide-steps span {
   display: block;
   margin-top: 2px;
   color: #666;
   font-size: 14px;
 }
+
 
 .guide-tips {
   list-style: none;

@@ -251,8 +251,9 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
     };
 
   if (view === 'room') {
-    const seatCards = entries.slice(0, 8).map(renderCard);
-    while (seatCards.length < 8) {
+    const minVisibleSlots = 8;
+    const seatCards = entries.map(renderCard);
+    while (seatCards.length < minVisibleSlots) {
       seatCards.push('<div class="seat-empty">-</div>');
     }
     container.classList.add('seat-grid');

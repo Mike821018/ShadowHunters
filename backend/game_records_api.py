@@ -47,11 +47,19 @@ class GameRecordsAPI:
     def _winner_camp_codes_from_game(self, record: GameRecord) -> set:
         winner_set = set(record.winner_players or [])
         camps = set()
-        if not winner_set:
-            return camps
-        for p in record.players:
-            if p.player_id in winner_set:
-                camp_code = self._normalize_camp_code(p.character_camp)
+        if winner_set:
+            for p in record.players:
+                if p.player_id in winner_set:
+                    camp_code = self._normalize_camp_code(p.character_camp)
+                    if camp_code:
+                        camps.add(camp_code)
+
+        # Backward compatibility: some historical records may not have winner_players,
+        # but still have winner_camp persisted.
+        if not camps:
+            winner_camp_raw = str(getattr(record, 'winner_camp', '') or '')
+            for part in winner_camp_raw.replace('+', '_').replace('/', '_').replace(',', '_').split('_'):
+                camp_code = self._normalize_camp_code(part)
                 if camp_code:
                     camps.add(camp_code)
         return camps
@@ -646,8 +654,8 @@ class GameRecordsAPI:
                 boomed = bool(getattr(player, 'boomed', False))
                 player_camp_code = self._normalize_camp_code(player.character_camp)
                 if boomed:
-                    # Keep camp identity for boomed rows so UI can render a gray camp badge.
-                    result_code = player_camp_code or winner_camp_code or 'draw'
+                    # Boomed rows should still show the real room winner camp; UI applies gray style separately.
+                    result_code = winner_camp_code or player_camp_code or 'draw'
                 elif winner_camp_code in ('draw', 'unknown'):
                     result_code = 'draw'
                 elif winner_camp_code:

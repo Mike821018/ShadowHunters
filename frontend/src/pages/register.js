@@ -1003,7 +1003,9 @@ export async function initRegisterPage({
       goToLobbyPage?.();
       return;
     }
-    throw error;
+    // Keep identity tools usable even if room-state lookup fails.
+    // For users entering identity page without room context, avoid noisy global init toast.
+    return;
   }
   const requireTrip = Boolean(data?.room?.require_trip);
   const villageName = withVillageSuffix(data?.room?.room_name || 'XXX');
