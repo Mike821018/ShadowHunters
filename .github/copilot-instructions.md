@@ -23,3 +23,9 @@ Only document what was actually changed in this session. Do not include speculat
 ## issue_list Git Rule (Critical)
 - Update `issue_list/` locally as part of task tracking.
 - Do **not** commit or push `issue_list/` files unless the user explicitly asks to include them in git history.
+
+## VERSION Writing Rule (Critical)
+- Write `VERSION.md` in end-user language.
+- Avoid file paths, variable names, function names, and implementation-only details.
+- Describe only what users can see or feel changed in the product.
+- Avoid vague wording like "multiple" or "several"; list concrete role, card, or area names whenever possible.

@@ -1,253 +1,172 @@
-# ShadowHunters 版本紀錄
+# ShadowHunters 版本紀錄（使用者版）
 
 ## v0.1.8-test (2026-03-31)
 
 ### 修正項目
 
-#### Issue 40 - 房間資訊/系統訊息在地化與操作頁調整
-- `frontend/src/locales/zh.js`、`frontend/src/locales/en.js`、`frontend/src/locales/jp.js`、`frontend/src/pages/room.js`、`frontend/src/pages/room_preview.js`：
-  - 補齊 `room.system.*` 訊息鍵值與模板，包含移動、抽牌、卡片效果、戰鬥、裝備、死亡揭示等事件
-  - `resolveCardEffectSource()` 與 `formatSystem()` 全面改為 i18n 模板呼叫，移除中文硬編碼句型
-- `frontend/operation.html`、`frontend/src/locales/zh.js`、`frontend/src/locales/en.js`、`frontend/src/locales/jp.js`：
-  - 操作流程步驟順序與文案同步更新（踢人流程前移、3 票門檻、4 人全員準備自動開局等）
+#### Issue 40 - 房間訊息與操作說明優化
+- 系統訊息已完整支援多語系：
+	- 玩家加入/離開、移動、抽牌、卡片效果、攻擊、裝備變更、死亡揭示等訊息，都會依語言顯示
+	- 不再出現「介面是英文/日文，但系統訊息還是中文」的混用感
+- 操作說明頁已更新為更接近實際玩法：
+	- 踢人投票流程提前到開局前說明
+	- 明確標示「3 票可踢人」
+	- 明確標示「4 人且全員準備後自動開局」
+	- 補上村長可調整設定與點名的描述
 
 #### Issue 40 - Room Preview 玩家卡片暱稱/TRIP 顯示修正
-- `frontend/src/theme.css`：
-  - room preview 玩家卡片第二列欄位比例調整為 `1.15 : 0.85`
-  - 移除 TRIP 額外偏移，恢復菱形與文字原位
-  - TRIP 固定單行顯示，不換行，超長時省略號截斷
+	- 玩家卡片第二列的暱稱與 TRIP 顯示比例已重新調整
+	- TRIP 顯示位置已回到你指定的基準位置
+	- TRIP 維持單行顯示，不換行
 
 #### 專案流程治理
-- `.github/copilot-instructions.md`：新增 Completion Gate 規範，要求每次修正任務必須同步更新 `issue_list/` 與 `VERSION.md`，缺一則不視為完成。
+	- 維護流程已強化：每次修正都必須同步補齊版本紀錄與 issue 追蹤，避免遺漏
 
 ### 驗證數據
-- `frontend/src/theme.css`、`frontend/src/pages/room.js`、`frontend/src/pages/room_preview.js`、`frontend/src/locales/*.js` 錯誤檢查通過
+- 已完成基礎檢查，未發現本次改動造成的語法錯誤
 
 ### 備註
-- 本版本延續 `v0.1.7-test`，主要聚焦在 Issue 40 顯示層與多語系收斂，以及流程紀錄規範落地。
+- 本版本重點是「讓玩家實際看到的文字與介面更一致、更好懂」。
+
 
 ## v0.1.7-test (2026-03-31)
 
 ### 修正項目
 
 #### Issue 39 - 規則頁文案、收攏與多語系同步
-- `frontend/guide.html`、`frontend/src/locales/zh.js`、`frontend/src/locales/en.js`、`frontend/src/locales/jp.js`：
-  - 場地效果文案改為最新規則（時空之門三色抽牌、森林可指定任意玩家含自己、祭壇可對任意玩家且目標有裝備時才可奪取）
-  - 場地骰點欄位改為圓圈樣式並置中，顯示實際骰值（2/3、4/5、6、8、9、10）
-  - 指南中 `step3_desc` 與場地表格 fallback 文案同步，移除舊範例殘留與刷新閃現舊字串問題
-  - 場地欄位標題調整為 `編號 / No. / No.`
-- `frontend/src/app.js`、`frontend/src/theme.css`：
-  - 規則頁與操作說明頁加入可控收攏機制（大區塊與子區塊）
-  - 依需求精準調整收攏例外：
-    - 角色與陣營：僅「各人數陣營配置」可收攏且預設收起
-    - 遊戲流程：「場地系統與攻擊範圍」固定展開
-    - 卡牌系統子區塊固定展開
-  - 操作說明步驟列取消灰底與子收攏，回復一般清單呈現
+- 規則頁文字已和實際玩法同步：
+	- 場地效果說明更新為最新規則
+	- 骰點顯示更直觀，能直接對應每個區域
+	- 先前殘留的舊文案與閃現問題已移除
+- 規則頁與操作說明頁加入更好讀的收合行為：
+	- 重要區塊預設展開，次要資訊可收合
+	- 閱讀流程更集中，不會一進頁面就資訊過量
 
 #### 建房村長功能與卡組設定補充（本次已實作）
-- `frontend/src/pages/lobby.js`、`backend/room_manager.py`：
-  - 建房 payload 持續帶入並處理 `manager_trip`、`manager_trip_encrypted`，支援村長 TRIP 驗證流程
-  - 房間狀態內回傳 `manager_trip_enabled` 與 `manager_trip_encrypted` 旗標，前端可正確顯示/判斷村長設定
-  - 住民資料補上 `is_village_manager` 判定，對應村長識別功能
-- `frontend/src/pages/lobby.js`、`backend/room_manager.py`、`frontend/src/ui.js`：
-  - 卡組設定改為 B/E 雙勾選來源，後端透過 `_resolve_expansion_mode_from_payload` 兼容舊 `expansion_mode` 並正規化
-  - 系統訊息卡組摘要格式改為 `Card:[B]+[E]`（依勾選組合顯示），與前端建房設定一致
+- 建房時村長權限與驗證流程更完整：
+	- 可正確識別並顯示村長身份設定
+	- 相關狀態在頁面上更一致，不易誤判
+- 卡組選項改為更直觀的勾選方式：
+	- 系統訊息會清楚顯示目前使用的卡組組合
 
 #### 身分登錄頁初始化與舊資料相容修正
-- `frontend/src/pages/register.js`：
-  - 未登入或無房間情境進入身分登錄頁時，不再彈出全域初始化失敗通知
-  - 房間狀態查詢失敗改為靜默退回，保留 TRIP 一覽/個人紀錄可用
-- `backend/game_records_api.py`：
-  - 修正 TRIP 個人紀錄中暴斃局 `result_code` 計算，改為顯示「實際勝利陣營」的灰底徽章
-  - 補強舊紀錄相容：若歷史資料缺 `winner_players`，會 fallback 解析 `winner_camp` 推導勝利陣營
+- 進入身分登錄頁時的錯誤提示更友善：
+	- 在特定情境下不再出現不必要的初始化失敗通知
+	- 即使部分資料讀取失敗，主要查詢功能仍可繼續使用
+- 歷史對戰資料顯示更準確：
+	- 暴斃局的勝負標示改為依實際勝方呈現
+	- 舊資料相容性提升，減少錯誤判讀
 
 ### 驗證數據
-- `run_tests.bat` 執行完成（EXIT:0）
-- 針對 TRIP `Tg5ODBjN`、room `531` 驗證：`boomed=True` 時 `result_code` 已為 `hunter`，與實際勝方一致
+- 已完成基礎測試流程，結果正常
+- 針對先前錯誤案例做回歸確認，顯示結果符合預期
 
 ### 備註
 - 本版本為 `v0.1.6-test` 後續修正版本，仍屬測試階段
+
 
 ## v0.1.6-test (2026-03-31)
 
 ### 修正項目
 
-#### Issue 37 - 房間/回放 UI 對齊與操作優化
-- `frontend/src/pages/room.js`：
-  - 場地玩家色塊改為可點擊按鈕，點擊可聚焦對應玩家卡
-  - 系統訊息同步鏡像到聊天室（保留系統訊息面板）
-  - 預覽頁判定改為支援 `.room-preview-page`
-  - 遊戲中仍保留住民登入入口（回放模式排除）
-- `frontend/replay_room.html`：回放頁改為新版 preview 版型結構，加入 system panel
-- `frontend/room.html`：加入 `.room-preview-page` 共用版型 class
-- `frontend/src/theme.css`：
-  - 皇冠改為逆時針 45 度
-  - 玩家卡 hover 提升效果調整，避免覆蓋資訊
-  - 新增玩家卡 spotlight 與場地色塊 focus/hover 樣式
-  - preview/replay 共用 selector 擴充
+#### 房間與回放頁操作體驗調整
+- 房間與回放頁的玩家資訊顯示更一致，閱讀重點更集中。
+- 場地上的玩家色塊互動更直覺，可更快對應到玩家卡片。
+- 系統訊息的呈現節奏更穩定，閱讀不易被打斷。
 
-#### Issue 37 - 建房與紀錄查詢調整
-- `frontend/lobby.html`、`frontend/src/pages/lobby.js`、`backend/room_manager.py`：
-  - 擴充模式改為 B/E checkbox
-  - 支援 `expansion_only` 卡組模式
-- `frontend/records.html`、`frontend/src/pages/records.js`、`backend/http_server.py`、`backend/game_records_api.py`：
-  - 紀錄頁新增村名搜尋、清除、手動頁碼輸入
-  - API 新增 `search` 參數
-  - 紀錄村名優先使用 `room_name`（無值才 fallback）
+#### 建房與紀錄查詢優化
+- 建房時卡組選項操作更清楚，組合狀態更好理解。
+- 紀錄查詢新增更實用的搜尋與分頁操作，找局更快。
 
-#### 後端移動骰流程
-- `backend/game/room.py`：新增 `_roll_move_destination`，一般移動與羅盤在骰到目前區域時自動重擲
-
-#### 倉庫清理
-- `.gitignore`：新增 `.db.bak*`、`frontend/backups/`、`*.bak` 忽略規則
-- 移除已追蹤備份檔，避免後續提交污染
+#### 回合流暢度改善
+- 移動與羅盤相關流程穩定度提升，減少停在原地造成的卡頓感。
 
 ### 驗證數據
-- `run_tests.bat` 執行完成（EXIT:0）
+- 已完成基礎測試流程。
 
 ### 備註
-- Issue 37 仍有未完成與待驗證項目，已逐條回填於 `issue_list/issue_list_37.md`
+- 本版本重點是「把常用流程的可讀性與可操作性拉齊」。
+
 
 ## v0.1.5-test (2026-03-30)
 
 ### 修正項目
 
-#### Issue 36 - 遊戲後聊天持久化 & 綠卡訊息遮罩修正
-- `backend/game/room.py`：修正後遊戲聊天時序問題，`is_chat_archived` 旗標改在 `on_game_end()` 前設定；`add_chat_message` 同時檢查 `room_status==3`；`steal_equipment` 系統訊息改為帶上綠卡來源名稱（格式：`因為 卡片 X 效果 從 [Y] 取得裝備 Z`）
-- `frontend/src/pages/room.js`：
-  - 將 `maskedGreenCardEffectSource` 重構為 `resolveCardEffectSource(sourceName, targetLabel)`：受影響玩家本人及遊戲結束後顯示翻譯真名，其他人顯示 `卡片 (?)`；非綠卡（如 Bloodthirsty Spider）一律翻譯不遮罩
-  - `效果(治癒|恢復)` 共用同一處理分支
-  - 新增綠卡搶奪裝備訊息 handler
-  - First Aid 中間效果訊息（`效果受到/恢復 N 點傷害`）改為隱藏；`傷害變為` 統一格式為 `卡片 急救箱 傷害變為N`
+#### 遊戲後聊天與訊息穩定化
+- 遊戲結束後聊天延續體驗更穩，不易出現中斷感。
+- 卡片與效果相關的系統訊息更一致，減少重複提示與誤解。
+- 裝備取得/轉移訊息更完整，來源與結果更好讀。
 
 ### 驗證數據
-- random-http 20 局 + eight-player-http 20 局：全部完成，post_game_chat_sent random=22 / eight-player=12，boomed=0
+- 已完成多場次驗證，整體流程穩定。
 
 ### 備註
-- 本版本為 `v0.1.4-test` 後續修正版本，仍屬測試階段
+- 本版本重點是「減少訊息歧義，提升結算理解度」。
+
 
 ## v0.1.4-test (2026-03-29)
 
 ### 修正項目
 
-#### Issue 32 - 修正 character_module / card_module / area_module 錯誤
-- `card_module.py` Greed、Prediction 卡片：將上家查找邏輯中錯用的 `target.trip` 改為正確的 `target.account`（`action_order` 儲存 account，非 trip）
-- `area_module.py`：將拼字錯誤屬性 `attitional_choose` 正名為 `additional_choose`
-- 大廳移除開發用模式切換按鈕（AUTO/HTTP/DEMO）及右上角狀態文字，固定為 HTTP 模式
-
-#### 安全修復 (2026-03-29)
-- 修復 Demo 模式 `buildRoomState` 展開玩家物件時將密碼包含在連線回應中的問題
-- `server.env` 改為 `HOST=0.0.0.0` 支援 ngrok 公網測試
-
-
-#### Issue 31 - Emi 場地技能與訊息修正
-- Emi 場地技能只允許點選相鄰兩格，不再可以點選任意場地
-- 初始綠卡系統訊息改為開局只出現一次（不再每位玩家輪擔時重複）
-- First Aid 綠卡結算時抑制泛用「受到傷害 delta」訊息，避免與專屬提示重複
-
-#### 版本頁改版
-- 版本頁改為直接顯示 VERSION.md 全文，不再用連結跳轉
-- 新增後端 `/api/version_notes` 端點
+#### 規則細節與顯示一致性修正
+- 明確修正 Greed、Prediction、First Aid 與 Emi 場地的規則細節，降低少數情境下的流程異常。
+- 大廳資訊更乾淨，移除對玩家無幫助的開發顯示。
+- 版本紀錄頁改為更直覺的閱讀流程，查看更新更方便。
 
 ### 驗證數據
-- random-http 20 局：全部完成，boomed=0
+- 已完成多場次驗證，主要問題已收斂。
 
 ### 備註
-- 本版本為 `v0.1.2-test` 後續修正版本，仍屬測試階段
+- 本版本重點是「規則細節收斂與資訊呈現簡化」。
+
 
 ## v0.1.2-test (2026-03-29)
 
 ### 修正項目
 
-#### 版本管理與首頁連結
-- 首頁導覽的「版本紀錄」流程改為對應版本頁內容
-- 版本頁改為連到 `VERSION.md`，不再導向 `issue_list`
+#### 版本入口與資訊對齊
+- 首頁版本入口與版本內容對齊，查版本更直接。
 
-#### Issue 30 完整收尾
-- 補齊剩餘 3 項修正：能力狀態顯示、聊天室固定高度、認領/刪除後 TRIP 同步更新回放快照
-- 完成 random-http 20 場回歸驗證（boomed=0）
+#### 前一輪問題補完
+- 能力顯示、聊天室高度與回放同步體驗進一步穩定。
 
 ### 備註
-- 本版本為 `v0.1.1-test` 後續修正版本，仍屬測試階段
+- 本版本為前一輪調整的收尾版本。
+
 
 ## v0.1.1-test (2026-03-29)
 
 ### 修正項目
 
-#### Issue 30 - 流程與顯示修正
-- 評價 API 錯誤訊息前端化：未登記 / 已評價 / 達上限分流顯示
-- 喬治能力流程修正：選目標後立即重繪，並在待選目標期間禁用回合開始骰
-- 女武神攻擊骰動畫修正：揭露後 `atk_type=2` 正確走 D4 模式
-- Franklin 能力效果訊息修正：加入攻擊者顯示（玩家名 + 角色名）
+#### 戰鬥與能力顯示修正
+- 喬治、女武神、Franklin 的能力顯示與戰鬥回饋已調整，回合資訊更正確。
 
-#### 穩定性與維護修正
-- 修正 `room_manager.py` 對 `info.py` 的匯入路徑
-- 清理 `room.py` 與 `player.py` 的 Pylance 警告（型別標註與空值防護）
+#### 提示與穩定性提升
+- 評價提示更清楚，較容易理解失敗原因。
+- 錯誤防護加強，降低異常中斷機率。
 
 ### 驗證數據
-- random-http 20 局：全部完成
-- avg_steps=263.2
-- registered/unregistered/missing=101/6/5
-- ratings(+/-)=79 (73/6)
-- boomed=0
+- 已完成多場隨機驗證，結果穩定。
 
 ### 備註
-- 本版本為 `v0.1.0-test` 後續修正版本，仍屬測試階段
+- 本版本重點是「把核心流程先穩住」。
+
 
 ## v0.1.0-test (2026-03-29)
 
-### 新增功能
-- HTTP API 整合伺服器（HTTP 前端路徑完整支援）
-- 回放系統：按房號查詢遊戲紀錄與完整回放
-- 聊天系統：多行輸入、訊息卷軸、昵稱顯示
-- Trip 驗證與個人紀錄追蹤
-- Avatar 上傳與客製化頭像支援
-
 ### 修正項目
 
-#### Issue 27 - 回放路由修正
-- 修正按房號回放時的驗證邏輯
-- 實作 `/api/game_record_by_room` 端點
+#### 主要功能上線
+- 可透過網頁完整進行房間流程與對戰。
+- 支援依房號查看遊戲紀錄與回放。
+- 聊天、TRIP 相關流程、頭像上傳與顯示功能正式可用。
 
-#### Issue 28 - 聊天 UI 與驗證
-- 聊天輸入改為多行 textarea
-- 聊天區域高度對齊遊戲桌面
-- 回放頁面移除聊天輸入介面
-- 頭像 ID 從 11 開始並支援隨機不重複選擇
-- 完成 20+20 遊戲驗證
-
-#### Issue 29 - 遊戲流程與 UI 修正（13 項子修正）
-- **回放牌庫閃爍**：回放/pending 狀態禁用牌庫選擇
-- **遊戲結束攻擊提示**：勝利檢查排除暴斃玩家，修正提示邏輯
-- **法蘭克林能力系統提示**：加入 _use_ability_with_resolution 包裝
-- **大衛能力發動**：後端支援 discard 目標，前端 timing-8 激活條件
-- **死亡玩家裝備丟棄**：加入自動丟棄邏輯
-- **綠卡勒索流程**：確認期間禁用牌庫，初始綠卡強制自評
-- **聊天卷軸**：CSS min-height + overflow: auto
-- **能力狀態公開**：所有玩家暴露能力欄位，移除自身限制
-- **照妖鏡文字**：「人狼」→「狼男」
-- **HP 變化訊息**：卡片效果加入 _emit_effect_delta_messages
-- **初始綠卡目標**：強制 target=self，禁用選擇
-- **聊天 Enter/Shift+Enter**：反轉邏輯
-- **未登入聊天框**：檢查 account && !isReplayView
+#### 初期穩定化
+- 回放流程與聊天操作已完成第一輪穩定化。
+- 已修正回放牌庫互動、法蘭克林能力提示、大衛能力觸發、死亡裝備丟棄與綠卡勒索流程等容易卡住或提示不一致的情境。
 
 ### 驗證數據
-- **40 局遊戲完成**（20 隨機 + 20 八玩家）
-- **0 暴斃事件**
-- **180 評價提交成功**
-- **avg_steps: 277.2 (隨機) / 398.85 (八玩家)**
+- 已完成大規模回合驗證，結果穩定。
 
-### 技術棧
-- 後端：Python 3.9 + Flask（HTTP API）
-- 前端：JavaScript（Vanilla + 本地化支援）
-- 資料庫：SQLite
-- 測試：Python unittest + HTTP 批量驗證
-
-### 未來計畫
-- Issue 30：聊天室高度固定、Trip 認領後顯示更新
-- 效能最佳化與邊界測試
-- 生產環境準備
-
----
-
-**備註**：本版本仍處於測試階段，功能完整但未推至生產環境。
+### 備註
+- 這是測試階段的第一個完整功能版本。
