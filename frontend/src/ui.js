@@ -81,7 +81,6 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
   const targetAccountSet = new Set(Array.isArray(targetAccounts) ? targetAccounts : []);
   const currentAccount = data?.turn?.current_account || null;
   const roomStatus = Number(data?.room?.room_status || 0);
-  const isPreviewLayout = (document.body?.dataset?.page || '') === 'room-preview';
   const selfAccount = state?.account || null;
   const actionOrder = Array.isArray(data?.action_order) ? data.action_order : [];
   const orderIndex = new Map(actionOrder.map((acc, idx) => [String(acc), idx]));
@@ -130,7 +129,7 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
 
       const isSelf = Boolean(selfAccount && account === selfAccount);
       const isWinner = winnerSet.has(String(account || '').trim());
-      const canPickColor = !isPreviewLayout && isSelf && roomStatus === 1 && !p.is_ready && typeof onColorChange === 'function';
+      const canPickColor = isSelf && roomStatus === 1 && !p.is_ready && typeof onColorChange === 'function';
       const resolvedCharacter = String(p.character || p.character_name || '').trim();
       const hasKnownRole = Boolean(resolvedCharacter);
       const roleNameEn = hasKnownRole ? resolvedCharacter : (isSelf ? p.self_character : null);
@@ -271,6 +270,17 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
     }
   }
 
+  const closeAllColorPickers = () => {
+    container.querySelectorAll('[data-color-picker] .color-picker-row').forEach((row) => {
+      if (!(row instanceof HTMLElement)) return;
+      row.setAttribute('hidden', '');
+    });
+    container.querySelectorAll('[data-color-picker] .color-chip-trigger').forEach((button) => {
+      if (!(button instanceof HTMLElement)) return;
+      button.setAttribute('aria-expanded', 'false');
+    });
+  };
+
   container.querySelectorAll('[data-color-picker]').forEach((picker) => {
     const toggle = picker.querySelector('.color-chip-trigger');
     const panel = picker.querySelector('.color-picker-row');
@@ -281,14 +291,7 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       event.stopPropagation();
       const isOpen = !panel.hasAttribute('hidden');
 
-      container.querySelectorAll('[data-color-picker] .color-picker-row').forEach((row) => {
-        if (!(row instanceof HTMLElement)) return;
-        row.setAttribute('hidden', '');
-      });
-      container.querySelectorAll('[data-color-picker] .color-chip-trigger').forEach((button) => {
-        if (!(button instanceof HTMLElement)) return;
-        button.setAttribute('aria-expanded', 'false');
-      });
+      closeAllColorPickers();
 
       if (!isOpen) {
         panel.removeAttribute('hidden');
@@ -297,11 +300,33 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
     });
   });
 
+  if (container.__colorPickerOutsideHandler) {
+    document.removeEventListener('click', container.__colorPickerOutsideHandler, true);
+  }
+  container.__colorPickerOutsideHandler = (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      closeAllColorPickers();
+      return;
+    }
+    if (!target.closest('[data-color-picker]')) closeAllColorPickers();
+  };
+  document.addEventListener('click', container.__colorPickerOutsideHandler, true);
+
+  if (container.__colorPickerEscHandler) {
+    document.removeEventListener('keydown', container.__colorPickerEscHandler, true);
+  }
+  container.__colorPickerEscHandler = (event) => {
+    if (event.key === 'Escape') closeAllColorPickers();
+  };
+  document.addEventListener('keydown', container.__colorPickerEscHandler, true);
+
   if (onColorChange) {
     container.querySelectorAll('[data-pick-color]').forEach((btn) => {
       btn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        closeAllColorPickers();
         const color = btn.getAttribute('data-pick-color');
         if (color) onColorChange(color);
       });

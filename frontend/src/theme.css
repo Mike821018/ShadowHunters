@@ -2392,9 +2392,10 @@ legend {
 .color-picker-row {
   margin-top: 6px;
   position: absolute;
-  right: 0;
-  top: 22px;
-  z-index: 10;
+  left: 50%;
+  top: calc(100% + 6px);
+  transform: translateX(-50%);
+  z-index: 80;
   padding: 6px;
   border: 1px solid var(--line);
   background: #fff;
@@ -2405,6 +2406,17 @@ legend {
   align-items: center;
   min-width: 120px;
   box-shadow: 0 10px 24px rgba(20, 35, 52, 0.16);
+}
+
+.color-picker-row[hidden] {
+  display: none !important;
+}
+
+[data-page="room-preview"] .player-card .color-picker-row,
+.room-preview-page .player-card .color-picker-row {
+  left: 0;
+  right: auto;
+  transform: none;
 }
 
 .color-swatch {
@@ -3768,7 +3780,7 @@ legend {
   align-items: center;
   gap: 3px;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 /* Diamond moved to trip row – hide it here */
@@ -3798,9 +3810,11 @@ legend {
 .room-preview-page .player-card-nickname {
   font-size: 13px;
   font-weight: 700;
+  min-width: 0;
+  white-space: nowrap;
   max-width: 100%;
   overflow: hidden;
-  text-overflow: clip;
+  text-overflow: ellipsis;
 }
 
 /* --- Row 2 right: coloured diamond + trip --- */
