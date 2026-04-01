@@ -28,6 +28,11 @@ scripts/*smoke*.py
 
 # Local environment files
 server.env
+restart_server_ngrok.bat
+run_all.bat
+start_ngrok.bat
+start_cloudflare.bat
+start_cloudflare_named.bat
 
 # Runtime-generated assets/data (keep repo clean)
 frontend/assets/avatars/custom/
