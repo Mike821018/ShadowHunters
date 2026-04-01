@@ -600,9 +600,9 @@ function isReplayViewState(state, dataSnapshot = latestRoomSnapshot) {
   return String(state?.page || '') === 'replay-room' || Boolean(String(dataSnapshot?.room?.replay_notice || '').trim());
 }
 
-function isPreviewLayoutPage(state = null, dataSnapshot = latestRoomSnapshot) {
-  if (document.body?.classList?.contains('room-preview-page')) return true;
-  if ((document.body?.dataset?.page || '') === 'room-preview') return true;
+function isRoomLayoutPage(state = null, dataSnapshot = latestRoomSnapshot) {
+  if (document.body?.classList?.contains('room-page')) return true;
+  if ((document.body?.dataset?.page || '') === 'room') return true;
   return isReplayViewState(state, dataSnapshot);
 }
 
@@ -1142,8 +1142,8 @@ function renderDamageMeter({ el, esc }, data) {
 
 export function setVillageInfoMessage({ el, esc }, message) {
   if (el.villageInfoList) {
-    const isPreviewPage = /room_preview\.html$/i.test(window.location.pathname || '');
-    if (isPreviewPage) {
+    const isRoomLikePage = /room\.html$/i.test(window.location.pathname || '') || /replay_room\.html$/i.test(window.location.pathname || '');
+    if (isRoomLikePage) {
       el.villageInfoList.innerHTML = `
         <li class="village-info-row village-info-row-message lighttxt">${esc(message)}</li>
       `;
@@ -1192,7 +1192,7 @@ function formatRoomSettingsSummary(room) {
 
 export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage, state }, data) {
   if (!el.villageInfoList) return;
-  const isPreviewPage = isPreviewLayoutPage(state, data);
+  const isRoomLayout = isRoomLayoutPage(state, data);
   const isReplayView = isReplayViewState(state, data);
 
   const room = data?.room;
@@ -1281,15 +1281,15 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
   const timeoutRemain = Number(turnTimeout?.remaining_seconds);
   const timeoutCurrent = String(turnTimeout?.current_name || turnTimeout?.current_account || turnTimeout?.current_trip_display || '-').trim();
   const timeoutWarnRow = (status === 2 && Number.isFinite(timeoutRemain))
-    ? `<li class="${isPreviewPage ? 'village-info-row ' : ''}room-timeout-warning"><strong>${esc(t('room.info.turn_timeout'))}</strong>${esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-', n: Math.max(0, timeoutRemain) }))}</li>`
+    ? `<li class="${isRoomLayout ? 'village-info-row ' : ''}room-timeout-warning"><strong>${esc(t('room.info.turn_timeout'))}</strong>${esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-', n: Math.max(0, timeoutRemain) }))}</li>`
     : '';
   const boomedNotice = data?.boomed_notice || null;
   const boomedName = String(boomedNotice?.name || boomedNotice?.trip_display || '').trim();
   const boomedNoticeRow = (status === 2 && boomedName)
-    ? `<li class="${isPreviewPage ? 'village-info-row ' : ''}room-timeout-warning"><strong>${esc(t('room.info.boomed_notice'))}</strong>${esc(t('room.info.boomed_notice_fmt', { name: boomedName }))}</li>`
+    ? `<li class="${isRoomLayout ? 'village-info-row ' : ''}room-timeout-warning"><strong>${esc(t('room.info.boomed_notice'))}</strong>${esc(t('room.info.boomed_notice_fmt', { name: boomedName }))}</li>`
     : '';
 
-  if (!isPreviewPage) {
+  if (!isRoomLayout) {
     el.villageInfoList.innerHTML = `
       <li>
         <strong>${esc(t('room.info.room_id'))}</strong>${room.room_id ?? '-'}
@@ -2186,8 +2186,8 @@ function renderFieldCards(data, state = null) {
   }
 }
 
-function patchPreviewCardsInRoom() {
-  if (!isPreviewLayoutPage()) return;
+function patchRoomCardsLayout() {
+  if (!isRoomLayoutPage()) return;
   const cards = document.querySelectorAll('#roomCards .player-card');
   cards.forEach((card) => {
     const hpRow = card.querySelector('.player-card-hp');
@@ -2265,8 +2265,8 @@ export function renderState({
 
   const isChatRoom = Boolean(data?.room?.is_chat_room);
   const chatHiddenFieldsets = [
-    document.querySelector('.room-preview-game-fieldset'),
-    document.querySelector('.room-preview-system-fieldset'),
+    document.querySelector('.room-layout-game-fieldset'),
+    document.querySelector('.room-layout-system-fieldset'),
     document.getElementById('damageMeter')?.closest('fieldset'),
   ];
   chatHiddenFieldsets.forEach((fieldset) => {
@@ -2317,7 +2317,7 @@ export function renderState({
     openInvulnerabilityInfoDialog(source, anchorEl);
   };
   renderPlayerCards(el.roomCards, data, { view: 'room', enableVoteKick: true, targetAccounts: playerPromptTargets, targetPromptClass: playerPromptClass, onEquipmentChipClick: handleEquipmentChipClick, onShieldChipClick: handleShieldChipClick });
-  patchPreviewCardsInRoom();
+  patchRoomCardsLayout();
   renderPlayerCards(el.battleCards, data, { view: 'flow', targetAccounts: playerPromptTargets, targetPromptClass: playerPromptClass, onEquipmentChipClick: handleEquipmentChipClick, onShieldChipClick: handleShieldChipClick });
 
   const playerTargets = orderedPlayerEntries(data)
