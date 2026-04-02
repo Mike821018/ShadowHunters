@@ -14,6 +14,9 @@ class Card():
 
     def requires_choice(self, user, target, rooms) -> bool:
         return False
+
+    def get_force_effect(self, user, target, rooms, choice=None):
+        return None
     
     def equip(self, target): # for equipment use, target=character
         pass
@@ -61,38 +64,33 @@ class Anger(Card):
     def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
-        effect = False
         # 我猜你是獵人或暗影。如果是的話請給你的上家一張裝備卡、
         # 如果你沒有裝備卡的話則受到1點傷害。
-        if force_effect == 1:
-            effect = True
-        elif force_effect == 2:
-            effect = False
-        else:
-            if target.character.camp in ["Hunter", "Shadow"]:
-                effect = True
-        if effect:
-            if target.equipment_list:
+        if target.character.camp in ["Hunter", "Shadow"]:
+            choose_damage = (force_effect == 2)
+            if target.equipment_list and not choose_damage:
                 ret = 2
-                # 利用rooms找到上家資訊回傳，讓前端知道要將裝備卡給哪位玩家
-                if rooms and hasattr(rooms, 'action_order') and hasattr(rooms, 'players'):
-                    my_account = target.account
-                    if my_account in rooms.action_order:
-                        my_index = rooms.action_order.index(my_account)
-                        # 從上家開始找活著的玩家
-                        for i in range(1, len(rooms.action_order)):
-                            prev_index = (my_index - i) % len(rooms.action_order)
-                            prev_account = rooms.action_order[prev_index]
-                            prev_player = rooms.players.get(prev_account)
-                            if prev_player and prev_player.is_alive and prev_player != target:
-                                extra = [target, prev_player]
-                                break
+                if user and getattr(user, 'is_alive', False) and user != target:
+                    extra = [target, user]
             else:
                 target.defence(1, ignore_defence=True)
                 if target.check_death():
                     ret = 1
                     extra = [target]
         return ret, extra
+
+    def requires_choice(self, user, target, rooms):
+        if not target:
+            return False
+        return bool(getattr(getattr(target, 'character', None), 'camp', '') in ["Hunter", "Shadow"])
+
+    def get_force_effect(self, user, target, rooms, choice=None):
+        normalized_choice = str(choice or '').strip().lower()
+        if normalized_choice in ('effect1', 'activate'):
+            return 1
+        if normalized_choice in ('effect2', 'skip'):
+            return 2
+        return None
 
 class Blackmail(Card):
     def __init__(self):
@@ -105,38 +103,33 @@ class Blackmail(Card):
     def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
-        effect = False
         # 我猜你是中立或獵人。如果是的話請給你的上家一張裝備卡、
         # 如果你沒有裝備卡的話則受到1點傷害。
-        if force_effect == 1:
-            effect = True
-        elif force_effect == 2:
-            effect = False
-        else:
-            if target.character.camp in ["Civilian", "Hunter"]:
-                effect = True
-        if effect:
-            if target.equipment_list:
+        if target.character.camp in ["Civilian", "Hunter"]:
+            choose_damage = (force_effect == 2)
+            if target.equipment_list and not choose_damage:
                 ret = 2
-                # 利用rooms找到上家資訊回傳，讓前端知道要將裝備卡給哪位玩家
-                if rooms and hasattr(rooms, 'action_order') and hasattr(rooms, 'players'):
-                    my_account = target.account
-                    if my_account in rooms.action_order:
-                        my_index = rooms.action_order.index(my_account)
-                        # 從上家開始找活著的玩家
-                        for i in range(1, len(rooms.action_order)):
-                            prev_index = (my_index - i) % len(rooms.action_order)
-                            prev_account = rooms.action_order[prev_index]
-                            prev_player = rooms.players.get(prev_account)
-                            if prev_player and prev_player.is_alive and prev_player != target:
-                                extra = [target, prev_player]
-                                break
+                if user and getattr(user, 'is_alive', False) and user != target:
+                    extra = [target, user]
             else:
                 target.defence(1, ignore_defence=True)
                 if target.check_death():
                     ret = 1
                     extra = [target]
         return ret, extra
+
+    def requires_choice(self, user, target, rooms):
+        if not target:
+            return False
+        return bool(getattr(getattr(target, 'character', None), 'camp', '') in ["Civilian", "Hunter"])
+
+    def get_force_effect(self, user, target, rooms, choice=None):
+        normalized_choice = str(choice or '').strip().lower()
+        if normalized_choice in ('effect1', 'activate'):
+            return 1
+        if normalized_choice in ('effect2', 'skip'):
+            return 2
+        return None
 
 class Bully(Card):
     def __init__(self):
@@ -203,38 +196,33 @@ class Greed(Card):
     def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
-        effect = False
         # 我猜你是中立或暗影。如果是的話請給你的上家一張裝備卡、
         # 如果你沒有裝備卡的話則受到1點傷害。
-        if force_effect == 1:
-            effect = True
-        elif force_effect == 2:
-            effect = False
-        else:
-            if target.character.camp in ["Civilian", "Shadow"]:
-                effect = True
-        if effect:
-            if target.equipment_list:
+        if target.character.camp in ["Civilian", "Shadow"]:
+            choose_damage = (force_effect == 2)
+            if target.equipment_list and not choose_damage:
                 ret = 2
-                # 利用rooms找到上家資訊回傳，讓前端知道要將裝備卡給哪位玩家
-                if rooms and hasattr(rooms, 'action_order') and hasattr(rooms, 'players'):
-                    my_account = target.account
-                    if my_account in rooms.action_order:
-                        my_index = rooms.action_order.index(my_account)
-                        # 從上家開始找活著的玩家
-                        for i in range(1, len(rooms.action_order)):
-                            prev_index = (my_index - i) % len(rooms.action_order)
-                            prev_account = rooms.action_order[prev_index]
-                            prev_player = rooms.players.get(prev_account)
-                            if prev_player and prev_player.is_alive and prev_player != target:
-                                extra = [target, prev_player]
-                                break
+                if user and getattr(user, 'is_alive', False) and user != target:
+                    extra = [target, user]
             else:
                 target.defence(1, ignore_defence=True)
                 if target.check_death():
                     ret = 1
                     extra = [target]
         return ret, extra
+
+    def requires_choice(self, user, target, rooms):
+        if not target:
+            return False
+        return bool(getattr(getattr(target, 'character', None), 'camp', '') in ["Civilian", "Shadow"])
+
+    def get_force_effect(self, user, target, rooms, choice=None):
+        normalized_choice = str(choice or '').strip().lower()
+        if normalized_choice in ('effect1', 'activate'):
+            return 1
+        if normalized_choice in ('effect2', 'skip'):
+            return 2
+        return None
 
 class Huddle(Card):
     def __init__(self):
@@ -305,12 +293,15 @@ class Prediction(Card):
         self.no_choice = True
 
     def action(self, user, target, rooms, force_effect=0):
-        # 請將你的角色卡偷偷給你的上家查看。
-        # 在目前架構中，我們暫時將角色揭示給所有人。
+        # 由使用者查看目標角色。
         ret = 3
         extra = []
         effect = True
         if effect:
+            if user and getattr(user, 'is_alive', False):
+                extra = [user]
+                return ret, extra
+
             if rooms and hasattr(rooms, 'action_order') and hasattr(rooms, 'players'):
                 my_account = target.account
                 if my_account in rooms.action_order:

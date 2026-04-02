@@ -3,7 +3,7 @@ from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, cast
 from urllib.parse import parse_qs, urlparse
 
 from backend.room_manager import RoomManager
@@ -59,6 +59,9 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
         if parsed.path == '/':
             self.path = '/index.html'
         return super().do_GET()
+
+    def _server(self) -> ShadowHuntersHTTPServer:
+        return cast(ShadowHuntersHTTPServer, self.server)
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -131,7 +134,7 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
             )
             return
 
-        result = self.server.room_manager.api_dispatch(action, action_payload)
+        result = self._server().room_manager.api_dispatch(action, action_payload)
         status_code = result.get('error', {}).get('status', HTTPStatus.OK) if not result.get('ok', False) else HTTPStatus.OK
         self._send_json(status_code, result)
 
@@ -178,7 +181,7 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
         except Exception:
             return self._send_json(HTTPStatus.BAD_REQUEST, {'error': 'room_id must be a positive integer'})
 
-        if not self.server.room_manager.get_room(room_id):
+        if not self._server().room_manager.get_room(room_id):
             return self._send_json(HTTPStatus.NOT_FOUND, {'error': 'room not found'})
 
         try:
@@ -199,7 +202,7 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
 
         try:
-            room_data = self.server.room_manager.api_get_room_state({
+            room_data = self._server().room_manager.api_get_room_state({
                 'room_id': room_id,
                 'account': account,
             })
@@ -211,13 +214,13 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
                 self._write_sse_event(last_event_id, 'room_state_changed', init_payload)
 
             while True:
-                events = self.server.room_manager.wait_room_events(
+                events = self._server().room_manager.wait_room_events(
                     room_id,
                     last_event_id,
                     timeout_seconds=20.0,
                 )
                 if not events:
-                    if not self.server.room_manager.get_room(room_id):
+                    if not self._server().room_manager.get_room(room_id):
                         self._write_sse_event(last_event_id + 1, 'room_closed', {'room_id': room_id})
                         return
                     self._write_sse_comment('ping')
@@ -238,7 +241,7 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
     def _handle_player_stats(self, query: str):
         params = self._query_params(query)
         account = (params.get('account') or [''])[0]
-        result = self.server.room_manager.records_api.api_get_player_stats(account)
+        result = self._server().room_manager.records_api.api_get_player_stats(account)
         status = HTTPStatus.OK if 'error' not in result else HTTPStatus.NOT_FOUND
         self._send_json(status, result)
 
@@ -251,7 +254,7 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
         limit = int(limit_raw or 100)
         page = int(page_raw or 1)
         page_size = int(page_size_raw or 20)
-        result = self.server.room_manager.records_api.api_get_game_records(limit, page, page_size, search=search)
+        result = self._server().room_manager.records_api.api_get_game_records(limit, page, page_size, search=search)
         self._send_json(HTTPStatus.OK, result)
 
     def _handle_trip_directory(self, query: str):
@@ -263,7 +266,7 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
         limit = int(limit_raw or 200)
         page = int(page_raw or 1)
         page_size = int(page_size_raw or 20)
-        result = self.server.room_manager.records_api.api_get_trip_directory(
+        result = self._server().room_manager.records_api.api_get_trip_directory(
             keyword=keyword,
             limit=limit,
             page=page,
@@ -283,7 +286,7 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
         game_page = int((params.get('game_page') or ['1'])[0] or 1)
         rating_page = int((params.get('rating_page') or ['1'])[0] or 1)
         page_size = int((params.get('page_size') or ['20'])[0] or 20)
-        result = self.server.room_manager.records_api.api_get_trip_profile(
+        result = self._server().room_manager.records_api.api_get_trip_profile(
             trip=trip,
             limit=limit,
             nickname_page=nickname_page,
@@ -301,11 +304,11 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
         limit_raw = (params.get('limit') or ['50'])[0]
         room_id = int(room_id_raw) if room_id_raw not in (None, '') else None
         limit = int(limit_raw or 50)
-        result = self.server.room_manager.records_api.api_get_leaderboard(scope, room_id, limit)
+        result = self._server().room_manager.records_api.api_get_leaderboard(scope, room_id, limit)
         self._send_json(HTTPStatus.OK, result)
 
     def _handle_game_record(self, record_id: str):
-        result = self.server.room_manager.records_api.api_get_game_record(record_id)
+        result = self._server().room_manager.records_api.api_get_game_record(record_id)
         status = HTTPStatus.OK if 'error' not in result else HTTPStatus.NOT_FOUND
         self._send_json(status, result)
 
@@ -320,7 +323,7 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
         except (TypeError, ValueError):
             self._send_json(HTTPStatus.BAD_REQUEST, {'error': 'room_id must be an integer'})
             return
-        result = self.server.room_manager.records_api.api_get_game_record_by_room_id(room_id)
+        result = self._server().room_manager.records_api.api_get_game_record_by_room_id(room_id)
         status = HTTPStatus.OK if 'error' not in result else HTTPStatus.NOT_FOUND
         self._send_json(status, result)
 
@@ -329,7 +332,7 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
         account = (params.get('account') or [''])[0]
         limit_raw = (params.get('limit') or ['20'])[0]
         limit = int(limit_raw or 20)
-        result = self.server.room_manager.records_api.api_get_player_games(account, limit)
+        result = self._server().room_manager.records_api.api_get_player_games(account, limit)
         self._send_json(HTTPStatus.OK, result)
 
     def _handle_room_stats(self, query: str):
@@ -338,21 +341,21 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
         if not room_id_raw:
             self._send_json(HTTPStatus.BAD_REQUEST, {'error': 'room_id is required'})
             return
-        result = self.server.room_manager.records_api.api_get_room_stats(int(room_id_raw))
+        result = self._server().room_manager.records_api.api_get_room_stats(int(room_id_raw))
         status = HTTPStatus.OK if 'error' not in result else HTTPStatus.NOT_FOUND
         self._send_json(status, result)
 
     def _handle_summary_stats(self):
-        result = self.server.room_manager.records_api.api_get_summary_stats()
+        result = self._server().room_manager.records_api.api_get_summary_stats()
         self._send_json(HTTPStatus.OK, result)
 
     def _handle_avatar_catalog(self):
-        result = self.server.room_manager.api_get_avatar_catalog()
+        result = self._server().room_manager.api_get_avatar_catalog()
         self._send_json(HTTPStatus.OK, result)
 
     def _handle_version_notes(self):
         try:
-            version_path = self.server.root_dir / 'VERSION.md'
+            version_path = self._server().root_dir / 'VERSION.md'
             content = version_path.read_text(encoding='utf-8')
             encoded = content.encode('utf-8')
             self.send_response(HTTPStatus.OK)
@@ -368,7 +371,7 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
 
     def _handle_announcement(self):
         try:
-            announcement_path = self.server.root_dir / 'announcement.txt'
+            announcement_path = self._server().root_dir / 'announcement.txt'
             content = announcement_path.read_text(encoding='utf-8')
             encoded = content.encode('utf-8')
             self.send_response(HTTPStatus.OK)

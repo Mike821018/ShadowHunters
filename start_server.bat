@@ -43,6 +43,9 @@ echo Port: %SERVER_PORT%
 echo DB Path: %SHADOWHUNTERS_DB_PATH%
 echo Bootstrap test room: %BOOTSTRAP_ENABLED%
 
+echo Stopping existing ShadowHunters server process (if any)...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { ($_.Name -eq 'python.exe' -or $_.Name -eq 'pythonw.exe') -and $_.CommandLine -like '*main.py serve*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }" >nul 2>&1
+
 if "%BOOTSTRAP_ENABLED%"=="1" if exist "%ROOT_DIR%scripts\bootstrap_test_room.py" (
     echo Starting test room bootstrap...
     start "ShadowHunters Bootstrap" /min "%PYTHON%" "%ROOT_DIR%scripts\bootstrap_test_room.py" --host "%SERVER_HOST%" --port "%SERVER_PORT%"

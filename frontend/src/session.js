@@ -7,6 +7,7 @@ export function persistSession(state) {
       roomAccounts: state.roomAccounts ?? {},
       transportMode: state.transportMode,
       autoRefreshSeconds: state.autoRefreshSeconds,
+      skipTargetConfirm: state.skipTargetConfirm,
     })
   );
 }
@@ -23,6 +24,7 @@ export function restoreSession(state) {
       state.account = parsed.account ?? state.account;
       state.transportMode = parsed.transportMode ?? state.transportMode;
       state.autoRefreshSeconds = parsed.autoRefreshSeconds ?? state.autoRefreshSeconds;
+      state.skipTargetConfirm = parsed.skipTargetConfirm ?? state.skipTargetConfirm;
       // Restore roomAccounts; if absent, migrate legacy account+roomId pair
       if (parsed.roomAccounts && typeof parsed.roomAccounts === 'object') {
         state.roomAccounts = parsed.roomAccounts;

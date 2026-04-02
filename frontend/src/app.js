@@ -3,6 +3,7 @@ import { loadAvatarCatalog } from './avatarConfig.js';
 import { getAllCharacterInfos, getCurrentUiLang, getCharacterLocalizedName } from './characterInfo.js';
 import { AREA_NAMES } from './constants.js';
 import { initAvatarGalleryPage } from './pages/avatarGallery.js';
+import { initGuideAndOperationPages } from './pages/guidePage.js';
 import { initRegisterPage } from './pages/register.js';
 import { initRecordsPage } from './pages/records.js';
 import { initRecordViewPage } from './pages/recordView.js';
@@ -10,6 +11,7 @@ import { initVersionPage } from './pages/version.js';
 import { goToLobbyPage as navigateToLobbyPage, goToRegisterPage as navigateToRegisterPage, goToRoomPage as navigateToRoomPage } from './navigation.js';
 import { bindLobbyEvents, initLobbyPage, refreshRooms as refreshLobbyRooms, renderRooms as renderLobbyRooms } from './pages/lobby.js';
 import { bindRoomEvents, initRoomPage, renderState as renderRoomState, renderVillageInfo as renderRoomVillageInfo, setVillageInfoMessage as setRoomVillageInfoMessage } from './pages/room.js';
+import { showConfirmDialog } from './pages/room/choiceDialogs.js';
 import { applyI18n, bindLangSwitcher, initI18n, t } from './i18n.js';
 import { persistSession, restoreSession } from './session.js';
 import { createAppState } from './state.js';
@@ -45,6 +47,13 @@ const renderRooms = (rooms) => renderLobbyRooms({ el, esc, withVillageSuffix, go
 const refreshRooms = () => refreshLobbyRooms({ dispatch, renderRooms });
 const renderVillageInfo = (data) => renderRoomVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage, state }, data);
 const setVillageInfoMessage = (message) => setRoomVillageInfoMessage({ el, esc }, message);
+const openConfirmDialog = ({ title, message, confirmLabel, cancelLabel }) => showConfirmDialog({
+  el,
+  title: title || t('room.confirm.title'),
+  message,
+  confirmLabel: confirmLabel || t('room.confirm.confirm'),
+  cancelLabel: cancelLabel || t('room.confirm.cancel'),
+});
 const renderState = (data) => renderRoomState({
   state,
   el,
@@ -72,7 +81,12 @@ const renderState = (data) => renderRoomState({
       if (!targetAccount || targetAccount === state.account) return;
 
       const targetName = roomData?.players?.[targetAccount]?.name || targetAccount;
-      const ok = window.confirm(t('toast.vote_kick_confirm', { name: targetName }));
+      const ok = await openConfirmDialog({
+        title: t('room.confirm.title'),
+        message: t('toast.vote_kick_confirm', { name: targetName }),
+        confirmLabel: t('room.confirm.confirm'),
+        cancelLabel: t('room.confirm.cancel'),
+      });
       if (!ok) return;
 
       try {
@@ -93,24 +107,6 @@ const renderState = (data) => renderRoomState({
   areaNames: AREA_NAMES,
 }, data);
 
-const GUIDE_GREEN_CARDS = ['Aid', 'Anger', 'Blackmail', 'Bully', 'Exorcism', 'Greed', 'Huddle', 'Nurturance', 'Prediction', 'Slap', 'Spell', 'Tough Lesson'];
-const GUIDE_WHITE_CARDS = ['Talisman', 'Fortune Brooch', 'Mystic Compass', 'Holy Robe', 'Silver Rosary', 'Spear of Longinus', 'Holy Water of Healing', 'Advent', 'Chocolate', 'Blessing', 'Concealed Knowledge', 'Guardian Angel', 'Flare of Judgement', 'Disenchant Mirror', 'First Aid'];
-const GUIDE_BLACK_CARDS = ['Chainsaw', 'Butcher Knife', 'Rusted Broad Axe', 'Masamune', 'Machine Gun', 'Handgun', 'Vampire Bat', 'Bloodthirsty Spider', 'Moody Goblin', 'Spiritual Doll', 'Dynamite', 'Diabolic Ritual', 'Banana Peel'];
-const GUIDE_EQUIPMENT_ICONS = {
-  'Talisman': '🔮',
-  'Fortune Brooch': '💠',
-  'Mystic Compass': '🧭',
-  'Holy Robe': '🧥',
-  'Silver Rosary': '📿',
-  'Spear of Longinus': '🗡️',
-  'Chainsaw': '⚙️',
-  'Butcher Knife': '🔪',
-  'Rusted Broad Axe': '🪓',
-  'Masamune': '⚔️',
-  'Machine Gun': '🔫',
-  'Handgun': '🎯',
-};
-
 function setLocalizedPageTitle() {
   const brand = t('common.brand');
   const titleMap = {
@@ -130,189 +126,19 @@ function setLocalizedPageTitle() {
   if (headerBrand) headerBrand.textContent = brand;
 }
 
-function initGuideSectionCollapse() {
-  if (state.page !== 'guide' && state.page !== 'operation') return;
-  document.querySelectorAll('.guide-section').forEach(section => {
-    const h2 = section.querySelector(':scope > h2');
-    const body = section.querySelector(':scope > .card-body');
-    if (!h2 || !body) return;
-    h2.classList.add('guide-collapsible');
-    h2.setAttribute('tabindex', '0');
-    h2.setAttribute('role', 'button');
-    h2.setAttribute('aria-expanded', 'true');
-    const onToggle = () => {
-      const collapsed = body.classList.toggle('guide-section-collapsed');
-      h2.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    };
-    h2.addEventListener('click', onToggle);
-    h2.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        onToggle();
-      }
-    });
-  });
-}
-
-function initGuideSubsectionCollapse() {
-  if (state.page !== 'guide' && state.page !== 'operation') return;
-
-  document.querySelectorAll('.guide-subsection').forEach(subsection => {
-    if (subsection.classList.contains('no-subsection-collapse-item')) return;
-    if (subsection.closest('.guide-section.no-subsection-collapse') && !subsection.classList.contains('allow-subsection-collapse')) return;
-    const title = subsection.querySelector(':scope > h4');
-    if (!title) return;
-    const bodyNodes = Array.from(subsection.children).filter(node => node !== title);
-    if (!bodyNodes.length) return;
-
-    title.classList.add('guide-subsection-collapsible');
-    title.setAttribute('tabindex', '0');
-    title.setAttribute('role', 'button');
-    title.setAttribute('aria-expanded', 'false');
-    bodyNodes.forEach(node => node.classList.add('guide-subsection-collapsed'));
-
-    const onToggle = () => {
-      const collapsed = bodyNodes[0].classList.toggle('guide-subsection-collapsed');
-      bodyNodes.slice(1).forEach(node => node.classList.toggle('guide-subsection-collapsed', collapsed));
-      title.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    };
-    title.addEventListener('click', onToggle);
-    title.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        onToggle();
-      }
-    });
-  });
-
-}
-
-function renderGuideCardCatalogs() {
-  if (state.page !== 'guide') return;
-
-  const characterHost = document.getElementById('guideCharacterCatalog');
-  const greenHost = document.getElementById('guideGreenCardCatalog');
-  const whiteHost = document.getElementById('guideWhiteCardCatalog');
-  const blackHost = document.getElementById('guideBlackCardCatalog');
-  if (!characterHost || !greenHost || !whiteHost || !blackHost) return;
-
-  const lang = getCurrentUiLang();
-  const cardName = (card) => {
-    const key = `room.active_card.names.${card}`;
-    const localized = t(key);
-    const baseName = localized === key ? card : localized;
-    const icon = GUIDE_EQUIPMENT_ICONS[card] || '';
-    return icon ? `${icon} ${baseName}` : baseName;
-  };
-  const cardDesc = (card) => {
-    const key = `room.active_card.desc.${card}`;
-    const localized = t(key);
-    return localized === key ? '-' : localized;
-  };
-
-  const parseCharacterMeta = (characterKey) => {
-    const desc = cardDesc(characterKey);
-    const hpMatch = String(desc).match(/HP\s*(\d+)\s*(\*)?/i);
-    return {
-      hp: hpMatch ? hpMatch[1] : '-',
-      isExpansion: Boolean(hpMatch && hpMatch[2] === '*'),
-    };
-  };
-
-  const renderCharacterTable = () => {
-    const characterRows = getAllCharacterInfos()
-      .map(({ key, info }) => {
-        const englishName = String(info?.names?.en || key || '').trim() || String(key || '').trim() || '-';
-        const initial = englishName.charAt(0).toUpperCase() || '?';
-        const { hp, isExpansion } = parseCharacterMeta(key);
-        return {
-          key,
-          info,
-          englishName,
-          initial,
-          hp,
-          isExpansion,
-        };
-      })
-      .sort((a, b) => {
-        const initialCompare = a.initial.localeCompare(b.initial, 'en', { sensitivity: 'base' });
-        if (initialCompare !== 0) return initialCompare;
-        if (a.isExpansion !== b.isExpansion) return a.isExpansion ? 1 : -1;
-        return a.englishName.localeCompare(b.englishName, 'en', { sensitivity: 'base' });
-      });
-
-    const rows = characterRows
-      .map(({ key, info, hp, isExpansion }) => {
-        const camp = info?.camp?.[lang] || info?.camp?.en || '-';
-        const campClass = String(info?.camp?.en || '').trim().toLowerCase() || 'civilian';
-        const badge = String(key || '?').trim().charAt(0).toUpperCase() || '?';
-        const win = info?.win?.[lang] || info?.win?.en || '-';
-        const ability = info?.ability?.[lang] || info?.ability?.en || '-';
-        const localizedName = getCharacterLocalizedName(key, lang);
-        return `
-          <tr>
-            <td><span class="damage-meter-badge ${esc(campClass)}">${esc(badge)}</span> ${esc(localizedName)}${isExpansion ? '*' : ''}</td>
-            <td>${esc(hp)}</td>
-            <td>${esc(camp)}</td>
-            <td>${esc(win)}</td>
-            <td>${esc(ability)}</td>
-          </tr>
-        `;
-      })
-      .join('');
-    return `
-      <table class="data-table" aria-label="${esc(t('guide.catalog.characters'))}">
-        <thead>
-          <tr>
-            <th>${esc(t('guide.catalog.character_name'))}</th>
-            <th>${esc(t('guide.catalog.character_hp'))}</th>
-            <th>${esc(t('guide.catalog.camp'))}</th>
-            <th>${esc(t('guide.catalog.win'))}</th>
-            <th>${esc(t('guide.catalog.ability'))}</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <p class="lighttxt">${esc(t('guide.catalog.expansion_note'))}</p>
-    `;
-  };
-
-  const renderCardTable = (cards, ariaLabel) => {
-    const rows = cards
-      .map((card) => `
-        <tr>
-          <td>${esc(cardName(card))}</td>
-          <td>${esc(cardDesc(card))}</td>
-        </tr>
-      `)
-      .join('');
-    return `
-      <table class="data-table" aria-label="${esc(ariaLabel)}">
-        <thead>
-          <tr>
-            <th>${esc(t('guide.catalog.card_name'))}</th>
-            <th>${esc(t('guide.catalog.effect'))}</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    `;
-  };
-
-  characterHost.innerHTML = renderCharacterTable();
-  greenHost.innerHTML = renderCardTable(GUIDE_GREEN_CARDS, t('guide.catalog.green'));
-  whiteHost.innerHTML = renderCardTable(GUIDE_WHITE_CARDS, t('guide.catalog.white'));
-  blackHost.innerHTML = renderCardTable(GUIDE_BLACK_CARDS, t('guide.catalog.black'));
-}
-
 async function boot() {
   const currentLang = initI18n();
   await loadAvatarCatalog();
   applyI18n();
   setLocalizedPageTitle();
-  renderGuideCardCatalogs();
-  initGuideSectionCollapse();
-  initGuideSubsectionCollapse();
+  initGuideAndOperationPages({
+    page: state.page,
+    esc,
+    t,
+    getCurrentUiLang,
+    getCharacterLocalizedName,
+    getAllCharacterInfos,
+  });
   bindLangSwitcher(currentLang);
 
   restoreSession(state);

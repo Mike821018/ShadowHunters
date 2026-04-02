@@ -195,6 +195,22 @@ class Unknown(Character):
         elif normalized_choice == 'effect2':
             normalized_choice = 'skip'
 
+        card_requires_choice = False
+        requires_choice_fn = getattr(card, 'requires_choice', None)
+        if callable(requires_choice_fn):
+            card_requires_choice = bool(requires_choice_fn(source, user, rooms))
+
+        # 憤怒/勒索/貪婪這類卡片：Unknown 可先決定是否發動能力。
+        # 若不發動能力，回傳 0 代表走原始規則判定，不強制改寫卡片效果。
+        if card_requires_choice:
+            if normalized_choice in ('activate', 'effect1', 'activate_give'):
+                return 1
+            if normalized_choice in ('skip', 'effect2', 'activate_damage'):
+                return 2
+            if normalized_choice in ('normal', 'no_activate', 'none', '0', 'false'):
+                return 0
+            return None
+
         if normalized_choice == 'activate':
             return 1
         if normalized_choice == 'skip':

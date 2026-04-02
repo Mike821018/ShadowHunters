@@ -58,7 +58,7 @@ class room(Thread):
         self.private_character_visibility = {}  # {viewer_account: set(target_account)}
         self._join_seq: int = 0
         self._initial_green_card_executed: bool = False  # 初始綠卡流程是否進行中
-        self._initial_green_card: Any = None  # 初始綠卡流程使用的同一卡片
+        self._initial_green_card: Any = None  # 初始綠卡流程目前玩家抽到的卡片
         self._initial_green_card_players_executed: set = set()  # 已執行初始綠卡的玩家帳號集合
         self.chat_messages = []
         self._chat_seq = 0
@@ -131,6 +131,20 @@ class room(Thread):
         }
         self.add_system_message(f"[{display_name}] 回合超時，判定暴斃")
 
+        # 逾時暴斃前，先把尚未結算的行動卡送進棄牌堆，避免牌池總量遺失。
+        cards_to_discard = []
+        if self.active_card is not None:
+            cards_to_discard.append(self.active_card)
+        pending_green = getattr(self, '_pending_green_card', None) or {}
+        pending_card = pending_green.get('card')
+        if pending_card is not None and pending_card not in cards_to_discard:
+            cards_to_discard.append(pending_card)
+        for unresolved_card in cards_to_discard:
+            try:
+                self.board.discard(unresolved_card)
+            except Exception:
+                pass
+
         self.active_card = None
         self._attack_target = None
         self._compass_areas = []
@@ -142,12 +156,13 @@ class room(Thread):
 
         self._handle_death([current])
         if int(getattr(self, 'room_status', 0) or 0) == 2:
-            if bool(getattr(self, '_initial_green_card_executed', False)) and getattr(self, '_initial_green_card', None) is not None:
+            if bool(getattr(self, '_initial_green_card_executed', False)):
                 self._initial_green_card_players_executed.add(str(getattr(current, 'account', '') or ''))
                 self._set_next_alive_player_after_trip(str(getattr(current, 'trip', '') or ''))
                 if self.current_player:
                     self.current_player.status = 3
-                    self.active_card = self._initial_green_card
+                    self.active_card = self.board.draw('Green')
+                    self._initial_green_card = self.active_card
             else:
                 self._set_next_alive_player_after_trip(str(getattr(current, 'trip', '') or ''))
             self.touch_turn_action()
@@ -334,12 +349,12 @@ class room(Thread):
         if self.enable_initial_green_card:
             self._initial_green_card_executed = True
             self._initial_green_card_players_executed.clear()
-            self._initial_green_card = self.board.draw('Green')
             if self.current_player:
                 self.current_player.status = 3
-                self.active_card = self._initial_green_card
+                self.active_card = self.board.draw('Green')
+                self._initial_green_card = self.active_card
                 if self.active_card:
-                    self.add_system_message(f"初始綠卡：{str(getattr(self.active_card, 'name', '') or '未知卡')}")
+                    self.add_system_message("初始綠卡流程開始")
                     return
             self._initial_green_card_executed = False
             self._initial_green_card = None
@@ -377,6 +392,20 @@ class room(Thread):
                 return
         self.current_player = None
 
+    def _get_previous_alive_player(self, trip):
+        if not self.action_order:
+            return None
+        try:
+            idx = self.action_order.index(trip)
+        except ValueError:
+            return None
+        for i in range(1, len(self.action_order) + 1):
+            prev_trip = self.action_order[(idx - i) % len(self.action_order)]
+            prev_player = self.players.get(prev_trip)
+            if prev_player and prev_player.is_alive and prev_player.trip != trip:
+                return prev_player
+        return None
+
     def set_pending_green_card_choice(self, account, choice):
         pending = self._pending_green_card
         if not pending:
@@ -391,11 +420,13 @@ class room(Thread):
         if not self._green_card_requires_choice(to_player, card):
             return False
         normalized_choice = str(choice or '').strip().lower()
-        if normalized_choice == 'effect1':
+        if normalized_choice in ('effect1', 'activate_give'):
             normalized_choice = 'activate'
-        elif normalized_choice == 'effect2':
+        elif normalized_choice in ('effect2', 'activate_damage'):
             normalized_choice = 'skip'
-        if normalized_choice not in ('activate', 'skip'):
+        elif normalized_choice in ('no_activate', 'normal'):
+            normalized_choice = 'normal'
+        if normalized_choice not in ('activate', 'skip', 'normal'):
             return False
         pending['choice'] = normalized_choice
         return True
@@ -438,7 +469,10 @@ class room(Thread):
                     self.add_system_message(f"[{player.name or player.account}] 因為 {source_kind_text} {source_name_text} 效果受到 {delta} 點傷害")
             elif delta < 0:
                 if source_player_text:
-                    self.add_system_message(f"[{player.name or player.account}] 因為 [{source_player_text}]({source_name_text}) 角色能力效果恢復 {abs(delta)} 點傷害")
+                    if source_name_text == 'Fu-ka':
+                        self.add_system_message(f"[{player.name or player.account}] 因為 [{source_player_text}]({source_name_text}) 角色能力效果傷害變為 7")
+                    else:
+                        self.add_system_message(f"[{player.name or player.account}] 因為 [{source_player_text}]({source_name_text}) 角色能力效果恢復 {abs(delta)} 點傷害")
                 else:
                     self.add_system_message(f"[{player.name or player.account}] 因為 {source_kind_text} {source_name_text} 效果恢復 {abs(delta)} 點傷害")
 
@@ -517,13 +551,13 @@ class room(Thread):
 
         is_initial_green_resolution = bool(
             self._initial_green_card_executed
-            and self._initial_green_card is not None
-            and active_card_to_check is self._initial_green_card
             and str(getattr(active_card_to_check, 'color', '') or '').lower() == 'green'
         )
 
         if not is_initial_green_resolution:
             self.board.discard(self.active_card)
+        else:
+            self.board.discard(active_card_to_check)
         
         # 初始綠卡流程：每位玩家依序抽一張綠卡並對自己結算，不進入攻擊階段。
         if is_initial_green_resolution:
@@ -535,11 +569,11 @@ class room(Thread):
                 self._set_next_alive_player_after_trip(self.current_player.trip if self.current_player else '')
                 if self.current_player:
                     self.current_player.status = 3
-                    self.active_card = self._initial_green_card
+                    self.active_card = self.board.draw('Green')
+                    self._initial_green_card = self.active_card
                     return
             else:
                 # 所有玩家都執行了初始綠卡，回到常規回合流程
-                self.board.discard(self._initial_green_card)
                 self._initial_green_card_executed = False
                 self._initial_green_card = None
                 self._initial_green_card_players_executed.clear()
@@ -569,19 +603,29 @@ class room(Thread):
             return False
 
         force_effect = self._get_green_card_force_effect(to_player, card, pending.get('choice'))
-        if self._green_card_requires_choice(to_player, card) and force_effect not in (1, 2):
+        if self._green_card_requires_choice(to_player, card) and force_effect not in (0, 1, 2):
             return False
 
-        choice_label = '發動' if force_effect == 1 else '不發動' if force_effect == 2 else '結算'
-        self.add_system_message(f"[{to_player.name or to_player.account}] 對綠卡 {str(getattr(card, 'name', '') or '-')} 選擇：{choice_label}")
+        if not self._initial_green_card_executed:
+            if force_effect == 1:
+                choice_label = '發動'
+            elif force_effect == 2:
+                choice_label = '不發動'
+            elif force_effect == 0:
+                choice_label = '不發動能力'
+            else:
+                choice_label = '結算'
+            self.add_system_message(f"[{to_player.name or to_player.account}] 對綠卡 {str(getattr(card, 'name', '') or '-')} 選擇：{choice_label}")
         self.active_card = card
         snapshot = self._capture_effect_snapshot()
-        ret, extra = self._run_active_card_action(target=to_player, force_effect=force_effect)
+        resolved_force_effect = None if force_effect == 0 else force_effect
+        ret, extra = self._run_active_card_action(target=to_player, force_effect=resolved_force_effect)
         card_name = str(getattr(card, 'name', '') or '-').strip()
+        source_name_for_log = '初始綠卡' if self._initial_green_card_executed else card_name
         self._emit_effect_delta_messages(
             snapshot,
             '卡片',
-            card_name,
+            source_name_for_log,
             suppress_damage=(card_name == 'First Aid'),
         )
         self._pending_green_card = None
@@ -655,7 +699,7 @@ class room(Thread):
     #  in game
     ####################
 
-    def _handle_death(self, deaths, allow_loot=False):
+    def _handle_death(self, deaths, allow_loot=False, check_victory=True):
         """
         處理死亡玩家：揭示身分、檢查所有玩家的勝利條件。
         deaths: 死亡 player 物件的 list
@@ -680,6 +724,9 @@ class room(Thread):
             for dead in deaths:
                 if self._use_ability_with_resolution(p, dead):
                     break
+
+        if not check_victory:
+            return []
 
         winners = self._check_all_victory(dead_trigger=deaths)
         return winners
@@ -798,16 +845,29 @@ class room(Thread):
         return character
 
     def _green_card_requires_choice(self, target, card):
+        card_requires_choice = False
+        card_requires_choice_fn = getattr(card, 'requires_choice', None)
+        if callable(card_requires_choice_fn):
+            card_requires_choice = bool(card_requires_choice_fn(self.current_player, target, self))
+
         interceptor = self._get_green_card_interceptor(target, card)
-        if not interceptor:
-            return False
-        return bool(interceptor.requires_green_card_choice(target, card, self.current_player, self))
+        interceptor_requires_choice = False
+        if interceptor:
+            interceptor_requires_choice = bool(interceptor.requires_green_card_choice(target, card, self.current_player, self))
+
+        return bool(card_requires_choice or interceptor_requires_choice)
 
     def _get_green_card_force_effect(self, target, card, choice=None):
         interceptor = self._get_green_card_interceptor(target, card)
-        if not interceptor:
-            return None
-        return interceptor.get_green_card_force_effect(target, card, self.current_player, self, choice=choice)
+        if interceptor:
+            intercepted = interceptor.get_green_card_force_effect(target, card, self.current_player, self, choice=choice)
+            if intercepted in (1, 2):
+                return intercepted
+
+        card_get_force_effect = getattr(card, 'get_force_effect', None)
+        if callable(card_get_force_effect):
+            return card_get_force_effect(self.current_player, target, self, choice=choice)
+        return None
 
     def _get_attackable_targets(self, attacker):
         """
@@ -927,9 +987,6 @@ class room(Thread):
             self._discard_remaining_equipment(from_player)
             if from_player in deaths:
                 deaths.remove(from_player)
-
-        if attacker.check_win_timing == 2:
-            winners = self._check_all_victory(equip_trigger=attacker)
 
         # 保留空的 pending 狀態給下一次 next_step 收尾，避免重複結算傷害。
 
@@ -1233,8 +1290,12 @@ class room(Thread):
                 if self._pending_kill_loot.get('deaths'):
                     # update → 通知前端仍有待處理掠奪項目
                     return
+                settled_deaths = list(self._pending_kill_loot.get('all_deaths', []) or [])
                 self._pending_kill_loot = None
                 self._attack_target = None
+                self._check_all_victory(dead_trigger=settled_deaths, equip_trigger=p)
+                if int(getattr(self, 'room_status', 0) or 0) == 3:
+                    return
                 p.status = 6
                 # update → 通知前端掠奪完成，進入回合結束
                 return
@@ -1279,8 +1340,10 @@ class room(Thread):
                     }
                     for target_player in attack_targets
                 }
+                attacker_damage_before = int(getattr(p, 'damage', 0) or 0)
 
                 deaths, counter_attackers = p.attack(self._attack_target, list(self.players.values()), dmg)
+                attacker_damage_after = int(getattr(p, 'damage', 0) or 0)
 
                 atk_mod = int(getattr(p, 'eqp_atk', 0) or 0)
                 for target_player in attack_targets:
@@ -1307,8 +1370,16 @@ class room(Thread):
                             f"[{p.name or p.account}] 攻擊 [{target_label}] 未造成傷害（基礎:{dmg} / 增減傷:{atk_mod:+d} / 防禦:{defence}）"
                         )
 
+                healed_amount = max(0, attacker_damage_before - attacker_damage_after)
+                if healed_amount > 0:
+                    source_player_text = str(getattr(p, 'name', '') or getattr(p, 'account', '') or '-').strip() or '-'
+                    source_name_text = str(getattr(getattr(p, 'character', None), 'name', '') or '角色能力').strip() or '角色能力'
+                    self.add_system_message(
+                        f"[{source_player_text}] 因為 [{source_player_text}]({source_name_text}) 角色能力效果恢復 {healed_amount} 點傷害"
+                    )
+
                 if deaths:
-                    self._handle_death(deaths, allow_loot=True)
+                    self._handle_death(deaths, allow_loot=True, check_victory=False)
 
                     lootable_deaths = [dead for dead in deaths if dead.equipment_list]
                     if lootable_deaths:
@@ -1324,11 +1395,15 @@ class room(Thread):
                         self._pending_kill_loot = {
                             'attacker': p,
                             'deaths': lootable_deaths,
+                            'all_deaths': list(deaths),
                             'allow_full': allow_full,
                         }
                         # update → 通知前端顯示擊殺掠奪選擇：
                         #          預設每位死亡玩家可選 1 張；若 allow_full=True 可選全拿
                         #          完成後呼叫 next_step() 繼續
+                        return
+                    self._check_all_victory(dead_trigger=deaths)
+                    if int(getattr(self, 'room_status', 0) or 0) == 3:
                         return
 
                 if counter_attackers and not self._pending_counter_attack:
@@ -1418,8 +1493,11 @@ class room(Thread):
             resolved_target = self.current_player
 
         if self._initial_green_card_executed and card_color == 'green':
-            # 初始綠卡固定由當前玩家對自己結算，不進入「指定他人」流程。
-            resolved_target = self.current_player
+            # 初始綠卡改為「當前玩家對上家」；若無合法上家則回退為自己。
+            if card_target in ('other', 'one'):
+                resolved_target = self._get_previous_alive_player(getattr(self.current_player, 'trip', '')) or self.current_player
+            elif resolved_target is None:
+                resolved_target = self.current_player
 
         normalized_choice = str(choice or '').strip().lower()
         force_effect = None
@@ -1429,11 +1507,15 @@ class room(Thread):
             force_effect = 2
 
         # 綠卡 (隱士小屋抽到) 採「指定目標後由目標玩家確認」流程
-        if (not self._initial_green_card_executed) and card_color == 'green' and card_target in ('other', 'one') and target is not None:
-            self.add_system_message(f"[{self.current_player.name or self.current_player.account}] 指定 [{target.name or target.account}] 接收綠卡 {str(getattr(self.active_card, 'name', '') or '-')}")
+        if card_color == 'green' and card_target in ('other', 'one') and resolved_target is not None:
+            pending_target = resolved_target
+            if self._initial_green_card_executed:
+                self.add_system_message(f"[{self.current_player.name or self.current_player.account}] 指定 [{pending_target.name or pending_target.account}] 接收綠卡 {str(getattr(self.active_card, 'name', '') or '-')}")
+            else:
+                self.add_system_message(f"[{self.current_player.name or self.current_player.account}] 指定 [{pending_target.name or pending_target.account}] 接收綠卡 {str(getattr(self.active_card, 'name', '') or '-')}")
             self._pending_green_card = {
                 'from_player': self.current_player,
-                'to_player': target,
+                'to_player': pending_target,
                 'card': self.active_card,
                 'choice': None,
             }
@@ -1450,16 +1532,12 @@ class room(Thread):
         target_name = str(getattr(resolved_target, 'name', '') or getattr(resolved_target, 'account', '') or '-') if resolved_target is not None else '-'
         card_name = str(getattr(self.active_card, 'name', '') or '-')
         card_color = str(getattr(self.active_card, 'color', '') or '-')
-        self.add_system_message(f"[{self.current_player.name or self.current_player.account}] 使用卡片 {card_name}（{card_color}），目標：[{target_name}]")
+        if self._initial_green_card_executed and str(card_color).lower() == 'green':
+            self.add_system_message(f"[{self.current_player.name or self.current_player.account}] 使用初始綠卡，目標：[{target_name}]")
+        else:
+            self.add_system_message(f"[{self.current_player.name or self.current_player.account}] 使用卡片 {card_name}（{card_color}），目標：[{target_name}]")
         snapshot = self._capture_effect_snapshot()
         ret, extra = self._run_active_card_action(target=resolved_target, force_effect=force_effect)
-        self._emit_effect_delta_messages(snapshot, '卡片', card_name)
-        if card_name == 'Blessing' and resolved_target is not None:
-            dice_d6 = int(getattr(getattr(self, 'board', None), 'dice', {}).get('D6', 0) or 0)
-            if dice_d6 > 0:
-                self.add_system_message(f"[{resolved_target.name or resolved_target.account}] 因為 白卡(Blessing) 恢復 {dice_d6} 點傷害")
-        if card_name == 'First Aid' and resolved_target is not None:
-            self.add_system_message(f"[{resolved_target.name or resolved_target.account}] 因為 白卡(First Aid) 傷害變為 7")
         if card_name == 'Spiritual Doll':
             dice_d6 = int(getattr(getattr(self, 'board', None), 'dice', {}).get('D6', 0) or 0)
             if dice_d6 > 0:
@@ -1467,6 +1545,24 @@ class room(Thread):
                     self.add_system_message(f"[Spiritual Doll] 擲出 D6={dice_d6}，目標承受效果")
                 else:
                     self.add_system_message(f"[Spiritual Doll] 擲出 D6={dice_d6}，改為自己承受效果")
+        if card_name == 'Dynamite':
+            dice_state = getattr(getattr(self, 'board', None), 'dice', {})
+            dice_d4 = int(getattr(dice_state, 'get', lambda _k, _d=None: 0)('D4', 0) or 0)
+            dice_d6 = int(getattr(dice_state, 'get', lambda _k, _d=None: 0)('D6', 0) or 0)
+            if dice_d4 > 0 and dice_d6 > 0:
+                total = dice_d4 + dice_d6
+                if total == 7:
+                    self.add_system_message(f"[Dynamite] 擲出 D4={dice_d4} D6={dice_d6}（合計=7），啞彈無事發生")
+                else:
+                    self.add_system_message(f"[Dynamite] 擲出 D4={dice_d4} D6={dice_d6}（合計={total}）")
+        source_name_for_log = '初始綠卡' if (self._initial_green_card_executed and str(card_color).lower() == 'green') else card_name
+        self._emit_effect_delta_messages(snapshot, '卡片', source_name_for_log)
+        if card_name == 'Blessing' and resolved_target is not None:
+            dice_d6 = int(getattr(getattr(self, 'board', None), 'dice', {}).get('D6', 0) or 0)
+            if dice_d6 > 0:
+                self.add_system_message(f"[{resolved_target.name or resolved_target.account}] 因為 白卡(Blessing) 恢復 {dice_d6} 點傷害")
+        if card_name == 'First Aid' and resolved_target is not None:
+            self.add_system_message(f"[{resolved_target.name or resolved_target.account}] 因為 白卡(First Aid) 傷害變為 7")
         self._finish_active_card_resolution(resolved_target, ret, extra)
 
     def steal_equipment(self, from_player, to_player, equipment):

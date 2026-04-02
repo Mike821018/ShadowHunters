@@ -44,4 +44,13 @@ echo "Host: $SERVER_HOST"
 echo "Port: $SERVER_PORT"
 echo "DB Path: $SHADOWHUNTERS_DB_PATH"
 
+echo "Stopping existing ShadowHunters server process (if any)..."
+if command -v pgrep >/dev/null 2>&1; then
+  pgrep -f "main.py serve" | while IFS= read -r pid; do
+    if [ -n "$pid" ] && [ "$pid" != "$$" ]; then
+      kill -9 "$pid" >/dev/null 2>&1 || true
+    fi
+  done
+fi
+
 exec "$PYTHON" main.py serve --host "$SERVER_HOST" --port "$SERVER_PORT" "$@"

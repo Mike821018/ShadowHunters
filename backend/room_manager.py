@@ -361,9 +361,9 @@ class RoomManager:
         flags = self._expansion_mode_to_card_flags(mode)
         parts: List[str] = []
         if flags['use_basic']:
-            parts.append(f'[{self._CARD_SET_BASIC}]')
+            parts.append(self._CARD_SET_BASIC)
         if flags['use_extend']:
-            parts.append(f'[{self._CARD_SET_EXTEND}]')
+            parts.append(self._CARD_SET_EXTEND)
         return f"Card:{'+'.join(parts)}" if parts else 'Card:-'
 
     def _coerce_optional_bool(self, value: Any) -> Optional[bool]:
@@ -590,7 +590,10 @@ class RoomManager:
             }
             card_color = str(getattr(active_card, 'color', '') or '').lower()
             is_green_card = card_color == 'green'
+            is_game_finished = int(getattr(game_room, 'room_status', 0) or 0) == 3
             can_see_name = (
+                is_game_finished
+                or
                 not is_green_card
                 or viewer_account == current_player.account
             )
@@ -618,7 +621,7 @@ class RoomManager:
                     'card_name': str(getattr(pending_card, 'name', '') or '') if viewer_account in (source_account, target_account) else '',
                     'waiting_confirm': bool(viewer_account and viewer_account == target_account),
                     'can_set_choice': bool(viewer_account and viewer_account == target_account and needs_choice),
-                    'needs_choice': bool(needs_choice and game_room._get_green_card_force_effect(to_player, pending_card, pending_green.get('choice')) not in (1, 2)),
+                    'needs_choice': bool(needs_choice and game_room._get_green_card_force_effect(to_player, pending_card, pending_green.get('choice')) not in (0, 1, 2)),
                     'choice': pending_green.get('choice'),
                 }
                 if active_card_display and str(active_card_display.get('color', '') or '').lower() == 'green':
@@ -1359,7 +1362,7 @@ class RoomManager:
         game_room.turn_timeout_seconds = int(timeout_minutes * 60)
         game_room.touch_activity()
         game_room.add_system_message(
-            f"村長 [{requester.name or account}] 更新房間設定："
+            "村長更新房間設定："
             f"{self._format_card_set_summary(expansion_mode)} / 初始綠卡={'On' if enable_initial_green_card else 'Off'} / 暴斃時間={timeout_minutes}分"
         )
         return self._success('update_room_settings', self._serialize_room_state(game_room, viewer_account=account))

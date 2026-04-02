@@ -179,13 +179,19 @@ class player():
             return 0
 
         if ignore_defence:
-            dmg = damage
+            base_damage = damage
         else:
-            dmg = damage-self.df-self.eqp_df
-        if dmg > 0:
-            self.damage += dmg + additional_damage
+            base_damage = damage - self.df - self.eqp_df
+
+        # 規則：先判斷基礎傷害是否破防，再套用裝備/效果增減。
+        if base_damage <= 0:
+            return 0
+
+        final_damage = max(0, base_damage + additional_damage)
+        if final_damage > 0:
+            self.damage += final_damage
         # update
-        return dmg
+        return final_damage
 
     def heal(self, damage):
         self.damage -= damage

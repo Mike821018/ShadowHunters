@@ -4,7 +4,7 @@ Integrates with records_system.py and the Room/RoomManager classes
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 import uuid
 import base64
 import hashlib
@@ -12,6 +12,9 @@ from backend.records_system import (
     GameRecord, PlayerRecord, GameRecordStore, 
     RoomGameHistory, TripRatingRecord
 )
+
+if TYPE_CHECKING:
+    from backend.game.room import room as GameRoom
 
 
 class GameRecordsAPI:
@@ -32,6 +35,10 @@ class GameRecordsAPI:
         value = str(trip or '').strip()
         if not value:
             return ''
+        # Registered TRIP keys in the registry are raw values; always mask them,
+        # even when the raw text length is exactly 8.
+        if value in getattr(self.record_store, 'trip_registrations', {}):
+            return self.encrypt_trip_like_higu(value)
         if len(value) == 8:
             return value
         return self.encrypt_trip_like_higu(value)
@@ -77,12 +84,12 @@ class GameRecordsAPI:
     
     # ===== Game Lifecycle Events =====
     
-    def on_game_start(self, room: 'room'):
+    def on_game_start(self, room: 'GameRoom'):
         """Called when game starts (room_status becomes 2)"""
         import time
         self.game_start_times[room.room_id] = time.time()
     
-    def on_game_end(self, room: 'room') -> Optional[str]:
+    def on_game_end(self, room: 'GameRoom') -> Optional[str]:
         """
         Called when game ends (room_status becomes 3)
         Returns the record_id if successful, None otherwise
@@ -180,7 +187,7 @@ class GameRecordsAPI:
             print(f"Error recording game: {e}")
             return None
 
-    def on_chat_message(self, room: 'room', message: Dict[str, Any]) -> bool:
+    def on_chat_message(self, room: 'GameRoom', message: Dict[str, Any]) -> bool:
         """Called when a post-game chat message should be persisted into the latest room record."""
         try:
             room_id = int(getattr(room, 'room_id', 0) or 0)
@@ -305,7 +312,7 @@ class GameRecordsAPI:
         latest = max(matched, key=lambda row: str(getattr(row, 'game_date', '') or ''))
         return self.api_get_game_record(str(getattr(latest, 'record_id', '') or ''))
 
-    def _build_final_state_snapshot(self, room: 'room') -> Dict[str, Any]:
+    def _build_final_state_snapshot(self, room: 'GameRoom') -> Dict[str, Any]:
         board = getattr(room, 'board', None)
         board_deck = getattr(board, 'card_deck', {}) or {}
         board_fields = list(getattr(board, 'field', []) or [])
@@ -438,7 +445,6 @@ class GameRecordsAPI:
 
     def api_get_game_records(self, limit: int = 100, page: int = 1, page_size: int = 20, search: str = '') -> Dict[str, Any]:
         """API: List game records in reverse chronological order (paged)."""
-        safe_limit = max(1, min(int(limit or 100), 500))
         safe_page_size = max(1, min(int(page_size or 20), 100))
         safe_page = max(1, int(page or 1))
         keyword = str(search or '').strip().lower()
@@ -446,7 +452,7 @@ class GameRecordsAPI:
             self.record_store.game_records.values(),
             key=lambda r: (int(getattr(r, 'room_id', 0) or 0), str(getattr(r, 'game_date', '') or '')),
             reverse=True,
-        )[:safe_limit]
+        )
 
         def _winner_code(record: GameRecord) -> str:
             camps = self._winner_camp_codes_from_game(record)
@@ -514,7 +520,11 @@ class GameRecordsAPI:
         rows_by_trip: Dict[str, Dict[str, Any]] = {}
         for registration in registrations:
             trip_display = self.to_trip_display(getattr(registration, 'trip', ''))
+            password_hash = str(getattr(registration, 'password_hash', '') or '').strip()
             if not trip_display:
+                continue
+            # Keep only explicitly registered identities with a persisted password hash.
+            if not password_hash:
                 continue
             rows_by_trip[trip_display] = {
                 'trip': trip_display,
@@ -581,9 +591,9 @@ class GameRecordsAPI:
             return {'error': 'trip is required'}
         trip_display = self.to_trip_display(trip_key)
 
-        is_registered = bool(self.record_store.has_trip_registration(trip_key))
+        is_registered = bool(self.record_store.has_explicit_trip_registration(trip_key))
         if (not is_registered) and trip_display != trip_key:
-            is_registered = bool(self.record_store.has_trip_registration(trip_display))
+            is_registered = bool(self.record_store.has_explicit_trip_registration(trip_display))
 
         if not is_registered:
             empty_pagination = {'page': 1, 'page_size': max(1, min(int(page_size or 20), 100)), 'total': 0}
@@ -934,7 +944,7 @@ class GameRecordsAPI:
     
     # ===== Helper Methods =====
     
-    def _get_winner_camp(self, room: 'room', player_records: List[PlayerRecord]) -> str:
+    def _get_winner_camp(self, room: 'GameRoom', player_records: List[PlayerRecord]) -> str:
         """Determine the winning camp"""
         if not room.winner_accounts:
             return 'Draw'
@@ -952,17 +962,17 @@ class GameRecordsAPI:
         else:
             return 'Mixed'
     
-    def _get_end_reason(self, room: 'room') -> str:
+    def _get_end_reason(self, room: 'GameRoom') -> str:
         """Determine the reason the game ended"""
         # This would need to be added to room.py to track the end reason
         return 'Normal'
     
-    def _count_total_actions(self, room: 'room') -> int:
+    def _count_total_actions(self, room: 'GameRoom') -> int:
         """Count total actions taken in the game"""
         # This could be tracked during the game
         return 0
     
-    def _count_total_damage(self, room: 'room') -> int:
+    def _count_total_damage(self, room: 'GameRoom') -> int:
         """Count total damage dealt in the game"""
         total = 0
         for player_obj in room.players.values():
@@ -970,7 +980,7 @@ class GameRecordsAPI:
                 total += getattr(player_obj, 'total_damage_dealt', 0)
         return total
     
-    def _count_kills(self, room: 'room', player_records: List[PlayerRecord]) -> Dict[str, int]:
+    def _count_kills(self, room: 'GameRoom', player_records: List[PlayerRecord]) -> Dict[str, int]:
         """Count kills per player"""
         kills = {}
         for account, player_obj in room.players.items():

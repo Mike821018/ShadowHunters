@@ -3275,7 +3275,7 @@ legend {
 }
 
 .guide-section > h2.guide-collapsible::after {
-  content: '??;
+  content: 'v';
   font-size: 13px;
   opacity: 0.5;
   flex-shrink: 0;
@@ -3284,7 +3284,7 @@ legend {
 }
 
 .guide-section > h2.guide-collapsible[aria-expanded="false"]::after {
-  content: '??;
+  content: '>';
 }
 
 .guide-section > h2.guide-collapsible[aria-expanded="false"] {
@@ -3330,14 +3330,14 @@ legend {
 }
 
 .guide-subsection > h4.guide-subsection-collapsible::after {
-  content: '??;
+  content: 'v';
   font-size: 12px;
   opacity: 0.5;
   margin-left: 8px;
 }
 
 .guide-subsection > h4.guide-subsection-collapsible[aria-expanded="false"]::after {
-  content: '??;
+  content: '>';
 }
 
 .guide-subsection > .guide-subsection-collapsed {

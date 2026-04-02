@@ -6,6 +6,7 @@ export function createAppState() {
     roomAccounts: {},
     transportMode: 'auto',
     autoRefreshSeconds: 0,
+    skipTargetConfirm: false,
     eventSeq: 0,
     avatarPage: 1,
     page: rawPage,

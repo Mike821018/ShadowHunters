@@ -163,6 +163,7 @@ class RoomGameHistory:
 
 class GameRecordStore:
     """Game record storage with in-memory cache and SQLite persistence"""
+    leaderboards: Dict[str, Any]
     
     def __init__(self, db_path: Optional[str] = None):
         self.game_records: Dict[str, GameRecord] = {}
@@ -170,7 +171,7 @@ class GameRecordStore:
         self.room_histories: Dict[int, RoomGameHistory] = {}
         self.trip_registrations: Dict[str, TripRegistration] = {}
         self.rating_records: List[TripRatingRecord] = []
-        self.leaderboards: Dict[str, List[LeaderboardEntry]] = {
+        self.leaderboards: Dict[str, Any] = {
             'global': [],
             'by_room': {},
         }
@@ -995,7 +996,7 @@ class GameRecordStore:
     
     def _update_global_leaderboard(self):
         """Update global leaderboard by win rate"""
-        entries = []
+        entries: List[LeaderboardEntry] = []
         for account, stats in self.player_stats.items():
             if stats.total_games >= 5:  # Minimum games requirement
                 entry = LeaderboardEntry(
@@ -1049,16 +1050,23 @@ class GameRecordStore:
         for i, entry in enumerate(entries, 1):
             entry.rank = i
         
-        if 'by_room' not in self.leaderboards:
-            self.leaderboards['by_room'] = {}
-        self.leaderboards['by_room'][room_id] = entries
+        by_room = self.leaderboards.get('by_room')
+        if not isinstance(by_room, dict):
+            by_room = {}
+            self.leaderboards['by_room'] = by_room
+        by_room[room_id] = entries
     
     def get_leaderboard(self, scope: str = 'global', room_id: Optional[int] = None) -> List[LeaderboardEntry]:
         """Get leaderboard"""
         if scope == 'global':
-            return self.leaderboards.get('global', [])
+            global_board = self.leaderboards.get('global', [])
+            return global_board if isinstance(global_board, list) else []
         elif scope == 'room' and room_id:
-            return self.leaderboards.get('by_room', {}).get(room_id, [])
+            by_room = self.leaderboards.get('by_room', {})
+            if isinstance(by_room, dict):
+                room_board = by_room.get(room_id, [])
+                return room_board if isinstance(room_board, list) else []
+            return []
         return []
     
     # ===== Export Methods =====

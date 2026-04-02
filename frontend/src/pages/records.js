@@ -230,7 +230,6 @@ export async function initRecordsPage({ toast }) {
   const state = {
     page: 1,
     pageSize: 20,
-    limit: 500,
     search: '',
   };
 
@@ -240,7 +239,6 @@ export async function initRecordsPage({ toast }) {
 
   const loadPage = async () => {
     const params = new URLSearchParams();
-    params.set('limit', String(state.limit));
     params.set('page', String(state.page));
     params.set('page_size', String(state.pageSize));
     if (state.search) params.set('search', state.search);
