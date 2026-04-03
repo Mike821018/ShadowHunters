@@ -23,9 +23,8 @@
 	- next_step / card_effect / loot_from_kill / steal_equipment
 	- player table, turn summary, quick target selector, event log
 - Transport modes:
-	- `AUTO` (prefer dispatcher or HTTP, fallback to DEMO)
+	- `AUTO` (prefer dispatcher, fallback to HTTP)
 	- `HTTP` (`POST /api/dispatch`)
-	- `DEMO` (in-browser simulated backend for UI testing)
 - Source files:
 	- [frontend/index.html](index.html)
 	- [frontend/src/theme.css](src/theme.css)
@@ -43,7 +42,6 @@ App transport in `app.js` (`AUTO` mode) follows this order:
 
 1. If `window.SHADOW_API_DISPATCH(action, payload)` exists, call it directly.
 2. Else POST `/api/dispatch` with `{ action, payload }`.
-3. If HTTP unavailable, fallback to DEMO mode response contract.
 
 So when implementing backend server routing, expose:
 
@@ -54,5 +52,5 @@ So when implementing backend server routing, expose:
 ## Next step suggestions
 
 1. Connect real HTTP/WebSocket backend adapter (if not yet).
-2. Replace demo fallback with real-time push updates.
+2. Add real-time push updates.
 3. Add battle log API and richer action/card animation.

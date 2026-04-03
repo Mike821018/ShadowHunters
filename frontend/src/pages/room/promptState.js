@@ -15,6 +15,23 @@ export function selectAttackPromptState(state, dataSnapshot) {
   };
 }
 
+export function selectCounterAttackPromptState(state, dataSnapshot) {
+  const selfAccount = String(state?.account || '').trim();
+  const currentAccount = String(dataSnapshot?.turn?.current_account || '').trim();
+  const roomStatus = Number(dataSnapshot?.room?.room_status || 0);
+  const selfStatus = Number(dataSnapshot?.players?.[selfAccount]?.status || 0);
+  const prompt = dataSnapshot?.counter_attack_prompt || null;
+  const counterAccount = String(prompt?.counter_account || '').trim();
+  const originalAccount = String(prompt?.original_account || '').trim();
+
+  return {
+    active: Boolean(selfAccount && roomStatus === 2 && selfAccount === currentAccount && selfStatus === 5 && selfAccount === counterAccount && originalAccount),
+    waitingCounter: Boolean(prompt?.waiting_counter),
+    counterAccount,
+    originalAccount,
+  };
+}
+
 export function selectAreaPromptState(state, dataSnapshot) {
   const selfAccount = String(state?.account || '').trim();
   const currentAccount = String(dataSnapshot?.turn?.current_account || '').trim();

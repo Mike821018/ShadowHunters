@@ -1,3 +1,5 @@
+import { renderChatTextWithEmojis } from './chatEmoji.js';
+
 export function buildChatStageLines({
   messages,
   data,
@@ -28,6 +30,11 @@ export function buildChatStageLines({
   const GREEN_CARD_SOURCE_NAMES = new Set([
     'Aid', 'Anger', 'Blackmail', 'Bully', 'Exorcism', 'Greed', 'Huddle',
     'Nurturance', 'Prediction', 'Slap', 'Spell', 'Tough Lesson',
+  ]);
+
+  const EQUIPMENT_CARD_NAMES = new Set([
+    'Talisman', 'Fortune Brooch', 'Mystic Compass', 'Holy Robe', 'Silver Rosary', 'Spear of Longinus',
+    'Chainsaw', 'Butcher Knife', 'Rusted Broad Axe', 'Masamune', 'Machine Gun', 'Handgun',
   ]);
 
   const fmtTime = (ts) => {
@@ -177,8 +184,41 @@ export function buildChatStageLines({
     return CARD_COLORS[key]?.[lang] || CARD_COLORS[key]?.zh || esc(key);
   };
 
+  const buildCardToken = ({ cardName = '', cardColor = '', cardType = '', masked = false, forceLabel = '' } = {}) => {
+    const rawName = String(cardName || '').trim();
+    if (!rawName && !forceLabel) {
+      return esc(t('room.active_card.hidden'));
+    }
+    const normalizedColor = String(cardColor || '').trim().toLowerCase();
+    const resolvedType = String(cardType || (EQUIPMENT_CARD_NAMES.has(rawName) ? 'equipment' : 'action')).trim().toLowerCase();
+    const displayLabel = String(forceLabel || '').trim() || esc(getLocalizedCardName(rawName));
+    const classes = ['chat-card-token'];
+    if (masked) classes.push('is-masked');
+    const attrs = [
+      `class="${classes.join(' ')}"`,
+      `data-card-color="${esc(normalizedColor)}"`,
+      `data-card-type="${esc(resolvedType)}"`,
+    ];
+    if (masked) {
+      attrs.push('aria-disabled="true"');
+      attrs.push('data-card-masked="true"');
+    } else {
+      attrs.push('role="button"');
+      attrs.push('tabindex="0"');
+      attrs.push(`data-card-name="${esc(rawName)}"`);
+    }
+    return `<span ${attrs.join(' ')}>${displayLabel}</span>`;
+  };
+
   const greenCardLabel = (cardName, sourceLabel = '', targetLabel = '') => {
-    return canRevealGreenCardName(sourceLabel, targetLabel) ? esc(getLocalizedCardName(cardName)) : '???';
+    const canReveal = canRevealGreenCardName(sourceLabel, targetLabel);
+    return buildCardToken({
+      cardName,
+      cardColor: 'green',
+      cardType: 'action',
+      masked: !canReveal,
+      forceLabel: canReveal ? esc(getLocalizedCardName(cardName)) : '???',
+    });
   };
 
   const resolveCardEffectSource = (sourceName, targetLabel = '') => {
@@ -193,11 +233,13 @@ export function buildChatStageLines({
     if (!plainCardName) return '';
     if (GREEN_CARD_SOURCE_NAMES.has(plainCardName)) {
       if (canRevealGreenCardName('', targetLabel)) {
-        return t('room.system.card_source', { card: esc(getLocalizedCardName(plainCardName)) });
+        return t('room.system.card_source', { card: buildCardToken({ cardName: plainCardName, cardColor: 'green', cardType: 'action' }) });
       }
-      return t('room.system.card_source_hidden');
+      return t('room.system.card_source', {
+        card: buildCardToken({ cardName: plainCardName, cardColor: 'green', cardType: 'action', masked: true, forceLabel: '???' }),
+      });
     }
-    return t('room.system.card_source', { card: esc(getLocalizedCardName(plainCardName)) });
+    return t('room.system.card_source', { card: buildCardToken({ cardName: plainCardName }) });
   };
 
   const formatSystem = (text, ts) => {
@@ -217,9 +259,15 @@ export function buildChatStageLines({
     if ((m = text.match(/^\[(.+)\] 已被投票剔除$/))) return t('room.system.kicked', { target: pid(esc(m[1]), m[1]) });
     if ((m = text.match(/^村長 \[(.+)\] 剔除了 \[(.+)\]$/))) return t('room.system.manager_kicked', { actor: pid(esc(m[1]), m[1]), target: pid(esc(m[2]), m[2]) });
     if ((m = text.match(/^村長 \[(.+)\] 發起點名/))) return t('room.system.roll_call');
+    if ((m = text.match(/^村長 延長目前回合倒數：\[(.+)\] 重新開始計時$/))) {
+      return t('room.system.extend_turn_timeout', { target: pid(esc(m[1]), m[1]) });
+    }
+    if ((m = text.match(/^村長 \[(.+)\] 延長目前回合倒數：\[(.+)\] 重新開始計時$/))) {
+      return t('room.system.extend_turn_timeout', { target: pid(esc(m[2]), m[2]) });
+    }
 
-    if ((m = text.match(/^\[(.+)\]\s*初始綠卡：(.+)$/))) return t('room.system.initial_green_card', { card: esc(getLocalizedCardName(String(m[2] || '').trim())) });
-    if ((m = text.match(/^初始綠卡：(.+)$/))) return t('room.system.initial_green_card', { card: esc(getLocalizedCardName(String(m[1] || '').trim())) });
+    if ((m = text.match(/^\[(.+)\]\s*初始綠卡：(.+)$/))) return t('room.system.initial_green_card', { card: buildCardToken({ cardName: String(m[2] || '').trim(), cardColor: 'green', cardType: 'action' }) });
+    if ((m = text.match(/^初始綠卡：(.+)$/))) return t('room.system.initial_green_card', { card: buildCardToken({ cardName: String(m[1] || '').trim(), cardColor: 'green', cardType: 'action' }) });
 
     if ((m = text.match(/^\[(.+)\] 擲移動骰：(.+)$/))) return t('room.system.rolled_value', { player: pidRole(esc(m[1]), m[1]), value: esc(m[2]) });
     if ((m = text.match(/^\[(.+)\] 擲出 7，可任選區域$/))) return null;
@@ -234,7 +282,10 @@ export function buildChatStageLines({
 
     if ((m = text.match(/^\[(.+)\] 在 .+ 抽到 (.+?)（(.+)\)$/))) {
       const colorStr = cardColorLabel(m[3]);
-      const cardName = String(m[3] || '') === 'Green' ? greenCardLabel(m[2], m[1], '') : esc(getLocalizedCardName(m[2]));
+      const normalizedColor = String(m[3] || '').trim().toLowerCase();
+      const cardName = String(m[3] || '') === 'Green'
+        ? greenCardLabel(m[2], m[1], '')
+        : buildCardToken({ cardName: m[2], cardColor: normalizedColor });
       return t('room.system.drew_card', { player: pidRole(esc(m[1]), m[1]), color: colorStr, card: cardName });
     }
 
@@ -244,7 +295,10 @@ export function buildChatStageLines({
 
     if ((m = text.match(/^\[(.+)\] 使用卡片 (.+?)（(.+?)），目標：\[(.+)\]$/))) {
       const colorStr = cardColorLabel(m[3]);
-      const cardName = String(m[3] || '') === 'Green' ? greenCardLabel(m[2], m[1], m[4]) : esc(getLocalizedCardName(m[2]));
+      const normalizedColor = String(m[3] || '').trim().toLowerCase();
+      const cardName = String(m[3] || '') === 'Green'
+        ? greenCardLabel(m[2], m[1], m[4])
+        : buildCardToken({ cardName: m[2], cardColor: normalizedColor });
       if (m[4] === '-') return t('room.system.used_card', { player: pidRole(esc(m[1]), m[1]), color: colorStr, card: cardName });
       return t('room.system.target_used_card', { player: pidRole(esc(m[4]), m[4]), color: colorStr, card: cardName });
     }
@@ -279,8 +333,14 @@ export function buildChatStageLines({
       return t('room.system.effect_damaged', { player: pidRole(esc(m[1]), m[1]), source: sourceLabel, amount: esc(m[3]) });
     }
 
-    if ((m = text.match(/^\[(.+)\] 因為 白卡\(Blessing\) 恢復 (\d+) 點傷害$/))) return t('room.system.blessing_healed', { player: pidRole(esc(m[1]), m[1]), card: `${cardColorLabel('White')}(${esc(getLocalizedCardName('Blessing'))})`, amount: esc(m[2]) });
-    if ((m = text.match(/^\[(.+)\] 因為 白卡\(First Aid\) 傷害變為 (\d+)$/))) return t('room.system.first_aid_set', { player: pidRole(esc(m[1]), m[1]), card: esc(getLocalizedCardName('First Aid')), amount: esc(m[2]) });
+    if ((m = text.match(/^\[(.+)\] 因為 白卡\(Blessing\) 恢復 (\d+) 點傷害$/))) {
+      return t('room.system.blessing_healed', {
+        player: pidRole(esc(m[1]), m[1]),
+        card: `${cardColorLabel('White')}(${buildCardToken({ cardName: 'Blessing', cardColor: 'white', cardType: 'action' })})`,
+        amount: esc(m[2]),
+      });
+    }
+    if ((m = text.match(/^\[(.+)\] 因為 白卡\(First Aid\) 傷害變為 (\d+)$/))) return t('room.system.first_aid_set', { player: pidRole(esc(m[1]), m[1]), card: buildCardToken({ cardName: 'First Aid', cardColor: 'white', cardType: 'action' }), amount: esc(m[2]) });
     if ((m = text.match(/^\[(.+)\] 因為 \[(.+)\]\(Fu-ka\) 角色能力效果傷害變為 (\d+)$/))) return t('room.system.fuka_set', { target: pidRole(esc(m[1]), m[1]), source: pidRole(esc(m[2]), m[2], getCharacterLocalizedName('Fu-ka', lang)), amount: esc(m[3]) });
 
     const declaredAttack = parseBracketedPair(text, '] 宣告攻擊 [', ']');
@@ -297,16 +357,18 @@ export function buildChatStageLines({
       });
     }
 
-    if ((m = text.match(/^\[(.+)\] 裝備了 (.+)$/))) return t('room.system.equipped', { player: pidRole(esc(m[1]), m[1]), card: esc(getLocalizedCardName(m[2])) });
+    if ((m = text.match(/^\[(.+)\] 裝備了 (.+)$/))) return t('room.system.equipped', { player: pidRole(esc(m[1]), m[1]), card: buildCardToken({ cardName: m[2], cardType: 'equipment' }) });
     if ((m = text.match(/^\[(.+)\] 因為 卡片 (.+) 效果 從 \[(.+)\] 取得裝備 (.+)$/))) {
       const cardLabel = GREEN_CARD_SOURCE_NAMES.has(m[2])
-        ? (canRevealGreenCardName(m[3], m[1]) ? t('room.system.card_source', { card: esc(getLocalizedCardName(m[2])) }) : t('room.system.card_source_hidden'))
-        : t('room.system.card_source', { card: esc(getLocalizedCardName(m[2])) });
-      return t('room.system.took_equipment_from_card', { player: pidRole(esc(m[1]), m[1]), card_source: cardLabel, from: pidRole(esc(m[3]), m[3]), card: esc(getLocalizedCardName(m[4])) });
+        ? (canRevealGreenCardName(m[3], m[1])
+          ? t('room.system.card_source', { card: buildCardToken({ cardName: m[2], cardColor: 'green', cardType: 'action' }) })
+          : t('room.system.card_source', { card: buildCardToken({ cardName: m[2], cardColor: 'green', cardType: 'action', masked: true, forceLabel: '???' }) }))
+        : t('room.system.card_source', { card: buildCardToken({ cardName: m[2] }) });
+      return t('room.system.took_equipment_from_card', { player: pidRole(esc(m[1]), m[1]), card_source: cardLabel, from: pidRole(esc(m[3]), m[3]), card: buildCardToken({ cardName: m[4], cardType: 'equipment' }) });
     }
-    if ((m = text.match(/^\[(.+)\] 從 \[(.+)\] 取得裝備 (.+)$/))) return t('room.system.took_equipment', { player: pidRole(esc(m[1]), m[1]), from: pidRole(esc(m[2]), m[2]), card: esc(getLocalizedCardName(m[3])) });
+    if ((m = text.match(/^\[(.+)\] 從 \[(.+)\] 取得裝備 (.+)$/))) return t('room.system.took_equipment', { player: pidRole(esc(m[1]), m[1]), from: pidRole(esc(m[2]), m[2]), card: buildCardToken({ cardName: m[3], cardType: 'equipment' }) });
     if ((m = text.match(/^\[(.+)\] 掠奪了 \[(.+)\] 的全部裝備$/))) return t('room.system.looted_all', { looter: pidRole(esc(m[1]), m[1]), target: pidRole(esc(m[2]), m[2]) });
-    if ((m = text.match(/^\[(.+)\] 掠奪 \[(.+)\] 的裝備 (.+)$/))) return t('room.system.looted_one', { looter: pidRole(esc(m[1]), m[1]), target: pidRole(esc(m[2]), m[2]), card: esc(getLocalizedCardName(m[3])) });
+    if ((m = text.match(/^\[(.+)\] 掠奪 \[(.+)\] 的裝備 (.+)$/))) return t('room.system.looted_one', { looter: pidRole(esc(m[1]), m[1]), target: pidRole(esc(m[2]), m[2]), card: buildCardToken({ cardName: m[3], cardType: 'equipment' }) });
 
     if ((m = text.match(/^\[(.+)\] 本回合放棄攻擊$/))) return t('room.system.skipped_attack', { player: pidRole(esc(m[1]), m[1]) });
     if ((m = text.match(/^\[(.+)\] 死亡，身份揭示為 (.+)$/))) return t('room.system.died_revealed', { player: pid(esc(m[1]), m[1]), role: esc(getCharacterLocalizedName(m[2], lang)) });
@@ -358,7 +420,8 @@ export function buildChatStageLines({
     const cls = extraClass ? `system-line ${extraClass}` : 'system-line';
     systemLines.push(`<div class="${cls}">[${esc(tsLabel)}] ${htmlText}</div>`);
     if (mirrorToChat) {
-      chatLines.push(`<div class="chat-line chat-line-system">[${esc(tsLabel)}] ${htmlText}</div>`);
+      const chatCls = extraClass ? `chat-line chat-line-system ${extraClass}` : 'chat-line chat-line-system';
+      chatLines.push(`<div class="${chatCls}">[${esc(tsLabel)}] ${htmlText}</div>`);
     }
   };
 
@@ -379,14 +442,21 @@ export function buildChatStageLines({
     const timeStr = fmtTime(ts);
     const isSelf = Boolean(state?.account) && account === String(state.account || '');
     const cls = isSelf ? 'chat-line chat-line-self' : 'chat-line';
-    const chatTextHtml = esc(text).replace(/\r\n|\r|\n/g, '<br>');
+    const chatTextHtml = renderChatTextWithEmojis(text, esc);
     chatLines.push(`<div class="${cls}"><div class="chat-sender">${esc(name || '-')}<span class="chat-time">(${timeStr})</span>:</div><div class="chat-text">${chatTextHtml}</div></div>`);
   });
 
   const timeoutRemain = Number(data?.turn_timeout?.remaining_seconds);
   if (Number.isFinite(timeoutRemain)) {
+    const timeoutCurrentAccount = String(data?.turn_timeout?.current_account || '').trim();
     const timeoutCurrent = String(data?.turn_timeout?.current_name || data?.turn_timeout?.current_account || data?.turn_timeout?.current_trip_display || '-').trim();
-    pushSystemLine(esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-', n: Math.max(0, timeoutRemain) })), 'system-timeout');
+    const viewerName = String(data?.players?.[viewerAccount]?.name || '').trim();
+    const isViewerTimeout = Boolean(viewerAccount) && (
+      (timeoutCurrentAccount && timeoutCurrentAccount === viewerAccount)
+      || (viewerName && timeoutCurrent === viewerName)
+    );
+    const timeoutClass = isViewerTimeout ? 'system-timeout system-timeout-self' : 'system-timeout';
+    pushSystemLine(esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-', n: Math.max(0, timeoutRemain) })), timeoutClass);
   }
 
   return { chatLines, systemLines };

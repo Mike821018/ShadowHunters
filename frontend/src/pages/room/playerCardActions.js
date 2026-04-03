@@ -54,10 +54,6 @@ export async function handlePlayerCardClick(targetAccount, ctx) {
   const selfPlayer = dataSnapshot?.players?.[state.account];
   const hasNotRevealed = selfPlayer && !selfPlayer.character_reveal && selfPlayer.character;
 
-  if (greenConfirm.active) {
-    return;
-  }
-
   if (pendingKillLoot.active && pendingKillLoot.deathAccounts.includes(String(targetAccount || '').trim())) {
     await resolvePendingKillLoot(targetAccount, dataSnapshot);
     return;
@@ -102,6 +98,10 @@ export async function handlePlayerCardClick(targetAccount, ctx) {
       if (!confirmed) return;
     }
     await attackPlayerTarget(targetAccount);
+    return;
+  }
+
+  if (greenConfirm.active) {
     return;
   }
 

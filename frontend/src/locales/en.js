@@ -326,6 +326,7 @@ export default {
       close_settings: 'Close',
       ready: 'Ready',
       roll_call: 'Roll Call',
+      extend_turn_timeout: 'Extend Turn Timer',
       unready: 'Cancel Ready',
     },
     settings: {
@@ -345,6 +346,10 @@ export default {
       messages_aria: 'Chat messages',
       placeholder: 'Type a message (max 200 chars)',
       send: 'Send',
+      emoji_open: 'Emoji',
+      emoji_panel_aria: 'Emoji picker panel',
+      emoji_close_aria: 'Close emoji panel',
+      emoji_grid_aria: 'Available emoji list',
       empty: 'No messages yet',
     },
     system: {
@@ -355,6 +360,7 @@ export default {
       kicked: '{target} was kicked by vote',
       manager_kicked: 'Village manager {actor} kicked {target}',
       roll_call: 'The village manager started a roll call. Please get ready again.',
+      extend_turn_timeout: 'Village manager extended the current turn timer: restarted for {target}',
       initial_green_card: 'Initial Green Card: {card}',
       game_started: 'Game started',
       game_ended_winners: 'Game ended. Winners: {winners}',
@@ -670,7 +676,7 @@ export default {
       aria_label: 'Auto-refresh interval',
       manual: 'Manual',
       seconds: '{n}s',
-      skip_target_confirm: 'Attack/card target confirmation',
+      skip_target_confirm: 'Double confirm',
     },
   },
   register: {
@@ -814,6 +820,7 @@ export default {
     target_confirm_skip_on: 'Enabled: attack/card target confirmation required',
     target_confirm_skip_off: 'Disabled: skip attack/card target confirmation',
     roll_call_done: 'Roll call completed and all ready states were cleared',
+    turn_timeout_extended: 'Current turn timer was extended',
     village_gone: 'Village no longer exists, returning to lobby',
     trip_rating_saved: 'Rating submitted',
     trip_rating_failed: 'Failed to submit rating',

@@ -1,5 +1,4 @@
 import { t } from './i18n.js';
-import { createDemoDispatch } from './transport/demoEngine.js';
 import { apiFetch } from './utils.js';
 
 const APP_VERSION = '1.1.0';
@@ -45,11 +44,21 @@ function translateApiErrorMessage(error) {
 }
 
 export function createDispatch({ state, setStatus, pushLog, toast, withVillageSuffix, areaNames }) {
-  const demoDispatch = createDemoDispatch({ withVillageSuffix, areaNames, envelope, fail });
   let clientRequestSeq = 0;
 
-  async function transportHttp(req) {
-    const resp = await apiFetch('/api/dispatch', {
+  const shouldTryLocalFallback = () => {
+    const protocol = String(window.location?.protocol || '').toLowerCase();
+    const host = String(window.location?.hostname || '').toLowerCase();
+    const port = String(window.location?.port || '').trim();
+    if (protocol === 'file:') return true;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return port !== '5600';
+    }
+    return false;
+  };
+
+  async function postDispatch(req, dispatchUrl) {
+    const resp = await apiFetch(dispatchUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
@@ -60,14 +69,30 @@ export function createDispatch({ state, setStatus, pushLog, toast, withVillageSu
     } catch {
     }
     if (body && typeof body === 'object' && 'ok' in body) {
-      return body;
+      return { ok: true, envelope: body, httpStatus: resp.status };
     }
-    if (!resp.ok) return fail(req.action, 'HTTP_ERROR', `status ${resp.status}`, resp.status);
-    return envelope(true, req.action, body);
+    if (!resp.ok) {
+      return { ok: false, envelope: fail(req.action, 'HTTP_ERROR', `status ${resp.status}`, resp.status), httpStatus: resp.status };
+    }
+    return { ok: true, envelope: envelope(true, req.action, body), httpStatus: resp.status };
+  }
+
+  async function transportHttp(req) {
+    const primary = await postDispatch(req, '/api/dispatch');
+    if (primary.ok) return primary.envelope;
+
+    const canFallback = shouldTryLocalFallback() && primary.httpStatus === 404;
+    if (!canFallback) return primary.envelope;
+
+    try {
+      const fallback = await postDispatch(req, 'http://127.0.0.1:5600/api/dispatch');
+      return fallback.envelope;
+    } catch {
+      return primary.envelope;
+    }
   }
 
   async function transport(req) {
-    if (state.transportMode === 'demo') return demoDispatch(req.action, req.payload);
     if (state.transportMode === 'http') return transportHttp(req);
 
     if (window.SHADOW_API_DISPATCH && typeof window.SHADOW_API_DISPATCH === 'function') {
@@ -75,13 +100,9 @@ export function createDispatch({ state, setStatus, pushLog, toast, withVillageSu
     }
 
     try {
-      const result = await transportHttp(req);
-      if (!result.ok && result.error?.code === 'HTTP_ERROR') {
-        return demoDispatch(req.action, req.payload);
-      }
-      return result;
+      return await transportHttp(req);
     } catch {
-      return demoDispatch(req.action, req.payload);
+      return fail(req.action, 'HTTP_ERROR', 'transport unavailable', 503);
     }
   }
 

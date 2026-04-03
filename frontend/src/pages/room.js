@@ -19,6 +19,7 @@ import { bindRoomControls } from './room/roomControls.js';
 import { createStageNextStepStateHandlers } from './room/stageNextStepState.js';
 import {
   selectAttackPromptState,
+  selectCounterAttackPromptState,
   selectAreaPromptState,
   selectMoveAreaPromptState,
   selectAbilityAreaPromptState,
@@ -45,6 +46,7 @@ let activeFieldSlot = null;
 let activeFieldNumber = null;
 let fieldDetailOutsideHandlerBound = false;
 let activeCardDetailOutsideHandlerBound = false;
+let chatCardTokenHandlerBound = false;
 let activeCardDialogAnchor = null;
 let latestRoomSnapshot = null;
 let latestRoomRenderSeq = 0;
@@ -82,7 +84,6 @@ function buildReplayRoomState(record) {
 
 function setPendingDiceAction(action) {
   pendingDiceAction = action || null;
-  if (latestRoomSnapshot) renderState(latestRoomSnapshot);
 }
 
 const DICE_ANIMATION_DURATION_MS = 900;
@@ -297,6 +298,10 @@ function getAreaPromptState(state, dataSnapshot = latestRoomSnapshot) {
   return selectAreaPromptState(state, dataSnapshot);
 }
 
+function getCounterAttackPromptState(state, dataSnapshot = latestRoomSnapshot) {
+  return selectCounterAttackPromptState(state, dataSnapshot);
+}
+
 function getMoveAreaPromptState(state, dataSnapshot = latestRoomSnapshot) {
   return selectMoveAreaPromptState(state, dataSnapshot);
 }
@@ -325,16 +330,6 @@ function getGreenConfirmPromptState(state, dataSnapshot = latestRoomSnapshot) {
   return selectGreenConfirmPromptState(state, dataSnapshot);
 }
 
-function openConfirmDialog({ title, message, confirmLabel, cancelLabel }) {
-  return showConfirmDialog({
-    el,
-    title: title || t('room.confirm.title'),
-    message,
-    confirmLabel: confirmLabel || t('room.confirm.confirm'),
-    cancelLabel: cancelLabel || t('room.confirm.cancel'),
-  });
-}
-
 const { updateStagePilePromptState, updateStageNextStepButtonState } = createStageNextStepStateHandlers({
   t,
   getLatestRoomSnapshot: () => latestRoomSnapshot,
@@ -345,6 +340,7 @@ const { updateStagePilePromptState, updateStageNextStepButtonState } = createSta
   getGreenConfirmPromptState,
   getCardPromptState,
   getAttackPromptState,
+  getCounterAttackPromptState,
   getMoveAreaPromptState,
   getPendingDiceAction: () => pendingDiceAction,
   getDiceRollBusy: () => diceRollBusy,
@@ -877,6 +873,16 @@ export function bindRoomEvents({
 }) {
   if (el.roomInfo?.dataset.bound === 'true') return;
 
+  function openConfirmDialog({ title, message, confirmLabel, cancelLabel }) {
+    return showConfirmDialog({
+      el,
+      title: title || t('room.confirm.title'),
+      message,
+      confirmLabel: confirmLabel || t('room.confirm.confirm'),
+      cancelLabel: cancelLabel || t('room.confirm.cancel'),
+    });
+  }
+
   const openActiveCardDialog = () => {
     const visibleCard = latestRoomSnapshot?.active_card_display || null;
     const rawCard = latestRoomSnapshot?.active_card || null;
@@ -910,6 +916,45 @@ export function bindRoomEvents({
     activeCardDetailOutsideHandlerBound = true;
   }
 
+  if (!chatCardTokenHandlerBound) {
+    const openChatCardTokenDialog = (tokenEl) => {
+      if (!(tokenEl instanceof HTMLElement)) return;
+      if (tokenEl.getAttribute('data-card-masked') === 'true') return;
+      const cardNameEnglish = String(tokenEl.getAttribute('data-card-name') || '').trim();
+      if (!cardNameEnglish) return;
+      const cardTypeRaw = String(tokenEl.getAttribute('data-card-type') || '').trim().toLowerCase();
+      const cardType = cardTypeRaw === 'equipment' ? 'Equipment' : 'Action';
+      const cardColor = String(tokenEl.getAttribute('data-card-color') || '').trim().toLowerCase();
+      showCardInfoDialog({
+        cardNameEnglish,
+        cardType,
+        cardColor,
+        anchorEl: tokenEl,
+      });
+    };
+
+    document.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const token = target.closest('.chat-card-token[data-card-name]');
+      if (!(token instanceof HTMLElement)) return;
+      event.preventDefault();
+      openChatCardTokenDialog(token);
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const token = target.closest('.chat-card-token[data-card-name]');
+      if (!(token instanceof HTMLElement)) return;
+      event.preventDefault();
+      openChatCardTokenDialog(token);
+    });
+
+    chatCardTokenHandlerBound = true;
+  }
+
   const rollDiceFromCenter = async () => {
     if (!state.roomId || diceRollBusy) return;
 
@@ -919,6 +964,7 @@ export function bindRoomEvents({
     const selfStatus = Number(dataSnapshot?.players?.[selfAccount]?.status || 0);
     const roomStatus = Number(dataSnapshot?.room?.room_status || 0);
     const movePrompt = getMoveAreaPromptState(state, dataSnapshot);
+    const counterAttackPrompt = getCounterAttackPromptState(state, dataSnapshot);
     const canRoll = Boolean(
       state.roomId
       && selfAccount
@@ -960,10 +1006,11 @@ export function bindRoomEvents({
         : [];
       const selfAtkType = Number(dataSnapshot?.players?.[selfAccount]?.self_atk_type || 1);
       const rollMode = selfStatus === 5 && (selfEquipment.includes('Masamune') || selfAtkType === 2) ? 'd4' : 'both';
+      const isCounterAttackRoll = selfStatus === 5 && counterAttackPrompt.active;
       const data = await dispatch('next_step', {
         room_id: state.roomId,
         account: state.account || undefined,
-        action: false,
+        action: isCounterAttackRoll,
         target: { kind: 'none' },
       });
       const finalD6 = normalizeDiceValue(data?.dice?.D6, 6);
@@ -1000,6 +1047,7 @@ export function bindRoomEvents({
     const equipmentConfirm = getEquipmentConfirmPromptState(state, dataSnapshot);
     const greenConfirm = getGreenConfirmPromptState(state, dataSnapshot);
     const cardPrompt = getCardPromptState(state, dataSnapshot);
+    const counterAttackPrompt = getCounterAttackPromptState(state, dataSnapshot);
 
     if (greenConfirm.waitingConfirm) {
       if (greenConfirm.canSetChoice && greenConfirm.needsChoice) {
@@ -1024,7 +1072,8 @@ export function bindRoomEvents({
             : selected === 'skip'
               ? 'activate_damage'
               : 'normal';
-          await setPendingGreenCardChoice(mappedChoice);
+          const choiceApplied = await setPendingGreenCardChoice(mappedChoice);
+          if (!choiceApplied) return;
           await confirmPendingGreenCard();
           return;
         }
@@ -1040,7 +1089,8 @@ export function bindRoomEvents({
           showSkip: dialogConfig.showSkip,
         });
         if (selected) {
-          await setPendingGreenCardChoice(selected);
+          const choiceApplied = await setPendingGreenCardChoice(selected);
+          if (!choiceApplied) return;
           await confirmPendingGreenCard();
         }
         return;
@@ -1054,7 +1104,7 @@ export function bindRoomEvents({
     }
     if (roomStatus !== 2 || !selfAccount || selfAccount !== currentAccount) return;
     if (greenConfirm.active) return;
-    if (selfStatus === 2 || selfStatus === 5) {
+    if (selfStatus === 2 || (selfStatus === 5 && !counterAttackPrompt.active)) {
       await rollDiceFromCenter();
       return;
     }
@@ -1435,11 +1485,13 @@ export function bindRoomEvents({
   };
 
   const setPendingGreenCardChoice = async (choice) => {
-    if (!state.roomId || !state.account || stageNextStepBusy) return;
+    if (!state.roomId || !state.account || stageNextStepBusy) return false;
     let normalizedChoice = String(choice || '').trim().toLowerCase();
     if (normalizedChoice === 'effect1') normalizedChoice = 'activate';
     if (normalizedChoice === 'effect2') normalizedChoice = 'skip';
-    if (!['activate', 'skip'].includes(normalizedChoice)) return;
+    if (normalizedChoice === 'activate_give') normalizedChoice = 'activate';
+    if (normalizedChoice === 'activate_damage') normalizedChoice = 'skip';
+    if (!['activate', 'skip', 'normal'].includes(normalizedChoice)) return false;
     stageNextStepBusy = true;
     updateStageNextStepButtonState(state);
     try {
@@ -1450,12 +1502,14 @@ export function bindRoomEvents({
       });
       renderState(data);
       toast(t('toast.green_choice_set'));
+      return true;
     } catch (error) {
       if (error?.code === 'ROOM_NOT_FOUND') {
         goToLobbyPage();
-        return;
+        return false;
       }
       console.error(error);
+      return false;
     } finally {
       stageNextStepBusy = false;
       updateStageNextStepButtonState(state);
@@ -1752,6 +1806,13 @@ export function bindRoomEvents({
     toast(t('toast.roll_call_done'));
   };
 
+  const extendTurnTimeout = async () => {
+    if (!state.roomId || !state.account) return;
+    const data = await dispatch('extend_turn_timeout', { room_id: state.roomId, account: state.account });
+    renderState(data);
+    toast(t('toast.turn_timeout_extended'));
+  };
+
   const updateVillageSettings = async (patch = {}) => {
     if (!state.roomId || !state.account) return;
     const roomInfo = latestRoomSnapshot?.room || {};
@@ -1795,6 +1856,11 @@ export function bindRoomEvents({
     const rollCallTarget = event.target instanceof Element ? event.target.closest('#btnRollCallInline') : null;
     if (rollCallTarget) {
       rollCallVillage();
+      return;
+    }
+    const extendTimeoutTarget = event.target instanceof Element ? event.target.closest('#btnExtendTurnTimeoutInline') : null;
+    if (extendTimeoutTarget) {
+      extendTurnTimeout();
       return;
     }
     const editSettingsTarget = event.target instanceof Element ? event.target.closest('#btnEditRoomSettingsInline') : null;

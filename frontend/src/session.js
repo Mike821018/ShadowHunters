@@ -22,7 +22,8 @@ export function restoreSession(state) {
       const parsed = JSON.parse(raw);
       state.roomId = parsed.roomId ?? state.roomId;
       state.account = parsed.account ?? state.account;
-      state.transportMode = parsed.transportMode ?? state.transportMode;
+      const restoredMode = String((parsed.transportMode ?? state.transportMode) || '').trim().toLowerCase();
+      state.transportMode = restoredMode === 'demo' ? 'auto' : (restoredMode || state.transportMode);
       state.autoRefreshSeconds = parsed.autoRefreshSeconds ?? state.autoRefreshSeconds;
       state.skipTargetConfirm = parsed.skipTargetConfirm ?? state.skipTargetConfirm;
       // Restore roomAccounts; if absent, migrate legacy account+roomId pair

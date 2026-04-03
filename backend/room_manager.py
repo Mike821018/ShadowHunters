@@ -37,6 +37,7 @@ API_SCHEMAS = {
                         'start_game', 'next_step', 'card_effect', 'loot_from_kill',
                         'steal_equipment', 'set_green_card_choice', 'confirm_green_card', 'confirm_equipment',
                         'get_room_state', 'change_color', 'abolish_room', 'toggle_ready', 'vote_kick', 'roll_call',
+                        'extend_turn_timeout',
                         'send_chat',
                         'register_trip', 'change_trip', 'claim_trip_records', 'modify_trip_records', 'delete_trip_records',
                         'submit_trip_rating',
@@ -122,6 +123,7 @@ class RoomManager:
         'toggle_ready',
         'vote_kick',
         'roll_call',
+        'extend_turn_timeout',
         'update_room_settings',
         'reveal_character',
         'send_chat',
@@ -309,17 +311,142 @@ class RoomManager:
 
     def _assign_characters(self, game_room: room.room):
         player_count = len(game_room.players)
-        camp_config = character_module.camp_setting[player_count]
+        camp_config = dict(character_module.camp_setting[player_count])
         expansion_mode = self._normalize_expansion_mode(getattr(game_room, 'expansion_mode', 'all'))
+        forced_role_raw = getattr(game_room, 'debug_forced_characters', {}) or {}
+        forced_role_classes = self._validate_forced_character_config(
+            game_room=game_room,
+            forced_roles=forced_role_raw,
+            expansion_mode=expansion_mode,
+        )
+
+        forced_by_camp = {'Shadow': 0, 'Hunter': 0, 'Civilian': 0}
+        forced_class_set = set(forced_role_classes.values())
+        for character_cls in forced_role_classes.values():
+            camp_name = self._character_camp(character_cls)
+            if camp_name in forced_by_camp:
+                forced_by_camp[camp_name] += 1
 
         character_pool = []
-        character_pool.extend(self._pick_character_instances(self._resolve_camp_classes(character_module.shadow_camp, expansion_mode), camp_config['Shadow']))
-        character_pool.extend(self._pick_character_instances(self._resolve_camp_classes(character_module.hunter_camp, expansion_mode), camp_config['Hunter']))
-        character_pool.extend(self._pick_character_instances(self._resolve_camp_classes(character_module.civilian_camp, expansion_mode), camp_config['Civilian']))
+        shadow_need = max(0, int(camp_config['Shadow']) - int(forced_by_camp['Shadow']))
+        hunter_need = max(0, int(camp_config['Hunter']) - int(forced_by_camp['Hunter']))
+        civilian_need = max(0, int(camp_config['Civilian']) - int(forced_by_camp['Civilian']))
+
+        shadow_pool = [cls for cls in self._resolve_camp_classes(character_module.shadow_camp, expansion_mode) if cls not in forced_class_set]
+        hunter_pool = [cls for cls in self._resolve_camp_classes(character_module.hunter_camp, expansion_mode) if cls not in forced_class_set]
+        civilian_pool = [cls for cls in self._resolve_camp_classes(character_module.civilian_camp, expansion_mode) if cls not in forced_class_set]
+
+        character_pool.extend(self._pick_character_instances(shadow_pool, shadow_need))
+        character_pool.extend(self._pick_character_instances(hunter_pool, hunter_need))
+        character_pool.extend(self._pick_character_instances(civilian_pool, civilian_need))
         random.shuffle(character_pool)
 
-        for p, character in zip(game_room.players.values(), character_pool):
-            p.assign_character(character)
+        character_iter = iter(character_pool)
+        for account, p in game_room.players.items():
+            forced_cls = forced_role_classes.get(str(account or '').strip())
+            if forced_cls is not None:
+                p.assign_character(forced_cls())
+                continue
+            next_character = next(character_iter, None)
+            if next_character is None:
+                raise ValueError('insufficient character pool for assignment')
+            p.assign_character(next_character)
+
+    def _character_name(self, character_cls: Any) -> str:
+        try:
+            return str(character_cls().name or '').strip()
+        except Exception:
+            return ''
+
+    def _character_camp(self, character_cls: Any) -> str:
+        try:
+            return str(character_cls().camp or '').strip()
+        except Exception:
+            return ''
+
+    def _build_character_alias_index(self, expansion_mode: str) -> Dict[str, Any]:
+        available = []
+        available.extend(self._resolve_camp_classes(character_module.shadow_camp, expansion_mode))
+        available.extend(self._resolve_camp_classes(character_module.hunter_camp, expansion_mode))
+        available.extend(self._resolve_camp_classes(character_module.civilian_camp, expansion_mode))
+
+        alias_index: Dict[str, Any] = {}
+        for character_cls in available:
+            name = self._character_name(character_cls)
+            cls_name = str(getattr(character_cls, '__name__', '') or '').strip()
+            candidates = {
+                name,
+                name.lower(),
+                name.replace(' ', '').replace('-', '').lower(),
+                cls_name,
+                cls_name.lower(),
+            }
+            for alias in candidates:
+                key = str(alias or '').strip()
+                if key and key not in alias_index:
+                    alias_index[key] = character_cls
+        return alias_index
+
+    def _normalize_forced_role_payload(self, game_room: room.room, raw: Any) -> Dict[str, str]:
+        if raw is None:
+            return {}
+        if not isinstance(raw, dict):
+            raise ValueError('debug_forced_characters must be an object map')
+
+        normalized: Dict[str, str] = {}
+        for account_raw, role_raw in raw.items():
+            account = str(account_raw or '').strip()
+            role_name = str(role_raw or '').strip()
+            if not account:
+                raise ValueError('forced role account is empty')
+            if account not in game_room.players:
+                raise ValueError(f'unknown forced-role account: {account}')
+            if not role_name:
+                raise ValueError(f'forced role is empty for account: {account}')
+            normalized[account] = role_name
+        return normalized
+
+    def _validate_forced_character_config(self, game_room: room.room, forced_roles: Dict[str, str], expansion_mode: str) -> Dict[str, Any]:
+        if not forced_roles:
+            return {}
+
+        player_count = len(game_room.players)
+        camp_config = character_module.camp_setting[player_count]
+        alias_index = self._build_character_alias_index(expansion_mode)
+
+        forced_classes: Dict[str, Any] = {}
+        used_classes = set()
+        camp_counts = {'Shadow': 0, 'Hunter': 0, 'Civilian': 0}
+
+        for account, requested_role in forced_roles.items():
+            role_key = str(requested_role or '').strip()
+            lookup_keys = [
+                role_key,
+                role_key.lower(),
+                role_key.replace(' ', '').replace('-', '').lower(),
+            ]
+            matched_cls = None
+            for key in lookup_keys:
+                matched_cls = alias_index.get(key)
+                if matched_cls is not None:
+                    break
+            if matched_cls is None:
+                raise ValueError(f'unknown character in forced config: {requested_role}')
+            if matched_cls in used_classes:
+                role_name = self._character_name(matched_cls) or str(requested_role)
+                raise ValueError(f'duplicate forced character is not allowed: {role_name}')
+
+            camp_name = self._character_camp(matched_cls)
+            if camp_name not in camp_counts:
+                raise ValueError(f'unsupported camp in forced config: {camp_name}')
+            camp_counts[camp_name] += 1
+            if camp_counts[camp_name] > int(camp_config[camp_name]):
+                raise ValueError(f'forced config exceeds {camp_name} quota for {player_count} players')
+
+            used_classes.add(matched_cls)
+            forced_classes[account] = matched_cls
+
+        return forced_classes
 
     def _pick_character_instances(self, classes, count: int):
         if count <= 0:
@@ -427,6 +554,16 @@ class RoomManager:
 
         filtered = [cls for cls in classes if self._character_card_set_code(cls) in selected_sets]
         return filtered if filtered else list(classes)
+
+    def check_forced_character_config(self, room_id: int, forced_roles: Dict[str, str]) -> Dict[str, str]:
+        game_room = self._require_room(room_id)
+        expansion_mode = self._normalize_expansion_mode(getattr(game_room, 'expansion_mode', 'all'))
+        normalized = self._normalize_forced_role_payload(game_room, forced_roles)
+        resolved = self._validate_forced_character_config(game_room, normalized, expansion_mode)
+        return {
+            account: (self._character_name(character_cls) or str(normalized.get(account) or ''))
+            for account, character_cls in resolved.items()
+        }
 
     def _serialize_room(self, game_room: room.room) -> Dict[str, Any]:
         return {
@@ -572,17 +709,23 @@ class RoomManager:
             card_target = str(getattr(active_card, 'target', '') or '')
             if bool(getattr(game_room, '_initial_green_card_executed', False)) and str(getattr(active_card, 'color', '') or '').lower() == 'green':
                 card_target = 'self'
+            raw_active_card_name = str(getattr(active_card, 'name', '') or '')
             target_accounts = []
             if card_target in ('other', 'one'):
                 target_players = [player for player in game_room.players.values() if bool(getattr(player, 'is_alive', False))]
                 if card_target == 'other':
                     target_players = [player for player in target_players if player != current_player]
+                if raw_active_card_name == 'Moody Goblin':
+                    target_players = [player for player in target_players if bool(getattr(player, 'equipment_list', []))]
                 target_accounts = [player.account for player in target_players]
             # Banana Peel without equipment applies to self; no target selection required
             if str(getattr(active_card, 'name', '') or '') == 'Banana Peel' and not getattr(current_player, 'equipment_list', []):
                 card_target = 'self'
                 target_accounts = []
-            raw_active_card_name = str(getattr(active_card, 'name', '') or '')
+            # Moody Goblin should auto-resolve when nobody has equipment to steal.
+            if raw_active_card_name == 'Moody Goblin' and not target_accounts:
+                card_target = 'self'
+                target_accounts = []
             card_prompt = {
                 'name': raw_active_card_name,
                 'target': card_target,
@@ -646,6 +789,20 @@ class RoomManager:
                     'source': str(pending_steal.get('source', '') or ''),
                 }
 
+        pending_counter = getattr(game_room, '_pending_counter_attack', None)
+        counter_attack_prompt = None
+        if pending_counter:
+            original_attacker = pending_counter.get('original_attacker')
+            counter_player = pending_counter.get('counter_player')
+            if original_attacker and counter_player:
+                counter_account = str(getattr(counter_player, 'account', '') or '').strip()
+                original_account = str(getattr(original_attacker, 'account', '') or '').strip()
+                counter_attack_prompt = {
+                    'counter_account': counter_account,
+                    'original_account': original_account,
+                    'waiting_counter': bool(viewer_account and viewer_account == counter_account),
+                }
+
         def serialize_invulnerability_sources(p):
             sources = []
             if bool(getattr(p, 'immortal', False)):
@@ -677,6 +834,7 @@ class RoomManager:
                 'allow_full': pending_loot['allow_full'],
             } if pending_loot else None,
             'pending_steal': pending_steal_payload,
+            'counter_attack_prompt': counter_attack_prompt,
             'winners': list(getattr(game_room, 'winner_accounts', []) or []),
             'area_prompt': area_prompt,
             'card_prompt': card_prompt,
@@ -1005,6 +1163,8 @@ class RoomManager:
                 result = self.api_vote_kick(payload)
             elif action == 'roll_call':
                 result = self.api_roll_call(payload)
+            elif action == 'extend_turn_timeout':
+                result = self.api_extend_turn_timeout(payload)
             elif action == 'update_room_settings':
                 result = self.api_update_room_settings(payload)
             elif action == 'reveal_character':
@@ -1323,6 +1483,37 @@ class RoomManager:
         game_room.touch_activity()
         return self._success('roll_call', self._serialize_room_state(game_room, viewer_account=account))
 
+    def api_extend_turn_timeout(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        room_id = payload.get('room_id')
+        account = str(payload.get('account') or '').strip()
+        if room_id is None or not account:
+            return self._error('extend_turn_timeout', 'INVALID_PAYLOAD', 'room_id and account are required', 400)
+
+        game_room = self.get_room(room_id)
+        if not game_room:
+            return self._error('extend_turn_timeout', 'ROOM_NOT_FOUND', '房間不存在', 404)
+        if int(getattr(game_room, 'room_status', 0) or 0) != 2:
+            return self._error('extend_turn_timeout', 'NOT_PLAYING', '僅遊戲進行中可延長倒數', 400)
+
+        requester = game_room.players.get(account)
+        if not requester:
+            return self._error('extend_turn_timeout', 'PLAYER_NOT_FOUND', '玩家不存在', 404)
+        if not bool(requester.profile.get('is_village_manager', False)):
+            return self._error('extend_turn_timeout', 'NOT_VILLAGE_MANAGER', '只有村長可以延長倒數', 403)
+
+        timeout_player = game_room._get_turn_timeout_player() if hasattr(game_room, '_get_turn_timeout_player') else getattr(game_room, 'current_player', None)
+        if not timeout_player or not bool(getattr(timeout_player, 'is_alive', False)):
+            return self._error('extend_turn_timeout', 'INVALID_STATE', '目前沒有可延長的回合倒數', 400)
+
+        game_room.touch_turn_action()
+        if hasattr(game_room, '_clear_turn_timeout_notice'):
+            game_room._clear_turn_timeout_notice()
+        game_room.add_system_message(
+            f"村長 延長目前回合倒數：[{timeout_player.name or timeout_player.account}] 重新開始計時"
+        )
+        game_room.touch_activity()
+        return self._success('extend_turn_timeout', self._serialize_room_state(game_room, viewer_account=account))
+
     def api_update_room_settings(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         room_id = payload.get('room_id')
         account = str(payload.get('account') or '').strip()
@@ -1338,13 +1529,58 @@ class RoomManager:
         requester = game_room.players.get(account)
         if not requester:
             return self._error('update_room_settings', 'PLAYER_NOT_FOUND', '玩家不存在', 404)
-        if not bool(requester.profile.get('is_village_manager', False)):
+
+        is_village_manager = bool(requester.profile.get('is_village_manager', False))
+
+        room_setting_keys = {
+            'expansion_mode',
+            'enable_initial_green_card',
+            'turn_timeout_minutes',
+            'use_basic_card_set',
+            'card_set_basic',
+            'use_basic',
+            'use_extend_card_set',
+            'card_set_extend',
+            'use_extend',
+        }
+        has_room_setting_patch = any(key in payload for key in room_setting_keys)
+        if has_room_setting_patch and not is_village_manager:
             return self._error('update_room_settings', 'NOT_VILLAGE_MANAGER', '只有村長可以修改房間設定', 403)
 
         expansion_mode = self._resolve_expansion_mode_from_payload(
             payload,
             default_mode=getattr(game_room, 'expansion_mode', 'all'),
         )
+        debug_forced_key = None
+        for candidate_key in ('debug_forced_characters', 'debug_role_overrides', 'debug_character_overrides'):
+            if candidate_key in payload:
+                debug_forced_key = candidate_key
+                break
+
+        if debug_forced_key is not None:
+            try:
+                debug_forced_roles = self._normalize_forced_role_payload(game_room, payload.get(debug_forced_key))
+                current_debug_forced_roles = dict(getattr(game_room, 'debug_forced_characters', {}) or {})
+                if is_village_manager:
+                    candidate_forced_roles = dict(debug_forced_roles)
+                else:
+                    if not debug_forced_roles:
+                        return self._error('update_room_settings', 'INVALID_FORCED_CHARACTER_CONFIG', '需提供至少一筆指定角色設定', 400)
+                    non_self_accounts = [acc for acc in debug_forced_roles.keys() if acc != account]
+                    if non_self_accounts:
+                        return self._error('update_room_settings', 'FORCED_CHARACTER_SCOPE_DENIED', '非村長僅可指定自己的角色', 403)
+                    candidate_forced_roles = dict(current_debug_forced_roles)
+                    candidate_forced_roles[account] = debug_forced_roles[account]
+
+                self._validate_forced_character_config(game_room, candidate_forced_roles, expansion_mode)
+            except ValueError as exc:
+                return self._error('update_room_settings', 'INVALID_FORCED_CHARACTER_CONFIG', str(exc), 400)
+            game_room.debug_forced_characters = candidate_forced_roles
+
+        if not has_room_setting_patch:
+            game_room.touch_activity()
+            return self._success('update_room_settings', self._serialize_room_state(game_room, viewer_account=account))
+
         enable_initial_green_card = bool(payload.get('enable_initial_green_card', getattr(game_room, 'enable_initial_green_card', False)))
         timeout_minutes_raw = payload.get('turn_timeout_minutes', int(getattr(game_room, 'turn_timeout_seconds', 180) or 180) // 60)
         try:
@@ -1385,6 +1621,8 @@ class RoomManager:
         if not player.character:
             return self._error('reveal_character', 'NO_CHARACTER', '玩家未被分配角色', 400)
         player.reveal_character()
+        if game_room.current_player == player and int(getattr(player, 'status', 0) or 0) == 1:
+            game_room.trigger_start_passive_ability(player)
         role_name = str(getattr(getattr(player, 'character', None), 'name', '') or '未知角色')
         game_room.add_system_message(f"[{player.name or account}] 主動揭示身份：{role_name}")
         game_room.touch_activity()

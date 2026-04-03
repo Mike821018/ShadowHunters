@@ -84,11 +84,6 @@ a:hover {
   font-weight: 700;
 }
 
-.pill[data-mode='demo'] {
-  color: #225522;
-  border-color: #6aa76a;
-}
-
 .pill[data-mode='http'] {
   color: #204a87;
   border-color: #5c9ecf;
@@ -428,6 +423,12 @@ legend {
   line-height: 1.5;
 }
 
+.chat-line-system.system-timeout-self {
+  color: #7d0b0b;
+  background: #fff1f1;
+  border-color: #f0b5b5;
+}
+
 .chat-sender {
   display: block;
   color: #3a4f62;
@@ -459,10 +460,155 @@ legend {
   font-size: 0.9em;
 }
 
+.chat-card-token {
+  display: inline;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: #0f4f93;
+  font-weight: 700;
+  cursor: pointer;
+  pointer-events: auto;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.chat-card-token:hover {
+  color: #0c3f76;
+}
+
+.chat-card-token:focus-visible {
+  outline: 2px solid #2f89c9;
+  outline-offset: 1px;
+}
+
+.chat-card-token.is-masked {
+  color: #677686;
+  text-decoration: none;
+  cursor: default;
+  pointer-events: none;
+}
+
+.sh-fchat-msgs .chat-card-token {
+  margin: 0;
+}
+
 .chat-input-row {
   display: flex;
   gap: 8px;
   align-items: flex-end;
+}
+
+.chat-action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+  flex: 0 0 auto;
+}
+
+.chat-emoji-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.chat-emoji-toggle {
+  min-width: 72px;
+  min-height: 40px;
+  font-size: 22px;
+  line-height: 1;
+  padding: 6px 8px;
+}
+
+.chat-emoji-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  width: min(520px, 92vw);
+  max-height: 320px;
+  padding: 10px;
+  border: 1px solid #b7ccdb;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(21, 49, 67, 0.2);
+  z-index: 12;
+  overflow: hidden;
+}
+
+.chat-emoji-panel[hidden] {
+  display: none;
+}
+
+.chat-emoji-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: #244055;
+}
+
+.chat-emoji-close {
+  border: 0;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  color: #2f536d;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+.chat-emoji-close:hover,
+.chat-emoji-close:focus-visible {
+  background: #e7f0f8;
+  outline: none;
+}
+
+.chat-emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  max-height: 258px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.chat-emoji-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #d0e1ee;
+  border-radius: 8px;
+  background: #f7fbff;
+  color: #2c4357;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.chat-emoji-item:hover,
+.chat-emoji-item:focus-visible {
+  border-color: #77a8ce;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(34, 82, 113, 0.14);
+  outline: none;
+}
+
+.chat-emoji-item img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+
+.chat-emoji-item span {
+  font-size: 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
 }
 
 .chat-input {
@@ -475,6 +621,32 @@ legend {
 
 .chat-input-row .btn {
   flex: 0 0 auto;
+}
+
+.chat-action-stack .btn {
+  width: 72px;
+}
+
+.chat-emoji-inline {
+  width: 40px;
+  height: 40px;
+  vertical-align: text-bottom;
+  object-fit: contain;
+}
+
+.chat-emoji-inline.emoji-chew-medium {
+  width: 32px;
+  height: 32px;
+}
+
+.chat-emoji-inline.emoji-chew-large {
+  width: 40px;
+  height: 40px;
+}
+
+.chat-emoji-inline.emoji-chew-xlarge {
+  width: 48px;
+  height: 48px;
 }
 
 .room-game-surface {
@@ -3405,6 +3577,351 @@ legend {
   outline: none;
 }
 
+/* ── Floating Chat Window ───────────────────────────────────────────────── */
+
+/*
+ * Container: fixed at bottom-right.
+ * flex-direction: column-reverse → panel (first in DOM) appears ABOVE the toggle button.
+ */
+.sh-floating-chat {
+  position: fixed;
+  bottom: 88px;
+  right: 20px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+/* Toggle button (always visible when collapsed; clicking it expands the panel) */
+.sh-fchat-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 62px;
+  height: 62px;
+  padding: 0;
+  background: #4fb8d8;
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.24);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1;
+  transition: background 0.15s, box-shadow 0.15s;
+  position: relative;
+}
+
+.sh-fchat-toggle-icon {
+  line-height: 1;
+}
+
+.sh-fchat-toggle-btn:hover {
+  background: #63c3df;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+.sh-fchat-toggle-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* When panel is open, tint toggle button so user knows clicking it will close */
+.sh-fchat-toggle-btn[aria-expanded="true"] {
+  background: #3aa7ca;
+}
+
+/* Unread badge on toggle button */
+.sh-fchat-badge {
+  background: #f60;
+  color: #fff;
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 18px;
+  text-align: center;
+  position: absolute;
+  top: 6px;
+  right: 4px;
+}
+
+/* Expanded panel */
+.sh-fchat-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 40px));
+  height: 380px;
+  background: #fff;
+  border: 1px solid var(--line-strong, #6eb1d5);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(21, 49, 67, 0.22);
+  overflow: hidden;
+}
+
+.sh-fchat-panel[hidden] {
+  display: none !important;
+}
+
+/* Panel header */
+.sh-fchat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--primary, #09c);
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.sh-fchat-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sh-fchat-collapse-btn {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sh-fchat-collapse-btn:hover {
+  opacity: 0.75;
+}
+
+.sh-fchat-collapse-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* Message list */
+.sh-fchat-msgs {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+.sh-fchat-empty {
+  color: var(--muted, #999);
+  font-size: 13px;
+  text-align: center;
+  padding: 16px 0;
+}
+
+.sh-fchat-line {
+  display: block;
+  margin-bottom: 6px;
+  line-height: 1.45;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.sh-fchat-line--system {
+  color: #7f4f00;
+  background: #fff8e8;
+  border: 1px solid #f0dab0;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.sh-fchat-line--system .sh-fchat-pid {
+  color: #0f4f93;
+  font-weight: 700;
+}
+
+.sh-fchat-sender {
+  display: block;
+  color: #3a4f62;
+  font-weight: 700;
+}
+
+.sh-fchat-line--self .sh-fchat-sender {
+  color: #0f4f93;
+}
+
+.sh-fchat-time {
+  font-weight: normal;
+  color: var(--muted, #999);
+  font-size: 0.85em;
+  margin-left: 2px;
+}
+
+.sh-fchat-text {
+  display: block;
+  color: #2f3f4c;
+  padding-left: 4px;
+  white-space: pre-wrap;
+}
+
+/* Emoji images inline in floating chat messages */
+.sh-fchat-msgs .chat-emoji-inline {
+  height: 20px;
+  vertical-align: middle;
+}
+
+/* Footer (emoji panel + input row) */
+.sh-fchat-foot {
+  position: relative;   /* anchor for the emoji panel popover */
+  border-top: 1px solid var(--line, #e3edf5);
+  background: var(--panel, #f7f7f7);
+  flex-shrink: 0;
+}
+
+/* Emoji picker — overlaps message list from below */
+.sh-fchat-emoji-panel {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  max-height: 150px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--line-strong, #6eb1d5);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  box-shadow: 0 -4px 12px rgba(21, 49, 67, 0.12);
+}
+
+.sh-fchat-emoji-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 8px;
+}
+
+.sh-fchat-emoji-item {
+  padding: 3px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.sh-fchat-emoji-item:hover {
+  border-color: var(--primary, #09c);
+  background: rgba(0, 153, 204, 0.08);
+}
+
+.sh-fchat-emoji-item img {
+  height: 22px;
+  width: auto;
+  display: block;
+}
+
+/* Input row */
+.sh-fchat-foot-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+  padding: 6px 8px;
+}
+
+.sh-fchat-emoji-toggle {
+  padding: 4px 6px;
+  background: none;
+  border: 1px solid var(--line, #e3edf5);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+  height: 38px;
+  transition: border-color 0.1s, background 0.1s;
+}
+
+.sh-fchat-emoji-toggle:hover,
+.sh-fchat-emoji-toggle.is-active {
+  border-color: var(--primary, #09c);
+  background: rgba(0, 153, 204, 0.08);
+}
+
+.sh-fchat-emoji-toggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.sh-fchat-input {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--line, #e3edf5);
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  height: 38px;
+  line-height: 1.4;
+  background: #fff;
+}
+
+.sh-fchat-input:focus {
+  outline: none;
+  border-color: var(--primary, #09c);
+  box-shadow: 0 0 0 2px rgba(0, 153, 204, 0.2);
+}
+
+.sh-fchat-input:disabled {
+  background: #f0f0f0;
+  color: var(--muted, #999);
+}
+
+.sh-fchat-send {
+  padding: 5px 10px;
+  background: var(--primary, #09c);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  align-self: flex-end;
+  height: 38px;
+  flex-shrink: 0;
+}
+
+.sh-fchat-send:hover {
+  background: #0088bb;
+}
+
+.sh-fchat-send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (max-width: 480px) {
+  .sh-floating-chat {
+    bottom: 82px;
+    right: 14px;
+  }
+
+  .sh-fchat-panel {
+    width: calc(100vw - 28px);
+    height: 300px;
+  }
+
+  .sh-fchat-toggle-btn {
+    width: 56px;
+    height: 56px;
+    font-size: 24px;
+  }
+}
+
 .guide-faq-item summary:hover {
   color: #d84315;
 }
@@ -3657,6 +4174,12 @@ legend {
   background: #fff9f0;
 }
 
+.system-line.system-timeout.system-timeout-self {
+  border-left-color: #ff5555;
+  background: #fff0f0;
+  color: #880000;
+}
+
 .system-line.system-boomed {
   border-left-color: #ff5555;
   background: #fff0f0;
@@ -3698,7 +4221,7 @@ legend {
 .room-page .player-card {
   padding: 4px 5px;
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr);
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
   grid-template-rows: auto auto 1fr;
   gap: 0;
 }

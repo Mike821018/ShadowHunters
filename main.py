@@ -8,16 +8,43 @@ from urllib.request import urlopen
 
 from backend.http_server import run_server
 from backend.room_manager import API_SCHEMAS, RoomManager
-from backend.validation import validate_game_flow, validate_roll_7_flow
+from backend.validation import (
+	validate_catherine_start_passive_heal_flow,
+	validate_forced_character_config,
+	validate_game_flow,
+	validate_green_confirm_timeout_flow,
+	validate_moody_goblin_no_equipment_flow,
+	validate_roll_7_flow,
+	validate_unknown_green_card_forced_effects,
+	validate_werewolf_counter_attack_flow,
+)
 
 
 def run_validations():
 	validation = validate_game_flow()
 	roll_7_validation = validate_roll_7_flow()
+	unknown_green_validation = validate_unknown_green_card_forced_effects()
+	forced_character_validation = validate_forced_character_config()
+	werewolf_counter_validation = validate_werewolf_counter_attack_flow()
+	moody_goblin_validation = validate_moody_goblin_no_equipment_flow()
+	green_confirm_timeout_validation = validate_green_confirm_timeout_flow()
+	catherine_start_passive_validation = validate_catherine_start_passive_heal_flow()
 	print('validation ok')
 	print(validation)
 	print('roll 7 validation ok')
 	print(roll_7_validation)
+	print('unknown green validation ok')
+	print(unknown_green_validation)
+	print('forced character validation ok')
+	print(forced_character_validation)
+	print('werewolf counter validation ok')
+	print(werewolf_counter_validation)
+	print('moody goblin validation ok')
+	print(moody_goblin_validation)
+	print('green confirm timeout validation ok')
+	print(green_confirm_timeout_validation)
+	print('catherine start passive validation ok')
+	print(catherine_start_passive_validation)
 
 
 def _run_subprocess(cmd, label: str):
@@ -40,20 +67,28 @@ def _wait_for_server(host: str, port: int, timeout_seconds: float = 30.0):
 	raise RuntimeError(f'server did not become ready: {last_error}')
 
 
+def _resolve_connect_host(bind_host: str) -> str:
+	host = str(bind_host or '').strip()
+	if host in {'0.0.0.0', '::', '[::]', ''}:
+		return '127.0.0.1'
+	return host
+
+
 def run_test_suite(host: str, port: int, games: int, eight_player_games: int, batch_size: int):
 	run_validations()
 	_run_subprocess([sys.executable, '-m', 'scripts.issue6_smoke'], 'issue6 smoke')
+	connect_host = _resolve_connect_host(host)
 
 	env = os.environ.copy()
 	server_cmd = [sys.executable, 'main.py', 'serve', '--host', host, '--port', str(port)]
 	print(f'[test] starting server: {" ".join(server_cmd)}')
 	server_proc = subprocess.Popen(server_cmd, env=env)
 	try:
-		_wait_for_server(host, port)
+		_wait_for_server(connect_host, port)
 		validator_cmd = [
 			sys.executable,
 			'scripts/run_http_validator_batched.py',
-			'--base-url', f'http://{host}:{port}/api/dispatch',
+			'--base-url', f'http://{connect_host}:{port}/api/dispatch',
 			'--games', str(games),
 			'--eight-player-games', str(eight_player_games),
 			'--batch-size', str(batch_size),

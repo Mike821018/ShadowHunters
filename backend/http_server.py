@@ -138,7 +138,18 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
         status_code = result.get('error', {}).get('status', HTTPStatus.OK) if not result.get('ok', False) else HTTPStatus.OK
         self._send_json(status_code, result)
 
+    def do_OPTIONS(self):
+        self.send_response(HTTPStatus.NO_CONTENT)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, ngrok-skip-browser-warning')
+        self.send_header('Access-Control-Max-Age', '86400')
+        self.end_headers()
+
     def end_headers(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, ngrok-skip-browser-warning')
         self.send_header('Cache-Control', 'no-store')
         super().end_headers()
 

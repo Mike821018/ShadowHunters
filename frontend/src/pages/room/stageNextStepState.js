@@ -8,6 +8,7 @@ export function createStageNextStepStateHandlers({
   getGreenConfirmPromptState,
   getCardPromptState,
   getAttackPromptState,
+  getCounterAttackPromptState,
   getMoveAreaPromptState,
   getPendingDiceAction,
   getDiceRollBusy,
@@ -54,6 +55,7 @@ export function createStageNextStepStateHandlers({
     const greenConfirm = getGreenConfirmPromptState(state, snapshot);
     const cardPrompt = getCardPromptState(state, snapshot);
     const attackPrompt = getAttackPromptState(state, snapshot);
+    const counterAttackPrompt = getCounterAttackPromptState(state, snapshot);
     const movePrompt = getMoveAreaPromptState(state, snapshot);
     const pendingDiceAction = getPendingDiceAction();
     const diceRollBusy = getDiceRollBusy();
@@ -110,8 +112,13 @@ export function createStageNextStepStateHandlers({
       disabled = true;
       label = t('room.table_next_step.choose_equipment');
     } else if (selfStatus === 5) {
-      disabled = true;
-      label = t(status5RollLabelKey);
+      if (counterAttackPrompt.active) {
+        label = t('room.table_next_step.skip_attack');
+        phase = 'skip-attack';
+      } else {
+        disabled = true;
+        label = t(status5RollLabelKey);
+      }
     } else if (selfStatus === 3) {
       if (pendingSteal.active) {
         disabled = true;

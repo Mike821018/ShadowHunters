@@ -8,9 +8,4 @@ export function bindTransportModeEvents({ el, setTransportMode, persistCurrentSe
     setTransportMode('http');
     persistCurrentSession();
   });
-
-  el.btnUseDemo?.addEventListener('click', () => {
-    setTransportMode('demo');
-    persistCurrentSession();
-  });
 }

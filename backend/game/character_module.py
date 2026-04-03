@@ -32,6 +32,7 @@ class Character():
     def assign(self, user):
         user.camp = self.camp
         user.hp = self.hp
+        user.counter_atk = self.counter_atk
         # UI 與狀態同步規則：開場皆視為可用（除非後續被禁用或已用盡）。
         # ability_requires_reveal 僅影響「可否主動發動」，不影響可用顯示。
         user.can_use_ability = bool(self.can_use_ability)

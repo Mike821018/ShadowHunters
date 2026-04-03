@@ -326,6 +326,7 @@ export default {
       close_settings: '閉じる',
       ready: '準備完了',
       roll_call: '点呼',
+      extend_turn_timeout: '手番タイマーを延長',
       unready: '準備解除',
     },
     settings: {
@@ -345,6 +346,10 @@ export default {
       messages_aria: 'チャットメッセージ',
       placeholder: 'メッセージを入力（最大 200 文字）',
       send: '送信',
+      emoji_open: '絵文字',
+      emoji_panel_aria: '絵文字選択パネル',
+      emoji_close_aria: '絵文字パネルを閉じる',
+      emoji_grid_aria: '使用可能な絵文字一覧',
       empty: 'メッセージはまだありません',
     },    system: {
       village_created_at: '{date} に村が作成されました',
@@ -354,6 +359,7 @@ export default {
       kicked: '{target} は投票で退室しました',
       manager_kicked: '村長 {actor} が {target} を退室させました',
       roll_call: '村長が点呼を開始しました。もう一度準備完了にしてください。',
+      extend_turn_timeout: '村長が現在の手番タイマーを延長しました：{target} のカウントを再開',
       initial_green_card: '初期グリーンカード：{card}',
       game_started: 'ゲーム開始',
       game_ended_winners: 'ゲーム終了。勝者: {winners}',
@@ -668,7 +674,7 @@ export default {
       aria_label: '自動更新間隔',
       manual: '手動',
       seconds: '{n}秒',
-      skip_target_confirm: '攻撃/カード対象の二次確認',
+      skip_target_confirm: '二次確認',
     },
   },
   register: {
@@ -812,6 +818,7 @@ export default {
     target_confirm_skip_on: '有効化: 攻撃/カード対象で二次確認を実行',
     target_confirm_skip_off: '無効化: 攻撃/カード対象の二次確認をスキップ',
     roll_call_done: '点呼を実行し、全員の準備状態を解除しました',
+    turn_timeout_extended: '現在の手番タイマーを延長しました',
     village_gone: '村が廃止されました。ロビーに戻ります',
     trip_rating_saved: '評価を送信しました',
     trip_rating_failed: '評価の送信に失敗しました',

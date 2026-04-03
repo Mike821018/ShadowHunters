@@ -47,6 +47,8 @@ class room(Thread):
         self.is_chat_room: bool = False  # 聊天村：不開局、較高人數上限
         self.expansion_mode: str = 'all'  # all | no_extend
         self.enable_initial_green_card: bool = False  # 遊戲開始時執行初始綠卡
+        # 開發除錯用：可在開局前指定帳號對應角色（不對一般 UI 顯示）
+        self.debug_forced_characters: dict = {}
         self.max_players: int = 8
         self.idle_timeout_seconds: int = 15 * 60
         self.turn_timeout_seconds: int = 3 * 60
@@ -63,6 +65,8 @@ class room(Thread):
         self.chat_messages = []
         self._chat_seq = 0
         self.is_chat_archived: bool = False  # Issue 35.2: 遊戲是否已完成歸檔（結束&存檔），聊天可直接入資料庫
+        self.turn_sequence: int = 0
+        self._start_passive_applied: dict = {}
 
     def touch_activity(self):
         self.last_activity_at = time.time()
@@ -73,16 +77,22 @@ class room(Thread):
     def _clear_turn_timeout_notice(self):
         self.latest_boom_notice = {}
 
+    def _get_turn_timeout_player(self):
+        pending_green = getattr(self, '_pending_green_card', None) or {}
+        pending_target = pending_green.get('to_player')
+        if pending_target and bool(getattr(pending_target, 'is_alive', False)):
+            return pending_target
+        return getattr(self, 'current_player', None)
+
     def _current_turn_timeout_remaining(self):
         if int(getattr(self, 'room_status', 0) or 0) != 2:
             return None
-        current = getattr(self, 'current_player', None)
+        current = self._get_turn_timeout_player()
         if not current or not bool(getattr(current, 'is_alive', False)):
             return None
-        if getattr(self, '_pending_green_card', None):
-            return None
+        pending_green = getattr(self, '_pending_green_card', None)
         status = int(getattr(current, 'status', 0) or 0)
-        if status not in (1, 2, 3, 4, 5, 6):
+        if not pending_green and status not in (1, 2, 3, 4, 5, 6):
             return None
         last_at = float(getattr(self, 'turn_last_action_at', 0) or 0)
         if last_at <= 0:
@@ -94,7 +104,7 @@ class room(Thread):
         remaining = self._current_turn_timeout_remaining()
         if remaining is None:
             return None
-        current = getattr(self, 'current_player', None)
+        current = self._get_turn_timeout_player()
         return {
             'limit_seconds': int(self.turn_timeout_seconds),
             'remaining_seconds': int(remaining),
@@ -105,9 +115,13 @@ class room(Thread):
         }
 
     def _handle_turn_timeout(self):
-        current = getattr(self, 'current_player', None)
+        current = self._get_turn_timeout_player()
         if not current or not bool(getattr(current, 'is_alive', False)):
             return False
+        pending_green = getattr(self, '_pending_green_card', None) or {}
+        pending_target = pending_green.get('to_player')
+        pending_source = pending_green.get('from_player')
+        is_pending_green_target = bool(pending_target and pending_target == current)
 
         profile = getattr(current, 'profile', {}) or {}
         display_name = str(
@@ -156,7 +170,10 @@ class room(Thread):
 
         self._handle_death([current])
         if int(getattr(self, 'room_status', 0) or 0) == 2:
-            if bool(getattr(self, '_initial_green_card_executed', False)):
+            if is_pending_green_target and pending_source and bool(getattr(pending_source, 'is_alive', False)):
+                self.current_player = pending_source
+                self.current_player.status = 4
+            elif bool(getattr(self, '_initial_green_card_executed', False)):
                 self._initial_green_card_players_executed.add(str(getattr(current, 'account', '') or ''))
                 self._set_next_alive_player_after_trip(str(getattr(current, 'trip', '') or ''))
                 if self.current_player:
@@ -362,7 +379,7 @@ class room(Thread):
         
         # 常規遊戲開始
         if self.current_player:
-            self.current_player.status = 1
+            self._start_turn_for_player(self.current_player)
         self.active_card = None
         self._attack_target = None
         self._compass_areas = []
@@ -386,11 +403,38 @@ class room(Thread):
             next_trip = self.action_order[(idx + i) % len(self.action_order)]
             next_player = self.players.get(next_trip)
             if next_player and next_player.is_alive:
-                self.current_player = next_player
-                self.current_player.status = 1
-                self.touch_turn_action()
+                self._start_turn_for_player(next_player)
                 return
         self.current_player = None
+
+    def _start_turn_for_player(self, player_obj):
+        self.current_player = player_obj
+        if not self.current_player:
+            return
+        self.current_player.status = 1
+        self.turn_sequence = int(getattr(self, 'turn_sequence', 0) or 0) + 1
+        self.touch_turn_action()
+
+    def _trigger_start_passive_ability(self, player_obj):
+        if not player_obj or not getattr(player_obj, 'character', None):
+            return False
+        if int(getattr(player_obj.character, 'ability_timing', 0) or 0) != 10:
+            return False
+        if not self._can_activate_ability(player_obj):
+            return False
+
+        account_key = str(getattr(player_obj, 'account', '') or '').strip()
+        current_turn_seq = int(getattr(self, 'turn_sequence', 0) or 0)
+        if not account_key or current_turn_seq <= 0:
+            return False
+        if int(self._start_passive_applied.get(account_key, 0) or 0) == current_turn_seq:
+            return False
+
+        self._start_passive_applied[account_key] = current_turn_seq
+        return bool(self._use_ability_with_resolution(player_obj, None))
+
+    def trigger_start_passive_ability(self, player_obj):
+        return self._trigger_start_passive_ability(player_obj)
 
     def _get_previous_alive_player(self, trip):
         if not self.action_order:
@@ -579,7 +623,7 @@ class room(Thread):
                 self._initial_green_card_players_executed.clear()
                 self.current_player = self.players[self.action_order[0]] if self.action_order else None
                 if self.current_player:
-                    self.current_player.status = 1
+                    self._start_turn_for_player(self.current_player)
                 self.active_card = None
                 return
         
@@ -594,17 +638,34 @@ class room(Thread):
         self.touch_turn_action()
         pending = self._pending_green_card
         if not pending:
-            return False
+            # Idempotent confirm: if pending already resolved, treat as no-op success.
+            return True
         to_player = pending.get('to_player')
         card = pending.get('card')
         if not to_player or not card:
-            return False
+            # Defensive no-op to avoid dead-end UI when pending payload is stale.
+            self._pending_green_card = None
+            return True
         if str(getattr(to_player, 'account', '') or '') != str(account or ''):
             return False
 
-        force_effect = self._get_green_card_force_effect(to_player, card, pending.get('choice'))
+        pending_choice = pending.get('choice')
+        normalized_choice = str(pending_choice or '').strip().lower()
+        force_effect = self._get_green_card_force_effect(to_player, card, pending_choice)
+        if normalized_choice in ('normal', 'no_activate') and force_effect not in (0, 1, 2):
+            # Respect explicit "normal" as default card resolution.
+            force_effect = 0
         if self._green_card_requires_choice(to_player, card) and force_effect not in (0, 1, 2):
-            return False
+            # Compatibility fallback: older frontend flows may not submit "normal"
+            # for Unknown's green-card intercept choice, causing confirm to dead-end.
+            target_character_name = str(getattr(getattr(to_player, 'character', None), 'name', '') or '').strip()
+            if target_character_name == 'Unknown' and normalized_choice == '':
+                pending['choice'] = 'normal'
+                force_effect = 0
+            else:
+                # Fallback to default card resolution instead of dead-ending confirm.
+                pending['choice'] = 'normal'
+                force_effect = 0
 
         if not self._initial_green_card_executed:
             if force_effect == 1:
@@ -1018,9 +1079,7 @@ class room(Thread):
 
         # 遊戲初始化：設定第一位行動玩家
         if self.current_player is None:
-            self.current_player = self.players[self.action_order[0]]
-            self.current_player.status = 1
-            self.touch_turn_action()
+            self._start_turn_for_player(self.players[self.action_order[0]])
 
         p = self.current_player
 
@@ -1039,6 +1098,10 @@ class room(Thread):
             if p.eqp_immortal:
                 p.eqp_immortal = False
                 p.eqp_immortal_source = ''
+
+            self._trigger_start_passive_ability(p)
+            if int(getattr(self, 'room_status', 0) or 0) == 3:
+                return
 
             if action and self._can_activate_ability(p):
                 self._use_ability_with_resolution(p, target)
@@ -1250,6 +1313,7 @@ class room(Thread):
 
             if not attackable_targets:
                 # 無合法目標可攻擊（包含 Masamune 強制攻擊但無目標的情況）
+                self.add_system_message(f"[{p.name or p.account}] 本回合放棄攻擊")
                 p.status = 6
                 # update → 通知前端「目前無可攻擊目標」，自動進入回合結束
 
@@ -1285,6 +1349,19 @@ class room(Thread):
         #   若有待掠奪   → 前端呼叫 loot_from_kill(from_player, equipment, take_all)
         #                  全部處理完後再呼叫 next_step() 進入回合結束
         elif p.status == 5:
+            if self._pending_counter_attack and self._pending_counter_attack.get('counter_player') == p and not action:
+                original_attacker = self._pending_counter_attack.get('original_attacker')
+                self.add_system_message(f"[{p.name or p.account}] 放棄反擊")
+                self._pending_counter_attack = None
+                p.status = 0
+                self._attack_target = None
+                if original_attacker and original_attacker.is_alive:
+                    self.current_player = original_attacker
+                    self.current_player.status = 6
+                else:
+                    self._set_next_alive_player_after_trip(getattr(original_attacker, 'trip', ''))
+                return
+
             # 若已進入掠奪待處理，等待前端完成選擇後再呼叫 next_step() 繼續流程
             if self._pending_kill_loot and self._pending_kill_loot.get('attacker') == p:
                 if self._pending_kill_loot.get('deaths'):
@@ -1449,8 +1526,7 @@ class room(Thread):
             # 額外回合處理（Concealed Knowledge / Wight 特殊能力）
             if p.extra_turn > 0:
                 p.extra_turn -= 1
-                p.status = 1
-                self.touch_turn_action()
+                self._start_turn_for_player(p)
                 # update → 通知前端同一玩家開始額外回合
                 return
 
@@ -1557,10 +1633,6 @@ class room(Thread):
                     self.add_system_message(f"[Dynamite] 擲出 D4={dice_d4} D6={dice_d6}（合計={total}）")
         source_name_for_log = '初始綠卡' if (self._initial_green_card_executed and str(card_color).lower() == 'green') else card_name
         self._emit_effect_delta_messages(snapshot, '卡片', source_name_for_log)
-        if card_name == 'Blessing' and resolved_target is not None:
-            dice_d6 = int(getattr(getattr(self, 'board', None), 'dice', {}).get('D6', 0) or 0)
-            if dice_d6 > 0:
-                self.add_system_message(f"[{resolved_target.name or resolved_target.account}] 因為 白卡(Blessing) 恢復 {dice_d6} 點傷害")
         if card_name == 'First Aid' and resolved_target is not None:
             self.add_system_message(f"[{resolved_target.name or resolved_target.account}] 因為 白卡(First Aid) 傷害變為 7")
         self._finish_active_card_resolution(resolved_target, ret, extra)

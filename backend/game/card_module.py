@@ -1,3 +1,5 @@
+from typing import Optional
+
 from . import area_module
 
 class Card():
@@ -15,7 +17,7 @@ class Card():
     def requires_choice(self, user, target, rooms) -> bool:
         return False
 
-    def get_force_effect(self, user, target, rooms, choice=None):
+    def get_force_effect(self, user, target, rooms, choice=None) -> Optional[int]:
         return None
     
     def equip(self, target): # for equipment use, target=character
@@ -66,7 +68,13 @@ class Anger(Card):
         extra = []
         # 我猜你是獵人或暗影。如果是的話請給你的上家一張裝備卡、
         # 如果你沒有裝備卡的話則受到1點傷害。
-        if target.character.camp in ["Hunter", "Shadow"]:
+        effect = False
+        if force_effect in (1, 2):
+            effect = True
+        elif target.character.camp in ["Hunter", "Shadow"]:
+            effect = True
+
+        if effect:
             choose_damage = (force_effect == 2)
             if target.equipment_list and not choose_damage:
                 ret = 2
@@ -105,7 +113,13 @@ class Blackmail(Card):
         extra = []
         # 我猜你是中立或獵人。如果是的話請給你的上家一張裝備卡、
         # 如果你沒有裝備卡的話則受到1點傷害。
-        if target.character.camp in ["Civilian", "Hunter"]:
+        effect = False
+        if force_effect in (1, 2):
+            effect = True
+        elif target.character.camp in ["Civilian", "Hunter"]:
+            effect = True
+
+        if effect:
             choose_damage = (force_effect == 2)
             if target.equipment_list and not choose_damage:
                 ret = 2
@@ -198,7 +212,13 @@ class Greed(Card):
         extra = []
         # 我猜你是中立或暗影。如果是的話請給你的上家一張裝備卡、
         # 如果你沒有裝備卡的話則受到1點傷害。
-        if target.character.camp in ["Civilian", "Shadow"]:
+        effect = False
+        if force_effect in (1, 2):
+            effect = True
+        elif target.character.camp in ["Civilian", "Shadow"]:
+            effect = True
+
+        if effect:
             choose_damage = (force_effect == 2)
             if target.equipment_list and not choose_damage:
                 ret = 2
@@ -460,12 +480,13 @@ class SpearOfLonginus(Card):
         self.target = "self"
 
     def equip(self, target):
-        if target.character.camp == "Hunter" and target.character_reveal:
-            target.eqp_atk += 2
+        target.eqp_longinus_count = int(getattr(target, 'eqp_longinus_count', 0) or 0) + 1
+        target._sync_longinus_bonus()
 
     def divest(self, target):
-        if target.character.camp == "Hunter" and target.character_reveal:
-            target.eqp_atk -= 2
+        current = int(getattr(target, 'eqp_longinus_count', 0) or 0)
+        target.eqp_longinus_count = max(0, current - 1)
+        target._sync_longinus_bonus()
 
 class HolyWaterOfHealing(Card):
     def __init__(self):
@@ -731,14 +752,14 @@ class BloodthirstySpider(Card):
             if target.check_death():
                 ret = 1
                 extra = [target]
-            
-            # 檢查自己是否裝備Talisman，如果有則免疫傷害
-            has_talisman_self = any(type(card).__name__ == "Talisman" for card in user.equipment_list)
-            if not has_talisman_self:
-                user.defence(2, ignore_defence=True)
-                if user.check_death():
-                    ret = 1
-                    extra.append(user)
+
+        # 血腥蜘蛛會反傷自己；只有自己有 Talisman 才能免疫。
+        has_talisman_self = any(type(card).__name__ == "Talisman" for card in user.equipment_list)
+        if not has_talisman_self:
+            user.defence(2, ignore_defence=True)
+            if user.check_death():
+                ret = 1
+                extra.append(user)
         return ret, extra
 
 class MoodyGoblin(Card):
@@ -752,6 +773,8 @@ class MoodyGoblin(Card):
     def action(self, user, target, rooms, force_effect=0):
         ret = 0
         extra = []
+        if not target or target == user:
+            return ret, extra
         if target.equipment_list:
             if rooms and hasattr(rooms, 'current_player'):
                 ret = 2

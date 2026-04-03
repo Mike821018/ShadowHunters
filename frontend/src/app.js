@@ -19,6 +19,7 @@ import { createDispatch } from './transport.js';
 import { createStatusHelpers, createToast, loadAnnouncement, renderPlayerCards } from './ui.js';
 import { getDomElements } from './dom.js';
 import { countChars, esc, getInitial, isValidAsciiCredential, normalizeVillageName, withVillageSuffix } from './utils.js';
+import { initFloatingChat } from './components/floatingChat.js';
 const state = createAppState();
 
 const el = getDomElements();
@@ -143,7 +144,7 @@ async function boot() {
 
   restoreSession(state);
   bindTransportModeEvents({ el, setTransportMode, persistCurrentSession });
-  setTransportMode('http');
+  setTransportMode('auto');
 
   bindLobbyEvents({
     el,
@@ -210,6 +211,9 @@ async function boot() {
   if (state.page === 'version-notes') {
     await initVersionPage({ state, toast });
   }
+
+  // Non-blocking: initialise floating chat overlay on pages without a chat room
+  initFloatingChat({ state }).catch(() => {});
 }
 
 boot().catch((err) => {

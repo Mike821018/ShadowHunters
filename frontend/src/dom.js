@@ -6,7 +6,6 @@ export function getDomElements() {
 
     btnUseAuto: document.getElementById('btnUseAuto'),
     btnUseHttp: document.getElementById('btnUseHttp'),
-    btnUseDemo: document.getElementById('btnUseDemo'),
     announcementText: document.getElementById('announcementText'),
 
     roomsTbody: document.getElementById('roomsTbody'),
@@ -107,6 +106,10 @@ export function getDomElements() {
     chatMessages: document.getElementById('chatMessages'),
     systemMessages: document.getElementById('systemMessages'),
     chatInput: document.getElementById('chatInput'),
+    chatEmojiToggle: document.getElementById('chatEmojiToggle'),
+    chatEmojiPanel: document.getElementById('chatEmojiPanel'),
+    chatEmojiGrid: document.getElementById('chatEmojiGrid'),
+    chatEmojiClose: document.getElementById('chatEmojiClose'),
     chatSendButton: document.getElementById('chatSendButton'),
     recordsSearchInput: document.getElementById('recordsSearchInput'),
     recordsSearchButton: document.getElementById('recordsSearchButton'),

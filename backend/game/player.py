@@ -35,6 +35,7 @@ class player():
         self.df = 0
         self.force_atk = False
         self.leech = 0
+        self.counter_atk = False
         self.immortal = False
         self.extra_turn = 0
         self.immortal_source = ''
@@ -49,6 +50,9 @@ class player():
         self.eqp_immortal = False
         self.eqp_immortal_source = ''
         self.eqp_rob = False
+        # Track Spear of Longinus bonus by state so equip/reveal order never misses +2 ATK.
+        self.eqp_longinus_count = 0
+        self.eqp_longinus_applied = 0
 
         # 逾時暴斃狀態（AFK 死亡）
         self.is_boomed = False
@@ -79,9 +83,18 @@ class player():
         if not self.character:
             return
         self.character.reveal(self)
+        self._sync_longinus_bonus()
         if self.ability_status not in ('used', 'disabled'):
             self.ability_status = 'ready' if bool(self.can_use_ability) else 'disabled'
         # update
+
+    def _sync_longinus_bonus(self):
+        is_hunter = bool(getattr(self.character, 'camp', '') == 'Hunter')
+        desired_bonus = (self.eqp_longinus_count * 2) if (is_hunter and self.character_reveal) else 0
+        delta = desired_bonus - int(self.eqp_longinus_applied or 0)
+        if delta:
+            self.eqp_atk += delta
+        self.eqp_longinus_applied = desired_bonus
 
     def use_ability(self, target):
         ret = False
@@ -179,15 +192,11 @@ class player():
             return 0
 
         if ignore_defence:
-            base_damage = damage
+            final_damage = max(0, int(damage) + int(additional_damage))
         else:
-            base_damage = damage - self.df - self.eqp_df
-
-        # 規則：先判斷基礎傷害是否破防，再套用裝備/效果增減。
-        if base_damage <= 0:
-            return 0
-
-        final_damage = max(0, base_damage + additional_damage)
+            # 規則：攻擊增減傷與防禦同時納入最終結算，避免出現
+            #「基礎傷害被防禦抵消後，增傷卻無法生效」的誤判。
+            final_damage = max(0, int(damage) + int(additional_damage) - int(self.df) - int(self.eqp_df))
         if final_damage > 0:
             self.damage += final_damage
         # update

@@ -60,6 +60,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
   const canToggleReady = Boolean(selfPlayer) && status === 1 && !isChatRoom;
   const canAbolish = isVillageManager && status === 1;
   const canRollCall = isVillageManager && status === 1 && !isChatRoom;
+  const canExtendTurnTimeout = isVillageManager && status === 2 && !isChatRoom;
   const villageName = withVillageSuffix(room.room_name || '');
   const villageDescription = room.room_comment || room.village_description || room.description || '-';
   const boomTimeoutMinutes = Number(room.turn_timeout_minutes || 3);
@@ -147,6 +148,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
         <strong>${esc(t('room.info.count'))}</strong>(${Number(room.player_count || 0)}/${maxPlayers})
         ${canToggleReady ? `<button id="btnToggleReadyInline" class="btn btn-inline" type="button">${esc(isSelfReady ? t('room.ops.unready') : t('room.ops.ready'))}</button>` : ''}
         ${canRollCall ? `<button id="btnRollCallInline" class="btn btn-inline" type="button">${esc(t('room.ops.roll_call'))}</button>` : ''}
+        ${canExtendTurnTimeout ? `<button id="btnExtendTurnTimeoutInline" class="btn btn-inline" type="button">${esc(t('room.ops.extend_turn_timeout'))}</button>` : ''}
       </li>
       <li><strong>${esc(t('room.info.name'))}</strong>${esc(villageName || '-')}</li>
       <li><strong>${esc(t('room.info.desc'))}</strong>${esc(villageDescription)}</li>
@@ -183,6 +185,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
       ${canEditSettings ? `<button id="btnEditRoomSettingsInline" class="btn btn-inline" type="button">${esc(t('room.ops.edit_settings'))}</button>` : ''}
       ${canToggleReady ? `<button id="btnToggleReadyInline" class="btn btn-inline" type="button">${esc(isSelfReady ? t('room.ops.unready') : t('room.ops.ready'))}</button>` : ''}
       ${canRollCall ? `<button id="btnRollCallInline" class="btn btn-inline" type="button">${esc(t('room.ops.roll_call'))}</button>` : ''}
+      ${canExtendTurnTimeout ? `<button id="btnExtendTurnTimeoutInline" class="btn btn-inline" type="button">${esc(t('room.ops.extend_turn_timeout'))}</button>` : ''}
       ${canAbolish ? `<button id="btnAbolishVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.abolish'))}</button>` : ''}
     </li>
     ${settingsDialog}
