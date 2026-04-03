@@ -32,11 +32,24 @@ const AREA_LOCALIZED_NAMES = {
   'Erstwhile Altar': { zh: '古代祭壇', en: 'Erstwhile Altar', jp: '古の祭壇' },
 };
 
+const AREA_NAME_CLASS = {
+  "Hermit's Cabin": 'area-name-hermit',
+  'Underworld Gate': 'area-name-gate',
+  Church: 'area-name-church',
+  Cemetery: 'area-name-cemetery',
+  'Weird Woods': 'area-name-woods',
+  'Erstwhile Altar': 'area-name-altar',
+};
+
 function getLocalizedAreaName(areaName, lang) {
   const rawName = String(areaName || '').trim();
   if (!rawName) return '-';
   const localized = AREA_LOCALIZED_NAMES[rawName];
   return localized?.[lang] || localized?.zh || rawName;
+}
+
+function getAreaNameClass(areaName) {
+  return AREA_NAME_CLASS[String(areaName || '').trim()] || '';
 }
 
 export function createToast(el) {
@@ -137,6 +150,7 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       const hpVisible = isSelf || hasKnownRole;
       const lang = getCurrentUiLang();
       const areaDisplayName = getLocalizedAreaName(p.area, lang);
+      const areaNameClass = getAreaNameClass(p.area);
       const roleDisplayName = roleNameEn ? getCharacterLocalizedName(roleNameEn, lang) : '???';
       const roleTooltip = roleNameEn ? getCharacterTooltipInfo(roleNameEn, lang) : null;
       const roleCampClass = roleCamp ? String(roleCamp).toLowerCase() : 'civilian';
@@ -218,7 +232,7 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
             <div class="player-color-cell">${colorControlHtml}</div>
           </header>
           <div class="player-card-meta">
-            <span>📍 ${esc(areaDisplayName)}</span>
+            <span class="player-area-label ${esc(areaNameClass)}">📍 ${esc(areaDisplayName)}</span>
           </div>
           <div class="player-card-meta-role">
             <div class="player-role-info">

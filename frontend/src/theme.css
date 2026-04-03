@@ -886,6 +886,79 @@ legend {
   line-height: 1.55;
 }
 
+.area-name-hermit {
+  color: #2e8b57;
+}
+
+.area-name-gate {
+  color: #7a4fa3;
+}
+
+.area-name-church {
+  color: #dce1e6;
+  text-shadow: 0 0 1px rgba(20, 36, 48, 0.8);
+}
+
+.area-name-cemetery {
+  color: #2c2f35;
+}
+
+.area-name-woods {
+  color: #6f7780;
+}
+
+.area-name-altar {
+  color: #8b5a2b;
+}
+
+.stage-field-number.area-name-hermit,
+.stage-field-detail-number.area-name-hermit,
+.stage-field-number-static.area-name-hermit {
+  border-color: #2e8b57;
+  color: #2e8b57;
+  background: #ecfaf1;
+}
+
+.stage-field-number.area-name-gate,
+.stage-field-detail-number.area-name-gate,
+.stage-field-number-static.area-name-gate {
+  border-color: #7a4fa3;
+  color: #7a4fa3;
+  background: #f5eefc;
+}
+
+.stage-field-number.area-name-church,
+.stage-field-detail-number.area-name-church,
+.stage-field-number-static.area-name-church {
+  border-color: #c6ced6;
+  color: #eaf0f5;
+  background: #8f9daa;
+}
+
+.stage-field-number.area-name-cemetery,
+.stage-field-detail-number.area-name-cemetery,
+.stage-field-number-static.area-name-cemetery {
+  border-color: #2c2f35;
+  color: #2c2f35;
+  background: #eceef2;
+}
+
+.stage-field-number.area-name-woods,
+.stage-field-detail-number.area-name-woods,
+.stage-field-number-static.area-name-woods {
+  border-color: #6f7780;
+  color: #6f7780;
+  background: #f1f3f5;
+}
+
+.stage-field-number.area-name-altar,
+.stage-field-detail-number.area-name-altar,
+.stage-field-number-static.area-name-altar {
+  border-color: #8b5a2b;
+  color: #8b5a2b;
+  background: #fff3e8;
+}
+
 .stage-card-pile .stage-card-caption {
   color: #2a3540;
 }
@@ -2283,6 +2356,10 @@ legend {
   font-size: 12px;
 }
 
+.player-area-label {
+  font-weight: 700;
+}
+
 .player-card-meta-role {
   margin-top: 2px;
   font-size: 12px;
@@ -2958,6 +3035,10 @@ legend {
   align-items: center;
   justify-content: center;
   gap: 4px;
+}
+
+.guide-area-table .guide-area-name {
+  font-weight: 700;
 }
 
 .village-info-list li.room-timeout-warning strong {

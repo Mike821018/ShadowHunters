@@ -57,6 +57,7 @@ export function getDomElements() {
     expansionExtendCheck: document.getElementById('expansionExtendCheck'),
     turnTimeoutSelect: document.getElementById('turnTimeoutSelect'),
     enableInitialGreenCardCheck: document.getElementById('enableInitialGreenCardCheck'),
+    enableNeutralChaosModeCheck: document.getElementById('enableNeutralChaosModeCheck'),
     loginRoomForm: document.getElementById('loginRoomForm'),
     loginVillageTitle: document.getElementById('loginVillageTitle'),
     loginAccount: document.getElementById('loginAccount'),

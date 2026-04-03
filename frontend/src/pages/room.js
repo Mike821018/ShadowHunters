@@ -1823,6 +1823,7 @@ export function bindRoomEvents({
         expansion_mode: patch.expansion_mode ?? String(roomInfo.expansion_mode || 'all'),
         turn_timeout_minutes: patch.turn_timeout_minutes ?? Number(roomInfo.turn_timeout_minutes || 3),
         enable_initial_green_card: patch.enable_initial_green_card ?? Boolean(roomInfo.enable_initial_green_card),
+        enable_neutral_chaos_mode: patch.enable_neutral_chaos_mode ?? Boolean(roomInfo.enable_neutral_chaos_mode),
       });
       renderState(data);
       toast(t('room.settings.updated'));
@@ -1921,6 +1922,7 @@ export function bindRoomEvents({
     const basicCheck = dialog.querySelector('[data-setting-basic-check]');
     const extendCheck = dialog.querySelector('[data-setting-extend-check]');
     const initialGreenCheck = dialog.querySelector('[data-setting-initial-green-check]');
+    const neutralChaosCheck = dialog.querySelector('[data-setting-neutral-chaos-check]');
 
     const turnTimeoutMinutes = Number.parseInt(String(timeoutSelect?.value || ''), 10);
     const useBasic = Boolean(basicCheck?.checked);
@@ -1940,6 +1942,7 @@ export function bindRoomEvents({
       expansion_mode: expansionMode,
       turn_timeout_minutes: turnTimeoutMinutes,
       enable_initial_green_card: Boolean(initialGreenCheck?.checked),
+      enable_neutral_chaos_mode: Boolean(neutralChaosCheck?.checked),
     });
 
     if (dialog.open) {

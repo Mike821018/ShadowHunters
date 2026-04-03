@@ -20,10 +20,14 @@ function formatToggleSummary({ t }, value) {
 function formatRoomSettingsSummary({ t }, room) {
   const expansionMode = String(room?.expansion_mode || 'all');
   const boomTimeoutMinutes = Number(room?.turn_timeout_minutes || 3);
+  const neutralChaosMode = Boolean(room?.enable_neutral_chaos_mode);
+  const cardPoolSummary = formatCardSetSummary({ t }, expansionMode);
+  const cardPoolWithNeutral = neutralChaosMode ? `${cardPoolSummary}+[C]` : cardPoolSummary;
   return [
     `${t('room.info.trip_rule')}:${formatToggleSummary({ t }, Boolean(room?.require_trip))}`,
-    formatCardSetSummary({ t }, expansionMode),
+    cardPoolWithNeutral,
     `${t('room.info.initial_green_card')}:${formatToggleSummary({ t }, Boolean(room?.enable_initial_green_card))}`,
+    `${t('room.info.neutral_chaos_mode')}:${formatToggleSummary({ t }, neutralChaosMode)}`,
     `${t('room.info.boom_timeout')}:${t('room.info.boom_timeout_fmt_minutes', { n: boomTimeoutMinutes })}`,
   ].join(' / ');
 }
@@ -65,6 +69,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
   const villageDescription = room.room_comment || room.village_description || room.description || '-';
   const boomTimeoutMinutes = Number(room.turn_timeout_minutes || 3);
   const expansionMode = String(room.expansion_mode || 'all');
+  const neutralChaosMode = Boolean(room.enable_neutral_chaos_mode);
   const { useBasic, useExtend } = expansionModeToCardFlags(expansionMode);
   const settingsDialog = canEditSettings
     ? `
@@ -105,6 +110,14 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
             <span>${esc(t('room.info.setting_on'))}</span>
           </label>
           <span class="field-hint room-settings-hint">${esc(t('lobby.create.initial_green_card_hint'))}</span>
+        </span>
+        <span class="village-settings-group village-settings-group-neutral-chaos">
+          <strong>${esc(t('lobby.create.neutral_chaos_mode_label'))}</strong>
+          <label class="checkbox-row checkbox-row-inline room-settings-checkbox">
+            <input type="checkbox" data-setting-neutral-chaos-check ${neutralChaosMode ? 'checked' : ''} />
+            <span>${esc(t('room.info.setting_on'))}</span>
+          </label>
+          <span class="field-hint room-settings-hint">${esc(t('lobby.create.neutral_chaos_mode_hint'))}</span>
         </span>
           </div>
           <div class="inline-actions village-settings-dialog-actions">

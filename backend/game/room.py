@@ -47,6 +47,7 @@ class room(Thread):
         self.is_chat_room: bool = False  # 聊天村：不開局、較高人數上限
         self.expansion_mode: str = 'all'  # all | no_extend
         self.enable_initial_green_card: bool = False  # 遊戲開始時執行初始綠卡
+        self.enable_neutral_chaos_mode: bool = False  # 中立大亂鬥（全中立角色）
         # 開發除錯用：可在開局前指定帳號對應角色（不對一般 UI 顯示）
         self.debug_forced_characters: dict = {}
         self.max_players: int = 8

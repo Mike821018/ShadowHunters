@@ -78,6 +78,8 @@ export default {
       expansion_mode_no_extend: '不使用',
       initial_green_card_label: '初始綠卡',
       initial_green_card_hint: '（遊戲開始時所有玩家依序執行一張綠卡）',
+      neutral_chaos_mode_label: '中立大亂鬥',
+      neutral_chaos_mode_hint: '（嘗試全中立角色；若中立角色不足會自動回復原設定）',
     },
   },
   records: {
@@ -303,6 +305,7 @@ export default {
       trip_rule: 'TRIP',
       card_pool: '卡組',
       initial_green_card: '初始綠卡',
+      neutral_chaos_mode: '中立大亂鬥',
       boom_timeout: '暴斃時間',
       boom_timeout_fmt_minutes: '{n}分',
       setting_on: '開',

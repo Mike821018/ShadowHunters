@@ -25,6 +25,19 @@ const FIELD_NUMBERS_BY_SLOT = Object.freeze([
   [10],
 ]);
 
+const FIELD_AREA_CLASS = Object.freeze({
+  "Hermit's Cabin": 'area-name-hermit',
+  'Underworld Gate': 'area-name-gate',
+  Church: 'area-name-church',
+  Cemetery: 'area-name-cemetery',
+  'Weird Woods': 'area-name-woods',
+  'Erstwhile Altar': 'area-name-altar',
+});
+
+function getFieldAreaClass(fieldName) {
+  return FIELD_AREA_CLASS[String(fieldName || '').trim()] || '';
+}
+
 function normalizeFieldNumbers(field, slot) {
   const rawNumbers = [];
   if (Array.isArray(field?.numbers)) rawNumbers.push(...field.numbers);
@@ -120,13 +133,16 @@ export function renderStageFieldCards({
   const openFieldDetail = (slot, field, number, anchorEl) => {
     if (!field || !detailPanel || !detailName || !detailNumbers || !detailDescription) return;
     const numbers = normalizeFieldNumbers(field, slot);
+    const areaClass = getFieldAreaClass(field?.name);
     refs.activeFieldSlot = slot;
     refs.activeFieldNumber = number;
     detailName.textContent = field.display_name || field.name || '場地資訊';
+    detailName.className = areaClass ? areaClass : '';
     detailNumbers.innerHTML = numbers
-      .map((value) => `<span class="stage-field-detail-number">${escapeHtml(value)}</span>`)
+      .map((value) => `<span class="stage-field-detail-number ${escapeHtml(areaClass)}">${escapeHtml(value)}</span>`)
       .join('');
     detailDescription.textContent = field.description || '目前沒有額外說明。';
+    detailDescription.className = `stage-field-detail-description${areaClass ? ` ${areaClass}` : ''}`;
     detailPanel.hidden = false;
     positionDetailPanel(anchorEl);
     cards.forEach((cardEl) => {
@@ -169,6 +185,7 @@ export function renderStageFieldCards({
     const occupantsEl = cardEl.querySelector('.stage-field-occupants');
     const displayName = field?.display_name || field?.name || '未翻開';
     const numbers = normalizeFieldNumbers(field, slot);
+    const areaClass = getFieldAreaClass(field?.name);
     const occupants = field ? (occupantsByFieldName.get(field.name) || []).slice(0, 8) : [];
     const normalizedAreaName = String(field?.name || '').trim();
     const isMoveTargetPrompt = Boolean(movePrompt.active && normalizedAreaName && movePromptSet.has(normalizedAreaName));
@@ -206,7 +223,7 @@ export function renderStageFieldCards({
         numberListEl.innerHTML = numbers
           .map((number) => `
             <button
-              class="stage-field-number"
+              class="stage-field-number ${escapeHtml(areaClass)}"
               type="button"
               data-field-open="${slot}"
               data-field-number="${escapeHtml(number)}"

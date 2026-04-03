@@ -79,6 +79,8 @@ export default {
       expansion_mode_no_extend: 'No Extend',
       initial_green_card_label: 'Initial Green Card',
       initial_green_card_hint: '(All players execute one green card sequentially when the game starts)',
+      neutral_chaos_mode_label: 'Neutral Chaos Mode',
+      neutral_chaos_mode_hint: '(Try all-neutral roles; auto-falls back to normal factions if neutrals are insufficient)',
     },
   },
   records: {
@@ -312,6 +314,7 @@ export default {
       trip_rule: 'TRIP',
       card_pool: 'Card Pool',
       initial_green_card: 'Initial Green Card',
+      neutral_chaos_mode: 'Neutral Chaos Mode',
       boom_timeout: 'Boom Timeout',
       boom_timeout_fmt_minutes: '{n} min',
       setting_on: 'On',

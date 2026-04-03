@@ -79,6 +79,8 @@ export default {
       expansion_mode_no_extend: '未使用',
       initial_green_card_label: '初期グリーンカード',
       initial_green_card_hint: '（ゲーム開始時、すべてのプレイヤーが順番にグリーンカードを実行します）',
+      neutral_chaos_mode_label: '中立大乱闘',
+      neutral_chaos_mode_hint: '（全員中立を試行。中立不足時は通常陣営へ自動復帰）',
     },
   },
   records: {
@@ -312,6 +314,7 @@ export default {
       trip_rule: 'TRIP',
       card_pool: 'カードセット',
       initial_green_card: '初期グリーンカード',
+      neutral_chaos_mode: '中立大乱闘',
       boom_timeout: '暴斃時間',
       boom_timeout_fmt_minutes: '{n}分',
       setting_on: 'オン',

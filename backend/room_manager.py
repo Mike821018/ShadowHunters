@@ -147,6 +147,7 @@ class RoomManager:
         is_chat_room: bool = False,
         expansion_mode: str = 'all',
         enable_initial_green_card: bool = False,
+        enable_neutral_chaos_mode: bool = False,
         turn_timeout_minutes: int = 3,
     ) -> room.room:
         game_room = room.room()
@@ -161,6 +162,7 @@ class RoomManager:
         game_room.is_chat_room = bool(is_chat_room)
         game_room.expansion_mode = self._normalize_expansion_mode(expansion_mode)
         game_room.enable_initial_green_card = bool(enable_initial_green_card)
+        game_room.enable_neutral_chaos_mode = bool(enable_neutral_chaos_mode)
         valid_timeout_minutes = [2, 3, 5, 10, 20, 30]
         chosen = int(turn_timeout_minutes or 3)
         if chosen not in valid_timeout_minutes:
@@ -328,17 +330,33 @@ class RoomManager:
                 forced_by_camp[camp_name] += 1
 
         character_pool = []
-        shadow_need = max(0, int(camp_config['Shadow']) - int(forced_by_camp['Shadow']))
-        hunter_need = max(0, int(camp_config['Hunter']) - int(forced_by_camp['Hunter']))
-        civilian_need = max(0, int(camp_config['Civilian']) - int(forced_by_camp['Civilian']))
+        neutral_chaos_enabled = bool(getattr(game_room, 'enable_neutral_chaos_mode', False))
+        neutral_chaos_available = False
+        if neutral_chaos_enabled:
+            forced_total = len(forced_role_classes)
+            neutral_need = max(0, int(player_count) - int(forced_total))
+            civilian_pool = [cls for cls in self._resolve_camp_classes(character_module.civilian_camp, expansion_mode) if cls not in forced_class_set]
+            has_non_neutral_forced = int(forced_by_camp['Shadow']) > 0 or int(forced_by_camp['Hunter']) > 0
+            neutral_chaos_available = (not has_non_neutral_forced) and len(civilian_pool) >= neutral_need
 
-        shadow_pool = [cls for cls in self._resolve_camp_classes(character_module.shadow_camp, expansion_mode) if cls not in forced_class_set]
-        hunter_pool = [cls for cls in self._resolve_camp_classes(character_module.hunter_camp, expansion_mode) if cls not in forced_class_set]
-        civilian_pool = [cls for cls in self._resolve_camp_classes(character_module.civilian_camp, expansion_mode) if cls not in forced_class_set]
+            if neutral_chaos_available:
+                character_pool.extend(self._pick_character_instances(civilian_pool, neutral_need))
+            else:
+                game_room.enable_neutral_chaos_mode = False
+                game_room.add_system_message('中立大亂鬥因中立角色數量不足或指定角色不符，已自動回復原本陣營設定')
 
-        character_pool.extend(self._pick_character_instances(shadow_pool, shadow_need))
-        character_pool.extend(self._pick_character_instances(hunter_pool, hunter_need))
-        character_pool.extend(self._pick_character_instances(civilian_pool, civilian_need))
+        if not neutral_chaos_enabled or not neutral_chaos_available:
+            shadow_need = max(0, int(camp_config['Shadow']) - int(forced_by_camp['Shadow']))
+            hunter_need = max(0, int(camp_config['Hunter']) - int(forced_by_camp['Hunter']))
+            civilian_need = max(0, int(camp_config['Civilian']) - int(forced_by_camp['Civilian']))
+
+            shadow_pool = [cls for cls in self._resolve_camp_classes(character_module.shadow_camp, expansion_mode) if cls not in forced_class_set]
+            hunter_pool = [cls for cls in self._resolve_camp_classes(character_module.hunter_camp, expansion_mode) if cls not in forced_class_set]
+            civilian_pool = [cls for cls in self._resolve_camp_classes(character_module.civilian_camp, expansion_mode) if cls not in forced_class_set]
+
+            character_pool.extend(self._pick_character_instances(shadow_pool, shadow_need))
+            character_pool.extend(self._pick_character_instances(hunter_pool, hunter_need))
+            character_pool.extend(self._pick_character_instances(civilian_pool, civilian_need))
         random.shuffle(character_pool)
 
         character_iter = iter(character_pool)
@@ -574,6 +592,7 @@ class RoomManager:
             'is_chat_room': bool(getattr(game_room, 'is_chat_room', False)),
             'expansion_mode': self._normalize_expansion_mode(getattr(game_room, 'expansion_mode', 'all')),
             'enable_initial_green_card': bool(getattr(game_room, 'enable_initial_green_card', False)),
+            'enable_neutral_chaos_mode': bool(getattr(game_room, 'enable_neutral_chaos_mode', False)),
             'turn_timeout_minutes': int(getattr(game_room, 'turn_timeout_seconds', 180) or 180) // 60,
             'max_players': max(1, int(getattr(game_room, 'max_players', 8) or 8)),
             'player_count': len(game_room.players),
@@ -1208,6 +1227,7 @@ class RoomManager:
         is_chat_room = bool(payload.get('is_chat_room', False))
         expansion_mode = self._resolve_expansion_mode_from_payload(payload, default_mode='all')
         enable_initial_green_card = bool(payload.get('enable_initial_green_card', False))
+        enable_neutral_chaos_mode = bool(payload.get('enable_neutral_chaos_mode', False))
         turn_timeout_minutes = int(payload.get('turn_timeout_minutes', 3) or 3)
         if not room_name:
             return self._error('create_room', 'ROOM_NAME_REQUIRED', 'room_name is required', 400)
@@ -1222,6 +1242,7 @@ class RoomManager:
             is_chat_room=is_chat_room,
             expansion_mode=expansion_mode,
             enable_initial_green_card=enable_initial_green_card,
+            enable_neutral_chaos_mode=enable_neutral_chaos_mode,
             turn_timeout_minutes=turn_timeout_minutes,
         )
         return self._success('create_room', self._serialize_room(game_room))
@@ -1535,6 +1556,7 @@ class RoomManager:
         room_setting_keys = {
             'expansion_mode',
             'enable_initial_green_card',
+            'enable_neutral_chaos_mode',
             'turn_timeout_minutes',
             'use_basic_card_set',
             'card_set_basic',
@@ -1582,6 +1604,7 @@ class RoomManager:
             return self._success('update_room_settings', self._serialize_room_state(game_room, viewer_account=account))
 
         enable_initial_green_card = bool(payload.get('enable_initial_green_card', getattr(game_room, 'enable_initial_green_card', False)))
+        enable_neutral_chaos_mode = bool(payload.get('enable_neutral_chaos_mode', getattr(game_room, 'enable_neutral_chaos_mode', False)))
         timeout_minutes_raw = payload.get('turn_timeout_minutes', int(getattr(game_room, 'turn_timeout_seconds', 180) or 180) // 60)
         try:
             timeout_minutes = int(timeout_minutes_raw or 3)
@@ -1595,11 +1618,12 @@ class RoomManager:
 
         game_room.expansion_mode = expansion_mode
         game_room.enable_initial_green_card = enable_initial_green_card
+        game_room.enable_neutral_chaos_mode = enable_neutral_chaos_mode
         game_room.turn_timeout_seconds = int(timeout_minutes * 60)
         game_room.touch_activity()
         game_room.add_system_message(
             "村長更新房間設定："
-            f"{self._format_card_set_summary(expansion_mode)} / 初始綠卡={'On' if enable_initial_green_card else 'Off'} / 暴斃時間={timeout_minutes}分"
+            f"{self._format_card_set_summary(expansion_mode)} / 初始綠卡={'On' if enable_initial_green_card else 'Off'} / 中立大亂鬥={'On' if enable_neutral_chaos_mode else 'Off'} / 暴斃時間={timeout_minutes}分"
         )
         return self._success('update_room_settings', self._serialize_room_state(game_room, viewer_account=account))
 
