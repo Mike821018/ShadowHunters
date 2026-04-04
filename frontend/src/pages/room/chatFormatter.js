@@ -184,6 +184,26 @@ export function buildChatStageLines({
     return CARD_COLORS[key]?.[lang] || CARD_COLORS[key]?.zh || esc(key);
   };
 
+  const settingToggleLabel = (rawValue) => {
+    const normalized = String(rawValue || '').trim().toLowerCase();
+    if (normalized === 'on') return esc(t('room.info.setting_on'));
+    if (normalized === 'off') return esc(t('room.info.setting_off'));
+    return esc(String(rawValue || '').trim() || '-');
+  };
+
+  const formatRoomCardPoolLabel = (rawValue) => {
+    const normalized = String(rawValue || '').trim().replace(/^Card:/i, '');
+    const tokens = normalized
+      .split('+')
+      .map((token) => String(token || '').replace(/[\[\]]/g, '').trim().toUpperCase())
+      .filter(Boolean);
+    const labels = [];
+    if (tokens.includes('B')) labels.push(t('lobby.create.expansion_mode_basic'));
+    if (tokens.includes('E')) labels.push(t('lobby.create.expansion_mode_extend'));
+    if (tokens.includes('C')) labels.push(t('room.info.neutral_chaos_mode'));
+    return esc(labels.length ? labels.join(' + ') : (normalized || '-'));
+  };
+
   const buildCardToken = ({ cardName = '', cardColor = '', cardType = '', masked = false, forceLabel = '' } = {}) => {
     const rawName = String(cardName || '').trim();
     if (!rawName && !forceLabel) {
@@ -264,6 +284,14 @@ export function buildChatStageLines({
     }
     if ((m = text.match(/^村長 \[(.+)\] 延長目前回合倒數：\[(.+)\] 重新開始計時$/))) {
       return t('room.system.extend_turn_timeout', { target: pid(esc(m[2]), m[2]) });
+    }
+    if ((m = text.match(/^村長更新房間設定：Card:(.+?) \/ 初始綠卡=(On|Off)(?: \/ 中立大亂鬥=(On|Off))? \/ 暴斃時間=(\d+)分$/))) {
+      return t('room.system.updated_room_settings', {
+        card_pool: formatRoomCardPoolLabel(m[1]),
+        initial_green: settingToggleLabel(m[2]),
+        neutral_chaos: settingToggleLabel(m[3] || 'Off'),
+        timeout: esc(t('room.info.boom_timeout_fmt_minutes', { n: m[4] })),
+      });
     }
 
     if ((m = text.match(/^\[(.+)\]\s*初始綠卡：(.+)$/))) return t('room.system.initial_green_card', { card: buildCardToken({ cardName: String(m[2] || '').trim(), cardColor: 'green', cardType: 'action' }) });

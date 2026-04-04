@@ -881,7 +881,7 @@ legend {
 
 .stage-field-detail-description {
   margin: 10px 0 0;
-  color: #3e5668;
+  color: #111111;
   font-size: 13px;
   line-height: 1.55;
 }
@@ -900,15 +900,15 @@ legend {
 }
 
 .area-name-cemetery {
-  color: #2c2f35;
+  color: #4b545e;
 }
 
 .area-name-woods {
-  color: #6f7780;
+  color: #6f737a;
 }
 
 .area-name-altar {
-  color: #8b5a2b;
+  color: #742d2d;
 }
 
 .stage-field-number.area-name-hermit,
@@ -931,32 +931,32 @@ legend {
 .stage-field-detail-number.area-name-church,
 .stage-field-number-static.area-name-church {
   border-color: #c6ced6;
-  color: #eaf0f5;
-  background: #8f9daa;
+  color: #3f4750;
+  background: #ffffff;
 }
 
 .stage-field-number.area-name-cemetery,
 .stage-field-detail-number.area-name-cemetery,
 .stage-field-number-static.area-name-cemetery {
-  border-color: #2c2f35;
-  color: #2c2f35;
-  background: #eceef2;
+  border-color: #272c32;
+  color: #f3f6fa;
+  background: #3a4048;
 }
 
 .stage-field-number.area-name-woods,
 .stage-field-detail-number.area-name-woods,
 .stage-field-number-static.area-name-woods {
-  border-color: #6f7780;
-  color: #6f7780;
-  background: #f1f3f5;
+  border-color: #6f737a;
+  color: #6f737a;
+  background: #edf0f3;
 }
 
 .stage-field-number.area-name-altar,
 .stage-field-detail-number.area-name-altar,
 .stage-field-number-static.area-name-altar {
-  border-color: #8b5a2b;
-  color: #8b5a2b;
-  background: #fff3e8;
+  border-color: #742d2d;
+  color: #742d2d;
+  background: #f9ecec;
 }
 
 .stage-card-pile .stage-card-caption {

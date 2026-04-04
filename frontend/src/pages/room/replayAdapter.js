@@ -45,6 +45,65 @@ function mergeReplayChatMessages(finalState, record) {
   return merged;
 }
 
+const REPLAY_FIELD_INFO_BY_NAME = Object.freeze({
+  "Hermit's Cabin": {
+    display_name: '隱士小屋',
+    description: '抽一張綠卡。',
+  },
+  'Underworld Gate': {
+    display_name: '時空之門',
+    description: '抽一張白卡、綠卡或黑卡。',
+  },
+  Church: {
+    display_name: '教堂',
+    description: '抽一張白卡。',
+  },
+  Cemetery: {
+    display_name: '墓園',
+    description: '抽一張黑卡。',
+  },
+  'Weird Woods': {
+    display_name: '希望與絕望的森林',
+    description: '指定任意一名玩家（包含自己），造成 2 傷害或回復 1 傷害。',
+  },
+  'Erstwhile Altar': {
+    display_name: '古代祭壇',
+    description: '奪取任意一名玩家的一件裝備（若有的話）。',
+  },
+});
+
+const REPLAY_FIELD_INFO_ALIAS = Object.freeze({
+  '隱士小屋': "Hermit's Cabin",
+  '時空之門': 'Underworld Gate',
+  教堂: 'Church',
+  墓園: 'Cemetery',
+  '希望與絕望的森林': 'Weird Woods',
+  '古代祭壇': 'Erstwhile Altar',
+  '隠者の庵': "Hermit's Cabin",
+  '冥界の門': 'Underworld Gate',
+  教会: 'Church',
+  墓地: 'Cemetery',
+  '希望と絶望の森': 'Weird Woods',
+  '古の祭壇': 'Erstwhile Altar',
+});
+
+function enrichReplayFields(fields) {
+  if (!Array.isArray(fields)) return [];
+  return fields.map((field) => {
+    if (!field || typeof field !== 'object') return field;
+    const rawName = String(field.name || '').trim();
+    const canonicalName = REPLAY_FIELD_INFO_ALIAS[rawName] || rawName;
+    const fallbackInfo = REPLAY_FIELD_INFO_BY_NAME[canonicalName] || null;
+    if (!fallbackInfo) return field;
+    return {
+      ...field,
+      name: canonicalName || rawName,
+      display_name: String(field.display_name || '').trim() || fallbackInfo.display_name,
+      description: String(field.description || '').trim() || fallbackInfo.description,
+    };
+  });
+}
+
 export function buildReplayRoomState(record) {
   const parseBool = (value) => {
     if (typeof value === 'boolean') return value;
@@ -184,7 +243,7 @@ export function buildReplayRoomState(record) {
         D6: Number(finalState?.dice?.D6 || 1),
         D4: Number(finalState?.dice?.D4 || 1),
       },
-      fields: Array.isArray(finalState?.fields) ? finalState.fields : [],
+      fields: enrichReplayFields(finalState?.fields),
       card_piles: finalState?.card_piles && typeof finalState.card_piles === 'object' ? finalState.card_piles : {},
       replay_role_by_name: replayRoleByName,
       replay_role_by_account: replayRoleByAccount,
@@ -267,7 +326,7 @@ export function buildReplayRoomState(record) {
     active_card_display: null,
     active_card: null,
     dice: { D6: 1, D4: 1 },
-    fields: [],
+    fields: enrichReplayFields(finalState?.fields),
     card_piles: {},
     replay_role_by_name: replayRoleByName,
     replay_role_by_account: replayRoleByAccount,

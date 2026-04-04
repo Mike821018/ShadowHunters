@@ -363,6 +363,7 @@ export default {
       manager_kicked: '村長 {actor} が {target} を退室させました',
       roll_call: '村長が点呼を開始しました。もう一度準備完了にしてください。',
       extend_turn_timeout: '村長が現在の手番タイマーを延長しました：{target} のカウントを再開',
+      updated_room_settings: '村長が部屋設定を更新しました：カードセット {card_pool} / 初期グリーンカード {initial_green} / 中立大乱闘 {neutral_chaos} / 暴斃時間 {timeout}',
       initial_green_card: '初期グリーンカード：{card}',
       game_started: 'ゲーム開始',
       game_ended_winners: 'ゲーム終了。勝者: {winners}',

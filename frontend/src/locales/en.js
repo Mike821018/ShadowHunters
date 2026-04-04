@@ -364,6 +364,7 @@ export default {
       manager_kicked: 'Village manager {actor} kicked {target}',
       roll_call: 'The village manager started a roll call. Please get ready again.',
       extend_turn_timeout: 'Village manager extended the current turn timer: restarted for {target}',
+      updated_room_settings: 'Village manager updated room settings: Card Pool {card_pool} / Initial Green Card {initial_green} / Neutral Chaos Mode {neutral_chaos} / Boom Timeout {timeout}',
       initial_green_card: 'Initial Green Card: {card}',
       game_started: 'Game started',
       game_ended_winners: 'Game ended. Winners: {winners}',

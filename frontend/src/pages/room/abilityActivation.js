@@ -148,6 +148,8 @@ export function createAbilityActivationHandlers({
         labelKey: 'room.table_next_step.roll_damage_dice',
         mode: abilityDiceMode,
         toastKey: 'toast.character_ability_activated',
+        highlightTargetAccounts: [String(targetAccount || '').trim()].filter(Boolean),
+        highlightPromptClass: 'attack-target-prompt',
         execute: () => dispatch('next_step', {
           room_id: state.roomId,
           account: state.account || undefined,

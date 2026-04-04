@@ -142,7 +142,7 @@ export function renderStageFieldCards({
       .map((value) => `<span class="stage-field-detail-number ${escapeHtml(areaClass)}">${escapeHtml(value)}</span>`)
       .join('');
     detailDescription.textContent = field.description || '目前沒有額外說明。';
-    detailDescription.className = `stage-field-detail-description${areaClass ? ` ${areaClass}` : ''}`;
+    detailDescription.className = 'stage-field-detail-description';
     detailPanel.hidden = false;
     positionDetailPanel(anchorEl);
     cards.forEach((cardEl) => {

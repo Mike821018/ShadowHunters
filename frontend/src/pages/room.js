@@ -799,7 +799,12 @@ export function renderState({
   const pendingSteal = getPendingStealState(state, data);
   const pendingKillLoot = getPendingKillLootState(state, data);
   const attackPrompt = getAttackPromptState(state, data);
-  const playerPromptTargets = pendingDiceAction
+  const pendingDicePromptTargets = Array.isArray(pendingDiceAction?.highlightTargetAccounts)
+    ? pendingDiceAction.highlightTargetAccounts.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+  const playerPromptTargets = pendingDicePromptTargets.length > 0
+    ? pendingDicePromptTargets
+    : pendingDiceAction
     ? []
     : pendingKillLoot.active
     ? pendingKillLoot.deathAccounts
@@ -823,7 +828,9 @@ export function renderState({
         : attackPrompt.active
           ? attackPrompt.targetAccounts
           : [];
-  const playerPromptClass = (pendingKillLoot.active || pendingSteal.active || areaPrompt.active || cardPrompt.active) ? 'area-target-prompt' : 'attack-target-prompt';
+  const playerPromptClass = pendingDicePromptTargets.length > 0
+    ? String(pendingDiceAction?.highlightPromptClass || 'attack-target-prompt')
+    : (pendingKillLoot.active || pendingSteal.active || areaPrompt.active || cardPrompt.active) ? 'area-target-prompt' : 'attack-target-prompt';
   const handleEquipmentChipClick = ({ equipmentName, anchorEl }) => {
     openEquipmentCardDialog(equipmentName, anchorEl);
   };
@@ -1452,15 +1459,21 @@ export function bindRoomEvents({
     if (optionalChoice) payload.choice = optionalChoice;
 
     if (cardDiceMeta) {
+      const highlightTargetAccounts = target?.kind === 'player' && target?.id
+        ? [String(target.id).trim()].filter(Boolean)
+        : [];
       setPendingDiceAction({
         labelKey: cardDiceMeta.labelKey,
         mode: cardDiceMeta.mode,
         toastKey: 'toast.card_effect_ok',
+        highlightTargetAccounts,
+        highlightPromptClass: 'attack-target-prompt',
         execute: () => dispatch('card_effect', payload),
         afterRender: async (data) => {
           await maybeResolvePendingSteal(data);
         },
       });
+      renderState(latestRoomSnapshot);
       updateStageNextStepButtonState(state, latestRoomSnapshot);
       return;
     }
@@ -1692,6 +1705,8 @@ export function bindRoomEvents({
         labelKey: 'room.table_next_step.roll_damage_dice',
         mode: abilityDiceMode,
         toastKey: 'toast.character_ability_activated',
+        highlightTargetAccounts: [String(targetAccount || '').trim()].filter(Boolean),
+        highlightPromptClass: 'attack-target-prompt',
         execute: () => dispatch('next_step', {
           room_id: state.roomId,
           account: state.account || undefined,

@@ -354,6 +354,7 @@ export default {
       manager_kicked: '村長 {actor} 剔除了 {target}',
       roll_call: '村長發起點名，請盡速準備完成',
       extend_turn_timeout: '村長延長目前回合倒數：{target} 重新開始計時',
+      updated_room_settings: '村長更新房間設定：卡組 {card_pool} / 初始綠卡 {initial_green} / 中立大亂鬥 {neutral_chaos} / 暴斃時間 {timeout}',
       initial_green_card: '初始綠卡：{card}',
       game_started: '遊戲開始',
       game_ended_winners: '遊戲結束，勝利者：{winners}',

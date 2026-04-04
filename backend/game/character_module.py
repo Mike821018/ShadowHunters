@@ -14,6 +14,8 @@ class Character():
         self.can_take_all_kill_loot = False
         self.take_all_kill_loot_requires_ability = False
         self.intercepts_green_cards = False
+        # Victory timing: 1=after death resolution, 2=after gaining equipment.
+        self.check_win_timing = 1
         # End-game victory flags:
         # - has_end_game_win_check: character has extra victory check at settlement phase.
         # - defer_win_check_until_game_end: skip regular timing checks, only evaluate at settlement.
@@ -33,6 +35,7 @@ class Character():
         user.camp = self.camp
         user.hp = self.hp
         user.counter_atk = self.counter_atk
+        user.check_win_timing = int(getattr(self, 'check_win_timing', 1) or 1)
         # UI 與狀態同步規則：開場皆視為可用（除非後續被禁用或已用盡）。
         # ability_requires_reveal 僅影響「可否主動發動」，不影響可用顯示。
         user.can_use_ability = bool(self.can_use_ability)
@@ -509,6 +512,7 @@ class Bob(Character):
         self.target = "other"
         self.can_take_all_kill_loot = True
         self.take_all_kill_loot_requires_ability = True
+        self.check_win_timing = 2
 
         self.required_equipment = 4
 
@@ -576,6 +580,7 @@ class Daniel(Character):
         self.ability_timing = 9 # dead
         self.target = "self"
         self.ability_requires_reveal = False
+        self.has_end_game_win_check = True
 
     def ability(self, user, target, rooms):
         ret = False
@@ -587,8 +592,10 @@ class Daniel(Character):
 
     def win_check(self, room, user, dead):
         ret = False
-        # 勝利條件: 你是第一位死亡的角色，或是所有暗影角色死亡而你仍存活
-        
+        # 勝利條件: 你是第一位死亡的角色，或是所有暗影角色死亡而你仍存活。
+        # 若本局根本沒有暗影角色（例如中立大亂鬥），則第二條件只在遊戲結束結算時檢查，
+        # 避免被其他角色死亡誤觸發。
+
         # 條件1: 是第一位死亡的角色
         dead_count = sum(1 for p in room.players.values() if not p.is_alive)
         if dead_count == 1 and not user.is_alive:
@@ -596,10 +603,16 @@ class Daniel(Character):
 
         # 條件2: 所有暗影角色死亡而自己仍存活
         if not ret:
-            shadow_alive = any(p.camp == 'Shadow' and p.is_alive for p in room.players.values())
-            if not shadow_alive and user.is_alive:
+            shadow_players = [p for p in room.players.values() if getattr(p, 'camp', '') == 'Shadow']
+            shadow_count = len(shadow_players)
+            shadow_alive = any(getattr(p, 'is_alive', False) for p in shadow_players)
+
+            if shadow_count == 0:
+                if dead is None and int(getattr(room, 'room_status', 0) or 0) == 3 and user.is_alive:
+                    ret = True
+            elif not shadow_alive and user.is_alive:
                 ret = True
-        
+
         return ret
 
 class David(Character):
@@ -612,6 +625,7 @@ class David(Character):
         self.is_extend = True
         self.ability_timing = 8 # any
         self.target = "discard"
+        self.check_win_timing = 2
 
     def ability(self, user, target, rooms): # 這裡的target是指玩家選擇的裝備卡，而不是技能的發動對象
         ret = False

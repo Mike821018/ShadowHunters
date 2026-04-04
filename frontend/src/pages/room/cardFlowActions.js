@@ -163,15 +163,21 @@ export function createCardFlowHandlers({
     if (optionalChoice) payload.choice = optionalChoice;
 
     if (cardDiceMeta) {
+      const highlightTargetAccounts = target?.kind === 'player' && target?.id
+        ? [String(target.id).trim()].filter(Boolean)
+        : [];
       setPendingDiceAction({
         labelKey: cardDiceMeta.labelKey,
         mode: cardDiceMeta.mode,
         toastKey: 'toast.card_effect_ok',
+        highlightTargetAccounts,
+        highlightPromptClass: 'attack-target-prompt',
         execute: () => dispatch('card_effect', payload),
         afterRender: async (data) => {
           await maybeResolvePendingSteal(data);
         },
       });
+      renderState(latestRoomSnapshot);
       updateStageNextStepButtonState(state, latestRoomSnapshot);
       return;
     }
