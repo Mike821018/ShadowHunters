@@ -1,7 +1,9 @@
 import random
 import base64
 import hashlib
+import json
 import os
+import pickle
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -96,7 +98,7 @@ API_SCHEMAS = {
 
 
 class RoomManager:
-    def __init__(self, root_dir: Optional[Path] = None):
+    def __init__(self, root_dir: Optional[Path] = None, room_snapshot_path: Optional[Path] = None):
         self.rooms: Dict[int, room.room] = {}
         self.root_dir = Path(root_dir) if root_dir else Path(__file__).resolve().parent.parent
         self.record_store = GameRecordStore(db_path=os.getenv('SHADOWHUNTERS_DB_PATH') or None)
@@ -107,6 +109,11 @@ class RoomManager:
         self._room_event_conds: Dict[int, threading.Condition] = {}
         self._room_event_seq: Dict[int, int] = {}
         self._room_event_log_limit = 300
+        default_snapshot_path = self.root_dir / 'backend' / 'data' / self._ROOM_SNAPSHOT_FILENAME
+        snapshot_value = room_snapshot_path or (os.getenv('SHADOWHUNTERS_ROOM_SNAPSHOT_PATH') or default_snapshot_path)
+        self.room_snapshot_path = Path(snapshot_value)
+        self._snapshot_lock = threading.RLock()
+        self._restore_persisted_rooms()
 
     _ROOM_STATE_EVENT_ACTIONS = {
         'join_room',
@@ -131,6 +138,139 @@ class RoomManager:
 
     _CARD_SET_BASIC = 'B'
     _CARD_SET_EXTEND = 'E'
+    _ROOM_SNAPSHOT_FILENAME = 'live_room_snapshots.json'
+    _ROOM_SNAPSHOT_VERSION = 1
+    _ROOM_SNAPSHOT_ACTIONS = (_ROOM_STATE_EVENT_ACTIONS | {'create_room', 'abolish_room'}) - {'get_room_state'}
+
+    def _should_persist_room(self, game_room: Any) -> bool:
+        if not game_room or bool(getattr(game_room, 'stop', False)):
+            return False
+        room_status = int(getattr(game_room, 'room_status', 0) or 0)
+        if room_status not in (1, 2):
+            return False
+        if hasattr(game_room, 'should_auto_abolish') and game_room.should_auto_abolish():
+            return False
+        return True
+
+    def _rehydrate_room_after_restore(self, game_room: room.room):
+        setattr(game_room, 'manager_ref', self)
+        game_room.stop = False
+        game_room.idle_timeout_seconds = 60 * 60
+        if not hasattr(game_room, 'last_activity_at'):
+            game_room.last_activity_at = float(getattr(game_room, 'last_message_at', 0) or 0) or datetime.now(timezone.utc).timestamp()
+        if not hasattr(game_room, 'last_message_at'):
+            game_room.last_message_at = float(getattr(game_room, 'last_activity_at', 0) or 0) or datetime.now(timezone.utc).timestamp()
+        if not isinstance(getattr(game_room, 'chat_messages', None), list):
+            game_room.chat_messages = []
+        max_chat_id = max(
+            (
+                int((message or {}).get('id', 0) or 0)
+                for message in game_room.chat_messages
+                if isinstance(message, dict)
+            ),
+            default=0,
+        )
+        game_room._chat_seq = max(int(getattr(game_room, '_chat_seq', 0) or 0), max_chat_id)
+        if not isinstance(getattr(game_room, 'latest_boom_notice', None), dict):
+            game_room.latest_boom_notice = {}
+        if not isinstance(getattr(game_room, 'kick_votes', None), dict):
+            game_room.kick_votes = {}
+        if not isinstance(getattr(game_room, 'private_character_visibility', None), dict):
+            game_room.private_character_visibility = {}
+        if not isinstance(getattr(game_room, '_start_passive_applied', None), dict):
+            game_room._start_passive_applied = {}
+
+        board_obj = getattr(game_room, 'board', None)
+        if board_obj is not None:
+            setattr(board_obj, 'room', game_room)
+        for restored_player in (getattr(game_room, 'players', {}) or {}).values():
+            try:
+                restored_player.room = game_room
+            except Exception:
+                pass
+
+    def _persist_room_snapshots(self):
+        snapshot_path = getattr(self, 'room_snapshot_path', None)
+        if not snapshot_path:
+            return
+        with self._snapshot_lock:
+            room_entries = []
+            for room_id, game_room in sorted(self.rooms.items(), key=lambda item: int(item[0])):
+                if not self._should_persist_room(game_room):
+                    continue
+                try:
+                    snapshot_bytes = pickle.dumps(game_room, protocol=pickle.HIGHEST_PROTOCOL)
+                except Exception:
+                    continue
+                room_entries.append({
+                    'room_id': int(room_id),
+                    'room_status': int(getattr(game_room, 'room_status', 0) or 0),
+                    'last_message_at': float(
+                        getattr(game_room, 'last_message_at', 0)
+                        or getattr(game_room, 'last_activity_at', 0)
+                        or 0
+                    ),
+                    'snapshot_b64': base64.b64encode(snapshot_bytes).decode('ascii'),
+                })
+
+            snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+            if not room_entries:
+                try:
+                    if snapshot_path.exists():
+                        snapshot_path.unlink()
+                except OSError:
+                    pass
+                return
+
+            payload = {
+                'version': self._ROOM_SNAPSHOT_VERSION,
+                'saved_at': datetime.now(timezone.utc).isoformat(),
+                'rooms': room_entries,
+            }
+            temp_path = snapshot_path.with_suffix(snapshot_path.suffix + '.tmp')
+            temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+            temp_path.replace(snapshot_path)
+
+    def _restore_persisted_rooms(self):
+        snapshot_path = getattr(self, 'room_snapshot_path', None)
+        if not snapshot_path or not snapshot_path.exists():
+            return
+        try:
+            payload = json.loads(snapshot_path.read_text(encoding='utf-8'))
+        except Exception:
+            return
+        version = int(payload.get('version', 0) or 0)
+        if version not in (0, self._ROOM_SNAPSHOT_VERSION):
+            return
+
+        for entry in payload.get('rooms', []) or []:
+            if not isinstance(entry, dict):
+                continue
+            snapshot_b64 = str(entry.get('snapshot_b64') or '').strip()
+            if not snapshot_b64:
+                continue
+            try:
+                game_room = pickle.loads(base64.b64decode(snapshot_b64.encode('ascii')))
+            except Exception:
+                continue
+            if not isinstance(game_room, room.room):
+                continue
+            self._rehydrate_room_after_restore(game_room)
+            if not self._should_persist_room(game_room):
+                game_room.stop = True
+                continue
+            self.rooms[int(game_room.room_id)] = game_room
+            try:
+                if not game_room.is_alive():
+                    game_room.start()
+            except RuntimeError:
+                pass
+
+        self._persist_room_snapshots()
+
+    def on_room_runtime_state_changed(self, room_id: int):
+        self._emit_room_state_event(room_id)
+        self._persist_room_snapshots()
 
     def get_api_schemas(self) -> Dict[str, Any]:
         return API_SCHEMAS
@@ -181,11 +321,14 @@ class RoomManager:
     def get_room(self, room_id: int) -> Optional[room.room]:
         return self.rooms.get(room_id)
 
-    def remove_room(self, room_id: int) -> bool:
+    def remove_room(self, room_id: int, *, emit_event: bool = False) -> bool:
         game_room = self.rooms.pop(room_id, None)
         if not game_room:
             return False
         game_room.stop = True
+        if emit_event:
+            self._emit_room_closed_event(room_id)
+        self._persist_room_snapshots()
         return True
 
     def join_room(self, room_id: int, player_info: Dict[str, Any]) -> bool:
@@ -260,7 +403,9 @@ class RoomManager:
         game_room = self.get_room(room_id)
         if not game_room:
             return None
-        return self.records_api.on_game_end(game_room)
+        result = self.records_api.on_game_end(game_room)
+        self._persist_room_snapshots()
+        return result
 
     def next_step(self, room_id: int, target=None, action: bool = False, action_type: Optional[str] = None):
         game_room = self._require_room(room_id)
@@ -1132,14 +1277,13 @@ class RoomManager:
         if not bool(result.get('ok', False)):
             return
         room_id = self._event_room_id_from_dispatch(action, payload, result)
-        if not room_id:
-            return
-        if action == 'abolish_room':
-            self._emit_room_closed_event(room_id)
-            return
-        if action not in self._ROOM_STATE_EVENT_ACTIONS:
-            return
-        self._emit_room_state_event(room_id)
+        if room_id:
+            if action == 'abolish_room':
+                self._emit_room_closed_event(room_id)
+            elif action in self._ROOM_STATE_EVENT_ACTIONS:
+                self._emit_room_state_event(room_id)
+        if action in self._ROOM_SNAPSHOT_ACTIONS:
+            self._persist_room_snapshots()
 
     def api_dispatch(self, action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         try:

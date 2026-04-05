@@ -1327,6 +1327,12 @@ legend {
   color: #1e4f94;
 }
 
+.records-option-badge-neutral {
+  background: #fff7d8;
+  border-color: #ead087;
+  color: #7a6000;
+}
+
 .records-option-extra {
   font-size: 12px;
   color: #4b6070;

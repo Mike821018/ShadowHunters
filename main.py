@@ -14,7 +14,11 @@ from backend.validation import (
 	validate_game_flow,
 	validate_green_confirm_timeout_flow,
 	validate_moody_goblin_no_equipment_flow,
+	validate_neutral_chaos_record_backfill,
 	validate_roll_7_flow,
+	validate_restart_timer_resume_flow,
+	validate_room_idle_cleanup_by_message,
+	validate_room_snapshot_restore,
 	validate_unknown_green_card_forced_effects,
 	validate_werewolf_counter_attack_flow,
 )
@@ -29,6 +33,10 @@ def run_validations():
 	moody_goblin_validation = validate_moody_goblin_no_equipment_flow()
 	green_confirm_timeout_validation = validate_green_confirm_timeout_flow()
 	catherine_start_passive_validation = validate_catherine_start_passive_heal_flow()
+	neutral_chaos_record_validation = validate_neutral_chaos_record_backfill()
+	room_snapshot_restore_validation = validate_room_snapshot_restore()
+	restart_timer_resume_validation = validate_restart_timer_resume_flow()
+	room_idle_cleanup_validation = validate_room_idle_cleanup_by_message()
 	print('validation ok')
 	print(validation)
 	print('roll 7 validation ok')
@@ -45,6 +53,14 @@ def run_validations():
 	print(green_confirm_timeout_validation)
 	print('catherine start passive validation ok')
 	print(catherine_start_passive_validation)
+	print('neutral chaos record validation ok')
+	print(neutral_chaos_record_validation)
+	print('room snapshot restore validation ok')
+	print(room_snapshot_restore_validation)
+	print('restart timer resume validation ok')
+	print(restart_timer_resume_validation)
+	print('room idle cleanup validation ok')
+	print(room_idle_cleanup_validation)
 
 
 def _run_subprocess(cmd, label: str):

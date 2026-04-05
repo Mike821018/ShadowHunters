@@ -51,11 +51,13 @@ class room(Thread):
         # 開發除錯用：可在開局前指定帳號對應角色（不對一般 UI 顯示）
         self.debug_forced_characters: dict = {}
         self.max_players: int = 8
-        self.idle_timeout_seconds: int = 15 * 60
+        # 以聊天室最後一則新訊息（玩家發言或系統提示）為準，超過 1 小時自動廢村。
+        self.idle_timeout_seconds: int = 60 * 60
         self.turn_timeout_seconds: int = 3 * 60
         self.turn_last_action_at: float = 0.0
         self.latest_boom_notice: dict = {}
         self.last_activity_at: float = time.time()
+        self.last_message_at: float = self.last_activity_at
         self.manager_ref = None
         self.kick_votes = {}  # {target_account: set(voter_account)}
         self.private_character_visibility = {}  # {viewer_account: set(target_account)}
@@ -69,8 +71,30 @@ class room(Thread):
         self.turn_sequence: int = 0
         self._start_passive_applied: dict = {}
 
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state['manager_ref'] = None
+        state['stop'] = False
+        for key in (
+            '_target', '_name', '_args', '_kwargs', '_daemonic', '_ident', '_native_id',
+            '_tstate_lock', '_started', '_is_stopped', '_initialized', '_stderr', '_invoke_excepthook',
+        ):
+            state.pop(key, None)
+        return state
+
+    def __setstate__(self, state):
+        Thread.__init__(self, daemon=True)
+        self.__dict__.update(state)
+        self.stop = False
+        self.manager_ref = None
+
     def touch_activity(self):
         self.last_activity_at = time.time()
+
+    def touch_message_activity(self):
+        now = time.time()
+        self.last_message_at = now
+        self.last_activity_at = now
 
     def touch_turn_action(self):
         self.turn_last_action_at = time.time()
@@ -187,23 +211,37 @@ class room(Thread):
         return True
 
     def should_auto_abolish(self):
-        if self.is_chat_room:
-            return False
         if self.room_status not in (1, 2):
             return False
-        return (time.time() - float(self.last_activity_at or 0)) >= self.idle_timeout_seconds
+        timeout_seconds = int(getattr(self, 'idle_timeout_seconds', 0) or 0)
+        if timeout_seconds <= 0:
+            return False
+        last_change_at = float(
+            getattr(self, 'last_message_at', 0)
+            or getattr(self, 'last_activity_at', 0)
+            or 0
+        )
+        return (time.time() - last_change_at) >= timeout_seconds
 
     def run(self):
         while not self.stop:
             time.sleep(1)
+            if self.stop:
+                break
             if not self.should_auto_abolish():
                 timeout_remaining = self._current_turn_timeout_remaining()
                 if timeout_remaining is not None and timeout_remaining <= 0:
-                    self._handle_turn_timeout()
+                    handled = self._handle_turn_timeout()
+                    manager = self.manager_ref
+                    if handled and manager and hasattr(manager, 'on_room_runtime_state_changed'):
+                        try:
+                            manager.on_room_runtime_state_changed(self.room_id)
+                        except Exception:
+                            pass
                 continue
             manager = self.manager_ref
             if manager and manager.get_room(self.room_id) is self:
-                manager.remove_room(self.room_id)
+                manager.remove_room(self.room_id, emit_event=True)
             break
 
     ####################
@@ -220,6 +258,7 @@ class room(Thread):
         text_value = str(text or '').strip()
         if not text_value:
             return
+        self.touch_message_activity()
         self._chat_seq = int(getattr(self, '_chat_seq', 0) or 0) + 1
         self.chat_messages.append({
             'id': int(self._chat_seq),

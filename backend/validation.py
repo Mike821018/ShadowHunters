@@ -1,9 +1,14 @@
+import time
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Dict
 
 from backend.game.board import board
 from backend.game.card_module import Anger, Blackmail, Greed, MoodyGoblin, Talisman
 from backend.game.character_module import Catherine, Franklin, Unknown, Vampire, Werewolf
 from backend.game.room import room
+from backend.game_records_api import GameRecordsAPI
+from backend.records_system import GameRecord, GameRecordStore, PlayerRecord
 from backend.room_manager import RoomManager
 
 
@@ -473,3 +478,220 @@ def validate_catherine_start_passive_heal_flow() -> Dict[str, Any]:
         'damage_same_turn_after_next_step': damage_same_turn_after_next_step,
         'damage_on_next_turn_start': damage_on_next_turn_start,
     }
+
+
+def validate_room_snapshot_restore() -> Dict[str, Any]:
+    with TemporaryDirectory() as temp_dir:
+        snapshot_path = Path(temp_dir) / 'live_room_snapshots.json'
+        manager = RoomManager(room_snapshot_path=snapshot_path)
+        lobby_room_id = 0
+        game_room_id = 0
+        try:
+            lobby_room = manager.create_room('validation-restore-lobby')
+            lobby_room_id = int(lobby_room.room_id)
+            manager.join_room(
+                lobby_room.room_id,
+                {'trip': 'restore-lobby', 'account': 'restore-lobby', 'password': 'pw', 'name': 'Restore Lobby'},
+            )
+
+            game_room = manager.create_room('validation-restore-game')
+            game_room_id = int(game_room.room_id)
+            for index in range(4):
+                manager.join_room(
+                    game_room.room_id,
+                    {
+                        'trip': f'restore-{index + 1}',
+                        'account': f'restore-{index + 1}',
+                        'password': 'pw',
+                        'name': f'Restore {index + 1}',
+                    },
+                )
+            game_room = manager.start_game(game_room.room_id, seed=99)
+            game_room.add_chat_message(account='restore-1', name='Restore 1', text='still here after restart')
+            game_room.add_system_message('恢復快照測試訊息')
+            manager._persist_room_snapshots()
+        finally:
+            for active_room in list(getattr(manager, 'rooms', {}).values()):
+                active_room.stop = True
+
+        restored_manager = RoomManager(room_snapshot_path=snapshot_path)
+        try:
+            restored_lobby = restored_manager.get_room(lobby_room_id)
+            restored_game = restored_manager.get_room(game_room_id)
+            assert restored_lobby is not None
+            assert restored_game is not None
+            assert int(getattr(restored_lobby, 'room_status', 0) or 0) == 1
+            assert len(getattr(restored_lobby, 'players', {}) or {}) == 1
+            assert int(getattr(restored_game, 'room_status', 0) or 0) == 2
+            assert len(getattr(restored_game, 'players', {}) or {}) == 4
+            assert str(getattr(getattr(restored_game, 'current_player', None), 'account', '') or '') in restored_game.players
+            message_texts = [str((message or {}).get('text') or '') for message in list(getattr(restored_game, 'chat_messages', []) or [])]
+            assert any('still here after restart' in text for text in message_texts)
+            assert any('恢復快照測試訊息' in text for text in message_texts)
+            return {
+                'lobby_room_id': lobby_room_id,
+                'game_room_id': game_room_id,
+                'restored_player_count': len(getattr(restored_game, 'players', {}) or {}),
+                'restored_current_player': str(getattr(getattr(restored_game, 'current_player', None), 'account', '') or ''),
+                'restored_message_count': len(message_texts),
+            }
+        finally:
+            for active_room in list(getattr(restored_manager, 'rooms', {}).values()):
+                active_room.stop = True
+
+
+def _stop_room_threads(manager: RoomManager):
+    active_rooms = list(getattr(manager, 'rooms', {}).values())
+    for active_room in active_rooms:
+        active_room.stop = True
+    for active_room in active_rooms:
+        try:
+            if hasattr(active_room, 'is_alive') and active_room.is_alive():
+                active_room.join(timeout=2.0)
+        except Exception:
+            pass
+
+
+def validate_room_idle_cleanup_by_message() -> Dict[str, Any]:
+    with TemporaryDirectory() as temp_dir:
+        snapshot_path = Path(temp_dir) / 'live_room_snapshots.json'
+        manager = RoomManager(room_snapshot_path=snapshot_path)
+        room_id = 0
+        should_cleanup = False
+        try:
+            stale_room = manager.create_room('validation-stale-room')
+            room_id = int(stale_room.room_id)
+            manager.join_room(
+                stale_room.room_id,
+                {'trip': 'stale-user', 'account': 'stale-user', 'password': 'pw', 'name': 'Stale User'},
+            )
+            stale_room.last_activity_at = time.time()
+            stale_room.last_message_at = time.time() - (61 * 60)
+            should_cleanup = bool(stale_room.should_auto_abolish())
+            assert should_cleanup
+            manager._persist_room_snapshots()
+        finally:
+            _stop_room_threads(manager)
+
+        restored_manager = RoomManager(room_snapshot_path=snapshot_path)
+        try:
+            assert restored_manager.get_room(room_id) is None
+            return {
+                'room_id': room_id,
+                'idle_timeout_seconds': 60 * 60,
+                'cleanup_triggered_by_message_idle': should_cleanup,
+                'restored_after_restart': False,
+            }
+        finally:
+            _stop_room_threads(restored_manager)
+
+
+def validate_neutral_chaos_record_backfill() -> Dict[str, Any]:
+    with TemporaryDirectory() as tmp_dir:
+        db_path = Path(tmp_dir) / 'records-validation.db'
+        store = GameRecordStore(db_path=str(db_path))
+        api = GameRecordsAPI(store)
+        record = GameRecord(
+            record_id='neutral-chaos-record-validation',
+            room_id=2336,
+            game_date='2026-04-05T12:00:00',
+            game_duration_seconds=321,
+            game_settings={
+                'enable_initial_green_card': False,
+                'expansion_mode': 'all',
+                'room_name': 'Neutral Chaos Validation',
+                'room_comment': 'regression check',
+                'require_trip': False,
+            },
+            players=[
+                PlayerRecord(
+                    player_id=f'player-{index + 1}',
+                    player_name=f'Player {index + 1}',
+                    character_name=f'Neutral {index + 1}',
+                    character_camp='Civilian',
+                    is_alive=True,
+                    final_hp=10,
+                    damage_taken=0,
+                    cards_played=0,
+                )
+                for index in range(5)
+            ],
+            winner_camp='civilian',
+            winner_players=['player-1'],
+            final_state={'room': {'room_name': 'Neutral Chaos Validation'}},
+        )
+        store.save_game_record(record)
+
+        detail = api.api_get_game_record(record.record_id)
+        listing = api.api_get_game_records(page=1, page_size=20)
+        assert detail['game_settings']['enable_neutral_chaos_mode'] is True
+        assert detail['final_state']['room']['enable_neutral_chaos_mode'] is True
+        assert listing['entries']
+        assert 'Neutral Chaos Mode' in str(listing['entries'][0]['options'])
+
+        return {
+            'record_id': detail['record_id'],
+            'neutral_chaos_mode': detail['game_settings']['enable_neutral_chaos_mode'],
+            'options': listing['entries'][0]['options'],
+        }
+
+
+def validate_restart_timer_resume_flow() -> Dict[str, Any]:
+    with TemporaryDirectory() as temp_dir:
+        snapshot_path = Path(temp_dir) / 'live_room_snapshots.json'
+        manager = RoomManager(room_snapshot_path=snapshot_path)
+        idle_room_id = 0
+        game_room_id = 0
+        timeout_account = ''
+        try:
+            idle_room = manager.create_room('validation-restart-idle')
+            idle_room_id = int(idle_room.room_id)
+            manager.join_room(
+                idle_room.room_id,
+                {'trip': 'resume-idle', 'account': 'resume-idle', 'password': 'pw', 'name': 'Resume Idle'},
+            )
+            idle_room.last_message_at = time.time() - ((60 * 60) - 2)
+
+            game_room = manager.create_room('validation-restart-timeout')
+            game_room_id = int(game_room.room_id)
+            for index in range(4):
+                manager.join_room(
+                    game_room.room_id,
+                    {
+                        'trip': f'resume-{index + 1}',
+                        'account': f'resume-{index + 1}',
+                        'password': 'pw',
+                        'name': f'Resume {index + 1}',
+                    },
+                )
+            game_room = manager.start_game(game_room.room_id, seed=123)
+            timeout_player = game_room.current_player
+            timeout_account = str(getattr(timeout_player, 'account', '') or '')
+            timeout_player.status = 2
+            game_room.turn_timeout_seconds = 10
+            game_room.turn_last_action_at = time.time() - 8
+            manager._persist_room_snapshots()
+        finally:
+            _stop_room_threads(manager)
+
+        time.sleep(4)
+
+        restored_manager = RoomManager(room_snapshot_path=snapshot_path)
+        try:
+            restored_idle_room = restored_manager.get_room(idle_room_id)
+            restored_game_room = restored_manager.get_room(game_room_id)
+            assert restored_idle_room is None
+            assert restored_game_room is not None
+            time.sleep(2)
+            timed_out_player = restored_game_room.players[timeout_account]
+            assert not bool(getattr(timed_out_player, 'is_alive', True))
+            boom_notice = dict(getattr(restored_game_room, 'latest_boom_notice', {}) or {})
+            assert str(boom_notice.get('account') or '') == timeout_account
+            return {
+                'idle_room_removed_after_downtime': True,
+                'game_room_restored': True,
+                'timed_out_account': timeout_account,
+                'player_alive_after_restart': bool(getattr(timed_out_player, 'is_alive', True)),
+            }
+        finally:
+            _stop_room_threads(restored_manager)

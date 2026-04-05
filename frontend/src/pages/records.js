@@ -56,6 +56,10 @@ function parseOptionBadges(rawOptions) {
       badgeSet.add('G');
       return;
     }
+    if (normalized === 'neutral chaos mode' || normalized === 'neutral chaos' || normalized === '中立大亂鬥' || normalized === '中立大乱闘') {
+      badgeSet.add('C');
+      return;
+    }
     if (normalized === 'all') {
       badgeSet.add('B');
       badgeSet.add('E');
@@ -80,6 +84,13 @@ function optionBadgeMeta(code) {
       className: 'records-option-badge records-option-badge-green',
       title: t('records.badge_green_title'),
       desc: t('records.badge_green_desc'),
+    };
+  }
+  if (code === 'C') {
+    return {
+      className: 'records-option-badge records-option-badge-neutral',
+      title: t('records.badge_neutral_chaos_title'),
+      desc: t('records.badge_neutral_chaos_desc'),
     };
   }
   if (code === 'B') {

@@ -22,10 +22,9 @@ function formatRoomSettingsSummary({ t }, room) {
   const boomTimeoutMinutes = Number(room?.turn_timeout_minutes || 3);
   const neutralChaosMode = Boolean(room?.enable_neutral_chaos_mode);
   const cardPoolSummary = formatCardSetSummary({ t }, expansionMode);
-  const cardPoolWithNeutral = neutralChaosMode ? `${cardPoolSummary}+[C]` : cardPoolSummary;
   return [
     `${t('room.info.trip_rule')}:${formatToggleSummary({ t }, Boolean(room?.require_trip))}`,
-    cardPoolWithNeutral,
+    cardPoolSummary,
     `${t('room.info.initial_green_card')}:${formatToggleSummary({ t }, Boolean(room?.enable_initial_green_card))}`,
     `${t('room.info.neutral_chaos_mode')}:${formatToggleSummary({ t }, neutralChaosMode)}`,
     `${t('room.info.boom_timeout')}:${t('room.info.boom_timeout_fmt_minutes', { n: boomTimeoutMinutes })}`,

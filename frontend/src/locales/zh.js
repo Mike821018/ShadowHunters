@@ -124,6 +124,8 @@ export default {
     skill_level: '等級',
     badge_green_title: '初始綠卡',
     badge_green_desc: '本局啟用了初始綠卡機制。',
+    badge_neutral_chaos_title: '中立大亂鬥',
+    badge_neutral_chaos_desc: '本局啟用了中立大亂鬥配置。',
     badge_basic_title: '基本卡組',
     badge_basic_desc: '本局使用了基本卡組。',
     badge_extend_title: '擴充卡組',

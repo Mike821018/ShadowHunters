@@ -81,6 +81,80 @@ class GameRecordsAPI:
         if len(sorted_codes) == 1:
             return sorted_codes[0]
         return '_'.join(sorted_codes)
+
+    def _infer_neutral_chaos_from_players(self, players: List[PlayerRecord]) -> bool:
+        camps = set()
+        for player in (players or []):
+            camp_code = self._normalize_camp_code(getattr(player, 'character_camp', ''))
+            if camp_code:
+                camps.add(camp_code)
+        return bool(camps) and camps == {'civilian'}
+
+    def _get_normalized_game_settings(self, record: GameRecord, *, persist: bool = False) -> Dict[str, Any]:
+        def parse_bool(value: Any, default: bool = False) -> bool:
+            if value is None:
+                return bool(default)
+            if isinstance(value, str):
+                return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+            return bool(value)
+
+        def parse_int(value: Any, default: int) -> int:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return int(default)
+
+        settings = dict(getattr(record, 'game_settings', {}) or {})
+        final_state = getattr(record, 'final_state', None)
+        room_state = dict(final_state.get('room') or {}) if isinstance(final_state, dict) else {}
+        changed = False
+
+        defaults = {
+            'room_name': str(room_state.get('room_name') or settings.get('room_name') or f"{int(getattr(record, 'room_id', 0) or 0)}村"),
+            'room_comment': str(room_state.get('room_comment') or settings.get('room_comment') or ''),
+            'expansion_mode': str(room_state.get('expansion_mode') or settings.get('expansion_mode') or 'all'),
+            'require_trip': parse_bool(settings.get('require_trip', room_state.get('require_trip', False))),
+            'enable_initial_green_card': parse_bool(settings.get('enable_initial_green_card', room_state.get('enable_initial_green_card', False))),
+            'enable_neutral_chaos_mode': parse_bool(
+                settings.get(
+                    'enable_neutral_chaos_mode',
+                    room_state.get('enable_neutral_chaos_mode', self._infer_neutral_chaos_from_players(record.players)),
+                )
+            ),
+            'turn_timeout_minutes': max(
+                1,
+                parse_int(settings.get('turn_timeout_minutes', room_state.get('turn_timeout_minutes')), 3),
+            ),
+        }
+
+        for key, value in defaults.items():
+            if settings.get(key) != value:
+                settings[key] = value
+                changed = True
+
+        record.game_settings = settings
+
+        if isinstance(final_state, dict):
+            merged_room_state = dict(room_state)
+            for key in (
+                'room_name',
+                'room_comment',
+                'expansion_mode',
+                'require_trip',
+                'enable_initial_green_card',
+                'enable_neutral_chaos_mode',
+                'turn_timeout_minutes',
+            ):
+                if merged_room_state.get(key) != settings[key]:
+                    merged_room_state[key] = settings[key]
+                    changed = True
+            final_state['room'] = merged_room_state
+            record.final_state = final_state
+
+        if changed and persist:
+            self.record_store._persist_game_record(record)
+
+        return settings
     
     # ===== Game Lifecycle Events =====
     
@@ -141,12 +215,14 @@ class GameRecordsAPI:
                 game_date=datetime.now().isoformat(),
                 game_duration_seconds=duration_seconds,
                 game_settings={
-                    'enable_initial_green_card': room.enable_initial_green_card,
-                    'expansion_mode': room.expansion_mode,
-                    'max_players': room.max_players,
-                    'require_trip': room.require_trip,
+                    'enable_initial_green_card': bool(getattr(room, 'enable_initial_green_card', False)),
+                    'enable_neutral_chaos_mode': bool(getattr(room, 'enable_neutral_chaos_mode', False)),
+                    'expansion_mode': str(getattr(room, 'expansion_mode', 'all') or 'all'),
+                    'max_players': int(getattr(room, 'max_players', 8) or 8),
+                    'require_trip': bool(getattr(room, 'require_trip', False)),
                     'room_name': str(getattr(room, 'room_name', '') or ''),
                     'room_comment': str(getattr(room, 'room_comment', '') or ''),
+                    'turn_timeout_minutes': int(getattr(room, 'turn_timeout_seconds', 180) or 180) // 60,
                 },
                 players=player_records,
                 winner_camp=winner_camp,
@@ -266,13 +342,15 @@ class GameRecordsAPI:
         record = self.record_store.get_game_record(record_id)
         if not record:
             return {'error': 'Record not found', 'record_id': record_id}
+
+        settings = self._get_normalized_game_settings(record, persist=True)
         
         return {
             'record_id': record.record_id,
             'room_id': record.room_id,
             'game_date': record.game_date,
             'duration_seconds': record.game_duration_seconds,
-            'game_settings': record.game_settings,
+            'game_settings': settings,
             'players': [
                 {
                     'player_id': p.player_id,
@@ -384,6 +462,11 @@ class GameRecordsAPI:
                 'player_count': len(players),
                 'max_players': int(getattr(room, 'max_players', 8) or 8),
                 'room_comment': str(getattr(room, 'room_comment', '') or ''),
+                'expansion_mode': str(getattr(room, 'expansion_mode', 'all') or 'all'),
+                'require_trip': bool(getattr(room, 'require_trip', False)),
+                'enable_initial_green_card': bool(getattr(room, 'enable_initial_green_card', False)),
+                'enable_neutral_chaos_mode': bool(getattr(room, 'enable_neutral_chaos_mode', False)),
+                'turn_timeout_minutes': int(getattr(room, 'turn_timeout_seconds', 180) or 180) // 60,
             },
             'turn': {
                 'current_trip_display': str(getattr(current_player, 'trip_display', '') or '') if current_player else '',
@@ -461,11 +544,13 @@ class GameRecordsAPI:
         all_entries = []
         for record in records:
             options = []
-            settings = record.game_settings or {}
+            settings = self._get_normalized_game_settings(record, persist=True)
             village_name = str(settings.get('room_name') or '').strip() or f"{record.room_id}村"
             village_comment = str(settings.get('room_comment') or '').strip()
             if settings.get('enable_initial_green_card'):
                 options.append('Initial Green Card')
+            if settings.get('enable_neutral_chaos_mode'):
+                options.append('Neutral Chaos Mode')
             if settings.get('require_trip'):
                 options.append('TRIP Verification')
             if str(settings.get('expansion_mode') or ''):

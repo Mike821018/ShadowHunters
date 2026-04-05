@@ -109,6 +109,8 @@ export default {
     skill_level: 'Skill Level',
     badge_green_title: 'Initial Green Card',
     badge_green_desc: 'This game enabled the Initial Green Card feature.',
+    badge_neutral_chaos_title: 'Neutral Chaos Mode',
+    badge_neutral_chaos_desc: 'This game enabled the all-neutral role setup.',
     badge_basic_title: 'Basic Card Set',
     badge_basic_desc: 'This game used the Basic card set.',
     badge_extend_title: 'Expansion Card Set',

@@ -125,6 +125,8 @@ export default {
     skill_level: 'レベル',
     badge_green_title: '初期グリーンカード',
     badge_green_desc: 'このゲームでは初期グリーンカード機能が有効です。',
+    badge_neutral_chaos_title: '中立大乱闘',
+    badge_neutral_chaos_desc: 'このゲームでは全員中立の設定が有効です。',
     badge_basic_title: '基本カードセット',
     badge_basic_desc: 'このゲームでは基本カードセットを使用しています。',
     badge_extend_title: '拡張カードセット',
