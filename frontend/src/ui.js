@@ -152,6 +152,8 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       const areaDisplayName = getLocalizedAreaName(p.area, lang);
       const areaNameClass = getAreaNameClass(p.area);
       const roleDisplayName = roleNameEn ? getCharacterLocalizedName(roleNameEn, lang) : '???';
+      const isRoleRevealed = Boolean((p?.settlement_character_reveal ?? p?.character_reveal) || false);
+      const roleRevealStatusLabel = t(isRoleRevealed ? 'ui.role_reveal_revealed' : 'ui.role_reveal_hidden');
       const roleTooltip = roleNameEn ? getCharacterTooltipInfo(roleNameEn, lang) : null;
       const roleCampClass = roleCamp ? String(roleCamp).toLowerCase() : 'civilian';
       const roleBadgeText = roleNameEn ? String(roleNameEn).trim().charAt(0).toUpperCase() || '?' : '?';
@@ -239,6 +241,7 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
               <button class="player-role-trigger" type="button" aria-label="${esc(t('ui.role_detail'))}">
                 ${roleNameEn ? `<span class="damage-meter-badge ${esc(roleCampClass)} player-role-badge">${esc(roleBadgeText)}</span>` : ''}
                 <span class="player-role-name">${esc(roleDisplayName)}</span>
+                <span class="player-role-state">${esc(roleRevealStatusLabel)}</span>
               </button>
               ${roleTooltip ? `
                 <div class="player-role-popover" role="tooltip">

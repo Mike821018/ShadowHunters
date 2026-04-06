@@ -42,6 +42,7 @@ class TripRegistration:
     created_date: str
     updated_date: str = ''
     registration_index: int = 0
+    trip_encrypted: bool = True
 
 
 @dataclass
@@ -205,7 +206,8 @@ class GameRecordStore:
                     password_hash TEXT NOT NULL,
                     created_date TEXT NOT NULL,
                     updated_date TEXT NOT NULL,
-                    registration_index INTEGER NOT NULL DEFAULT 0
+                    registration_index INTEGER NOT NULL DEFAULT 0,
+                    trip_encrypted INTEGER NOT NULL DEFAULT 1
                 )
                 """
             )
@@ -215,6 +217,13 @@ class GameRecordStore:
                     """
                     ALTER TABLE trip_registrations
                     ADD COLUMN registration_index INTEGER NOT NULL DEFAULT 0
+                    """
+                )
+            if 'trip_encrypted' not in columns:
+                conn.execute(
+                    """
+                    ALTER TABLE trip_registrations
+                    ADD COLUMN trip_encrypted INTEGER NOT NULL DEFAULT 0
                     """
                 )
             conn.execute(
@@ -358,8 +367,8 @@ class GameRecordStore:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT OR REPLACE INTO trip_registrations (trip, password_hash, created_date, updated_date, registration_index)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO trip_registrations (trip, password_hash, created_date, updated_date, registration_index, trip_encrypted)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     registration.trip,
@@ -367,6 +376,7 @@ class GameRecordStore:
                     registration.created_date,
                     registration.updated_date,
                     int(getattr(registration, 'registration_index', 0) or 0),
+                    1 if bool(getattr(registration, 'trip_encrypted', True)) else 0,
                 ),
             )
 
@@ -380,14 +390,15 @@ class GameRecordStore:
                     registration.created_date,
                     registration.updated_date,
                     int(getattr(registration, 'registration_index', 0) or 0),
+                    1 if bool(getattr(registration, 'trip_encrypted', True)) else 0,
                 )
                 for registration in self.trip_registrations.values()
             ]
             if rows:
                 conn.executemany(
                     """
-                    INSERT INTO trip_registrations (trip, password_hash, created_date, updated_date, registration_index)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO trip_registrations (trip, password_hash, created_date, updated_date, registration_index, trip_encrypted)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     rows,
                 )
@@ -516,20 +527,31 @@ class GameRecordStore:
     def _load_from_database(self):
         with self._connect() as conn:
             conn.row_factory = sqlite3.Row
+            trip_rows_need_resave = False
 
             for row in conn.execute(
-                "SELECT trip, password_hash, created_date, updated_date, registration_index FROM trip_registrations ORDER BY created_date ASC"
+                "SELECT trip, password_hash, created_date, updated_date, registration_index, trip_encrypted FROM trip_registrations ORDER BY created_date ASC"
             ):
-                trip_key = str(row['trip'] or '').strip()
+                stored_trip = str(row['trip'] or '').strip()
+                if not stored_trip:
+                    continue
+                stored_encrypted = bool(int(row['trip_encrypted'] or 0))
+                trip_key = stored_trip if stored_encrypted else self.encrypt_trip_like_higu(stored_trip)
                 if not trip_key:
                     continue
-                self.trip_registrations[trip_key] = TripRegistration(
+                registration = TripRegistration(
                     trip=trip_key,
                     password_hash=str(row['password_hash'] or ''),
                     created_date=str(row['created_date'] or ''),
                     updated_date=str(row['updated_date'] or ''),
                     registration_index=int(row['registration_index'] or 0),
+                    trip_encrypted=True,
                 )
+                existing = self.trip_registrations.get(trip_key)
+                if existing is None or int(getattr(registration, 'registration_index', 0) or 0) >= int(getattr(existing, 'registration_index', 0) or 0):
+                    self.trip_registrations[trip_key] = registration
+                if (not stored_encrypted) or trip_key != stored_trip:
+                    trip_rows_need_resave = True
 
             for row in conn.execute(
                 "SELECT record_id, payload_json FROM game_records ORDER BY game_date ASC"
@@ -563,6 +585,9 @@ class GameRecordStore:
                     )
                 )
 
+        if trip_rows_need_resave:
+            self._persist_all_trip_registrations()
+
         self._rebuild_room_histories()
         self.rebuild_player_stats()
         self._initialize_counters()
@@ -574,8 +599,26 @@ class GameRecordStore:
         raw = f"{str(account or '').strip()}\0{str(password or '')}"
         return hashlib.sha256(raw.encode('utf-8')).hexdigest()
 
-    def has_trip_registration(self, trip: str) -> bool:
+    def encrypt_trip_like_higu(self, trip: str) -> str:
         trip_key = str(trip or '').strip()
+        if not trip_key:
+            return ''
+        sha1_hex = hashlib.sha1(trip_key.encode('utf-8')).hexdigest()
+        encoded = base64.b64encode(sha1_hex.encode('ascii')).decode('ascii')
+        return encoded[1:9]
+
+    def to_trip_display(self, trip: str) -> str:
+        trip_key = str(trip or '').strip()
+        if not trip_key:
+            return ''
+        if trip_key in self.trip_registrations:
+            return trip_key
+        if any(str(stats.trip_display or '').strip() == trip_key for stats in self.player_stats.values()):
+            return trip_key
+        return self.encrypt_trip_like_higu(trip_key)
+
+    def has_trip_registration(self, trip: str) -> bool:
+        trip_key = self.to_trip_display(trip)
         if not trip_key:
             return False
         if trip_key in self.trip_registrations:
@@ -584,32 +627,21 @@ class GameRecordStore:
 
     def has_explicit_trip_registration(self, trip: str) -> bool:
         """Return True only when TRIP exists in registration table (supports raw/encrypted lookup)."""
-        trip_key = str(trip or '').strip()
+        trip_key = self.to_trip_display(trip)
         if not trip_key:
             return False
-        if trip_key in self.trip_registrations:
-            return True
-
-        # Allow callers passing encrypted display TRIP by checking registered raw TRIPs.
-        for registered_trip in self.trip_registrations.keys():
-            raw = str(registered_trip or '').strip()
-            if not raw:
-                continue
-            sha1_hex = hashlib.sha1(raw.encode('utf-8')).hexdigest()
-            encoded = base64.b64encode(sha1_hex.encode('ascii')).decode('ascii')
-            if encoded[1:9] == trip_key:
-                return True
-        return False
+        return trip_key in self.trip_registrations
 
     def verify_trip_password(self, trip: str, password: str) -> bool:
-        trip_key = str(trip or '').strip()
+        trip_key = self.to_trip_display(trip)
         registration = self.trip_registrations.get(trip_key)
         if not registration:
             return False
         return registration.password_hash == self.hash_trip_password(password)
 
     def register_trip(self, trip: str, password: str) -> str:
-        trip_key = str(trip or '').strip()
+        raw_trip = str(trip or '').strip()
+        trip_key = self.encrypt_trip_like_higu(raw_trip)
         if not trip_key:
             raise ValueError('TRIP is required')
         if not str(password or ''):
@@ -631,13 +663,14 @@ class GameRecordStore:
             created_date=now,
             updated_date=now,
             registration_index=self._allocate_counter_value('trip_registration_index'),
+            trip_encrypted=True,
         )
         self._persist_trip_registration(self.trip_registrations[trip_key])
         return 'registered'
 
     def change_trip_registration(self, old_trip: str, old_password: str, new_trip: str, new_password: str) -> None:
-        old_trip_key = str(old_trip or '').strip()
-        new_trip_key = str(new_trip or '').strip()
+        old_trip_key = self.to_trip_display(old_trip)
+        new_trip_key = self.encrypt_trip_like_higu(new_trip)
         if not old_trip_key or not new_trip_key:
             raise ValueError('old_trip and new_trip are required')
         if not str(new_password or ''):
@@ -652,6 +685,7 @@ class GameRecordStore:
         registration.password_hash = self.hash_trip_password(new_password)
         registration.updated_date = datetime.now().isoformat()
         registration.registration_index = int(getattr(registration, 'registration_index', 0) or 0)
+        registration.trip_encrypted = True
         self.trip_registrations[new_trip_key] = registration
 
         for game_record in self.game_records.values():
@@ -672,7 +706,7 @@ class GameRecordStore:
         self.rebuild_player_stats()
 
     def count_trip_games(self, trip: str) -> int:
-        trip_key = str(trip or '').strip()
+        trip_key = self.to_trip_display(trip)
         if not trip_key:
             return 0
 
@@ -683,7 +717,7 @@ class GameRecordStore:
         return count
 
     def get_trip_nicknames(self, trip: str) -> List[str]:
-        trip_key = str(trip or '').strip()
+        trip_key = self.to_trip_display(trip)
         nicknames = {
             str(player.player_name or '').strip()
             for game_record in self.game_records.values()
@@ -693,7 +727,7 @@ class GameRecordStore:
         return sorted(nicknames)
 
     def get_trip_nickname_counts(self, trip: str) -> List[Dict[str, Any]]:
-        trip_key = str(trip or '').strip()
+        trip_key = self.to_trip_display(trip)
         counter = Counter(
             str(player.player_name or '').strip()
             for game_record in self.game_records.values()
@@ -713,7 +747,7 @@ class GameRecordStore:
         return rows
 
     def get_trip_game_rating_score(self, trip: str, room_id: int) -> int:
-        trip_key = str(trip or '').strip()
+        trip_key = self.to_trip_display(trip)
         total = 0
         for row in self.rating_records:
             if str(row.target_trip or '').strip() != trip_key:
@@ -724,7 +758,7 @@ class GameRecordStore:
         return total
 
     def get_trip_ratings(self, trip: str, limit: int = 100) -> List[TripRatingRecord]:
-        trip_key = str(trip or '').strip()
+        trip_key = self.to_trip_display(trip)
         rows = [row for row in self.rating_records if str(row.target_trip or '').strip() == trip_key]
         rows.sort(key=lambda row: row.created_date, reverse=True)
         return rows[: max(1, min(limit, 300))]
@@ -735,7 +769,7 @@ class GameRecordStore:
         return row.record_id
 
     def reassign_trip_by_account(self, target_trip: str, account: str, account_password: str, room_id: Optional[int] = None, *, only_unassigned: bool) -> int:
-        trip_key = str(target_trip or '').strip()
+        trip_key = self.to_trip_display(target_trip)
         account_key = str(account or '').strip()
         if not trip_key or not account_key or not str(account_password or ''):
             raise ValueError('trip/account/password are required')
@@ -765,7 +799,7 @@ class GameRecordStore:
         return updated
 
     def clear_trip_records_by_nickname(self, target_trip: str, nickname: str, room_id: Optional[int] = None) -> int:
-        trip_key = str(target_trip or '').strip()
+        trip_key = self.to_trip_display(target_trip)
         nickname_key = str(nickname or '').strip()
         if not trip_key or not nickname_key:
             raise ValueError('trip and nickname are required')

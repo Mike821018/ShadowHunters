@@ -656,6 +656,34 @@ class RoomManager:
             parts.append(self._CARD_SET_EXTEND)
         return f"Card:{'+'.join(parts)}" if parts else 'Card:-'
 
+    def _format_room_settings_summary(self, game_room: room.room) -> str:
+        expansion_mode = self._normalize_expansion_mode(getattr(game_room, 'expansion_mode', 'all'))
+        enable_initial_green_card = bool(getattr(game_room, 'enable_initial_green_card', False))
+        enable_neutral_chaos_mode = bool(getattr(game_room, 'enable_neutral_chaos_mode', False))
+        timeout_minutes = int(getattr(game_room, 'turn_timeout_seconds', 180) or 180) // 60
+        return (
+            f"{self._format_card_set_summary(expansion_mode)}"
+            f" / 初始綠卡={'On' if enable_initial_green_card else 'Off'}"
+            f" / 中立大亂鬥={'On' if enable_neutral_chaos_mode else 'Off'}"
+            f" / 暴斃時間={timeout_minutes}分"
+        )
+
+    def _format_start_camp_summary(self, game_room: room.room) -> str:
+        camp_counts = {'Shadow': 0, 'Hunter': 0, 'Civilian': 0}
+        for player_obj in getattr(game_room, 'players', {}).values():
+            camp_name = str(
+                getattr(player_obj, 'camp', '')
+                or getattr(getattr(player_obj, 'character', None), 'camp', '')
+                or ''
+            ).strip()
+            if camp_name in camp_counts:
+                camp_counts[camp_name] += 1
+        return (
+            f"暗影={camp_counts['Shadow']}"
+            f" / 獵人={camp_counts['Hunter']}"
+            f" / 中立={camp_counts['Civilian']}"
+        )
+
     def _coerce_optional_bool(self, value: Any) -> Optional[bool]:
         if value is None:
             return None
@@ -979,6 +1007,8 @@ class RoomManager:
                 sources.append('Guardian Angel')
             return sources
 
+        settlement_reveal_map = dict(getattr(game_room, 'settlement_character_reveal', {}) or {})
+
         return {
             'room': self._serialize_room(game_room),
             'turn': {
@@ -1038,6 +1068,7 @@ class RoomManager:
                     'area': p.area.name if p.area else None,
                     'is_village_manager': bool(p.profile.get('is_village_manager', False)),
                     'character_reveal': p.character_reveal,
+                    'settlement_character_reveal': bool(settlement_reveal_map.get(account, p.character_reveal)),
                     'character': p.character.name if (p.character and game_room.can_view_character(viewer_account, account)) else None,
                     'character_camp': p.character.camp if (p.character and game_room.can_view_character(viewer_account, account)) else None,
                     'can_use_ability': bool(p.can_use_ability) if p.character else None,
@@ -1501,6 +1532,7 @@ class RoomManager:
             return self._error('start_game', 'CHAT_ROOM_NO_GAME', '聊天村不可開始遊戲', 400)
         game_room = self.start_game(room_id, seed=seed)
         game_room.add_system_message('遊戲開始，發放角色並進入回合流程')
+        game_room.add_system_message(f'本場配置：{self._format_start_camp_summary(game_room)}')
         viewer_account = str(payload.get('account') or payload.get('viewer_account') or '').strip() or None
         return self._success('start_game', self._serialize_room_state(game_room, viewer_account=viewer_account))
 
@@ -1767,7 +1799,7 @@ class RoomManager:
         game_room.touch_activity()
         game_room.add_system_message(
             "村長更新房間設定："
-            f"{self._format_card_set_summary(expansion_mode)} / 初始綠卡={'On' if enable_initial_green_card else 'Off'} / 中立大亂鬥={'On' if enable_neutral_chaos_mode else 'Off'} / 暴斃時間={timeout_minutes}分"
+            f"{self._format_room_settings_summary(game_room)}"
         )
         return self._success('update_room_settings', self._serialize_room_state(game_room, viewer_account=account))
 

@@ -895,8 +895,8 @@ legend {
 }
 
 .area-name-church {
-  color: #dce1e6;
-  text-shadow: 0 0 1px rgba(20, 36, 48, 0.8);
+  color: #eef4fa;
+  text-shadow: 0 1px 2px rgba(20, 36, 48, 0.95), 0 0 1px rgba(20, 36, 48, 0.9);
 }
 
 .area-name-cemetery {
@@ -933,6 +933,7 @@ legend {
   border-color: #c6ced6;
   color: #3f4750;
   background: #ffffff;
+  text-shadow: none;
 }
 
 .stage-field-number.area-name-cemetery,
@@ -2423,6 +2424,14 @@ legend {
   text-align: left;
   line-height: 1.2;
   font-size: 11px;
+}
+
+.player-role-state {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: #6c7884;
+  font-size: 10px;
+  line-height: 1.2;
 }
 
 .player-trip-link {

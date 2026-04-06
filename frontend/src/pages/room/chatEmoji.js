@@ -37,6 +37,19 @@ export const HIGU_CHAT_EMOJIS = [
   { code: '[嚼嚼]', filename: 'akagi.gif' },
   { code: '[問號]', filename: '35.gif' },
   { code: '[鈴谷]', filename: 'sanman.jpg' },
+
+  // legacy higu aliases converted from () to []
+  { code: '[XD]', filename: '01.gif' },
+  { code: '[傻笑]', filename: '02.gif' },
+  { code: '[黑暗]', filename: '03.gif' },
+  { code: '[黑]', filename: '04.gif' },
+  { code: '[打擊]', filename: '05.gif' },
+  { code: '[哭]', filename: '06.gif' },
+  { code: '[GJ]', filename: '07.gif' },
+  { code: '[嚼]', filename: '08.gif', variant: 'chew-medium' },
+  { code: '[中嚼]', filename: '08.gif', variant: 'chew-large' },
+  { code: '[大嚼]', filename: '08.gif', variant: 'chew-xlarge' },
+  { code: '[波浪嚼]', filename: '08.gif', variant: 'chew-wave' },
 ];
 
 const HIGU_EMOJI_BY_CODE = new Map(HIGU_CHAT_EMOJIS.map((emoji) => [emoji.code, emoji]));
@@ -49,12 +62,31 @@ const HIGU_EMOJI_PATTERN = new RegExp(
   'g',
 );
 
-function buildEmojiImageHtml(emoji, esc) {
+function buildSingleEmojiImageHtml(emoji, esc, extraClass = '') {
   const src = `${HIGU_EMOJI_BASE_PATH}/${emoji.filename}`;
   const alt = esc(emoji.code);
   const title = esc(emoji.code);
-  const cls = 'chat-emoji-inline';
+  const cls = `chat-emoji-inline${extraClass ? ` ${extraClass}` : ''}`;
   return `<img class="${cls}" src="${src}" alt="${alt}" title="${title}">`;
+}
+
+function buildEmojiImageHtml(emoji, esc) {
+  const variant = String(emoji?.variant || '').trim();
+  if (variant === 'chew-wave') {
+    return [
+      'emoji-chew-medium',
+      'emoji-chew-large',
+      'emoji-chew-xlarge',
+      'emoji-chew-xlarge',
+      'emoji-chew-xlarge',
+      'emoji-chew-large',
+      'emoji-chew-medium',
+    ].map((className) => buildSingleEmojiImageHtml(emoji, esc, className)).join('');
+  }
+  if (variant === 'chew-medium') return buildSingleEmojiImageHtml(emoji, esc, 'emoji-chew-medium');
+  if (variant === 'chew-large') return buildSingleEmojiImageHtml(emoji, esc, 'emoji-chew-large');
+  if (variant === 'chew-xlarge') return buildSingleEmojiImageHtml(emoji, esc, 'emoji-chew-xlarge');
+  return buildSingleEmojiImageHtml(emoji, esc);
 }
 
 function buildEmojiHtmlFromCode(code, esc) {

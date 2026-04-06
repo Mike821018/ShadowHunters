@@ -35,12 +35,8 @@ class GameRecordsAPI:
         value = str(trip or '').strip()
         if not value:
             return ''
-        # Registered TRIP keys in the registry are raw values; always mask them,
-        # even when the raw text length is exactly 8.
-        if value in getattr(self.record_store, 'trip_registrations', {}):
-            return self.encrypt_trip_like_higu(value)
-        if len(value) == 8:
-            return value
+        if hasattr(self.record_store, 'to_trip_display'):
+            return self.record_store.to_trip_display(value)
         return self.encrypt_trip_like_higu(value)
 
     def _normalize_camp_code(self, camp: str) -> str:
@@ -440,6 +436,9 @@ class GameRecordsAPI:
                 'zone': int(getattr(p, 'zone', 0) or 0),
                 'area': str(getattr(getattr(p, 'area', None), 'name', '') or ''),
                 'character_reveal': bool(getattr(p, 'character_reveal', False)),
+                'settlement_character_reveal': bool(
+                    (getattr(room, 'settlement_character_reveal', {}) or {}).get(str(account), getattr(p, 'character_reveal', False))
+                ),
                 'character': str(getattr(character, 'name', '') or ''),
                 'character_camp': str(getattr(character, 'camp', '') or ''),
                 'can_use_ability': bool(getattr(p, 'can_use_ability', False)),
@@ -884,14 +883,14 @@ class GameRecordsAPI:
     def api_register_trip(self, trip: str, password: str) -> Dict[str, Any]:
         status = self.record_store.register_trip(trip, password)
         return {
-            'trip': str(trip or '').strip(),
+            'trip': self.to_trip_display(trip),
             'status': status,
         }
 
     def api_change_trip(self, old_trip: str, old_password: str, new_trip: str, new_password: str) -> Dict[str, Any]:
         self.record_store.change_trip_registration(old_trip, old_password, new_trip, new_password)
         return {
-            'trip': str(new_trip or '').strip(),
+            'trip': self.to_trip_display(new_trip),
             'status': 'changed',
         }
 

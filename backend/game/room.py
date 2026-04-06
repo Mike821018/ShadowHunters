@@ -70,6 +70,7 @@ class room(Thread):
         self.is_chat_archived: bool = False  # Issue 35.2: 遊戲是否已完成歸檔（結束&存檔），聊天可直接入資料庫
         self.turn_sequence: int = 0
         self._start_passive_applied: dict = {}
+        self.settlement_character_reveal: dict = {}
 
     def __getstate__(self):
         state = dict(self.__dict__)
@@ -390,6 +391,7 @@ class room(Thread):
         self.touch_turn_action()
         self._clear_turn_timeout_notice()
         self.private_character_visibility = {}
+        self.settlement_character_reveal = {}
         self.action_order = list(self.players.keys())
         random.shuffle(self.action_order)
         self.board.game_set(self.players)
@@ -863,6 +865,10 @@ class room(Thread):
         if primary_winners:
             # 第一輪判定先確認是否達成結束條件，接著切到結算狀態再做名單確認。
             self.room_status = 3
+            self.settlement_character_reveal = {
+                str(account or '').strip(): bool(getattr(player_obj, 'character_reveal', False))
+                for account, player_obj in self.players.items()
+            }
 
             winners = list(primary_winners)
 
