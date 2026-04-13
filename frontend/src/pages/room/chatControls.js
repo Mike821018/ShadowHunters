@@ -1,3 +1,5 @@
+import { t } from '../../i18n.js';
+import { countDisplayWidth } from '../../utils.js';
 import { HIGU_CHAT_EMOJIS, getEmojiAssetPath } from './chatEmoji.js';
 
 export function bindChatControls({
@@ -101,6 +103,14 @@ export function bindChatControls({
     const account = String(state.account || '').trim();
     const text = String(el.chatInput?.value || '').trim();
     if (!roomId || !account || !text) return;
+    if (countDisplayWidth(text) > 200) {
+      if (el.chatInput instanceof HTMLTextAreaElement) {
+        el.chatInput.setCustomValidity(t('room.chat.placeholder'));
+        el.chatInput.reportValidity();
+        el.chatInput.setCustomValidity('');
+      }
+      return;
+    }
     try {
       const data = await dispatch('send_chat', {
         room_id: roomId,

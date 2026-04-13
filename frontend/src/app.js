@@ -18,7 +18,7 @@ import { createAppState } from './state.js';
 import { createDispatch } from './transport.js';
 import { createStatusHelpers, createToast, loadAnnouncement, renderPlayerCards } from './ui.js';
 import { getDomElements } from './dom.js';
-import { countChars, esc, getInitial, isValidAsciiCredential, normalizeVillageName, withVillageSuffix } from './utils.js';
+import { countChars, countDisplayWidth, esc, getInitial, isValidAsciiCredential, normalizeVillageName, withVillageSuffix } from './utils.js';
 import { initFloatingChat } from './components/floatingChat.js';
 const state = createAppState();
 
@@ -154,6 +154,7 @@ async function boot() {
     toast,
     normalizeVillageName,
     countChars,
+    countDisplayWidth,
     withVillageSuffix,
     refreshRooms,
     goToRoomPage,
@@ -192,6 +193,7 @@ async function boot() {
       goToLobbyPage,
       isValidAsciiCredential,
       countChars,
+      countDisplayWidth,
       toast,
     });
   }

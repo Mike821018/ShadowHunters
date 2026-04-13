@@ -49,6 +49,7 @@ export function bindLobbyEvents({
   toast,
   normalizeVillageName,
   countChars,
+  countDisplayWidth,
   withVillageSuffix,
   refreshRooms,
   goToRoomPage,
@@ -102,12 +103,14 @@ export function bindLobbyEvents({
     }
     const lang = resolveLang();
     const roomNameMaxChars = lang === 'en' ? 40 : 20;
+    const roomNameMaxDisplayWidth = 40;
     const roomDescMaxChars = lang === 'en' ? 100 : 50;
-    if (countChars(baseName) > roomNameMaxChars) {
+    const roomDescMaxDisplayWidth = 100;
+    if (countDisplayWidth(baseName) > roomNameMaxDisplayWidth) {
       toast(t('toast.room_name_too_long', { max: roomNameMaxChars }), 'error');
       return;
     }
-    if (room_comment && countChars(room_comment) > roomDescMaxChars) {
+    if (room_comment && countDisplayWidth(room_comment) > roomDescMaxDisplayWidth) {
       toast(t('toast.room_desc_too_long'), 'error');
       return;
     }

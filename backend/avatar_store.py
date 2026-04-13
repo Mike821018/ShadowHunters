@@ -1,6 +1,7 @@
 import base64
 import json
 import re
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -9,6 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple
 DATA_URL_RE = re.compile(r'^data:(image\/(png|jpeg|gif|webp));base64,(.+)$', re.IGNORECASE | re.DOTALL)
 HEX_COLOR_RE = re.compile(r'^#[0-9a-fA-F]{6}$')
 CUSTOM_AVATAR_START_ID = 11
+
+
+def _count_display_width(text: Any) -> int:
+    width = 0
+    for char in str(text or ''):
+        if unicodedata.combining(char):
+            continue
+        width += 2 if unicodedata.east_asian_width(char) in {'F', 'W'} else 1
+    return width
 
 
 class AvatarStore:
@@ -108,7 +118,7 @@ class AvatarStore:
             raise ValueError('trip is required')
         if not name_key:
             raise ValueError('avatar name is required')
-        if len(name_key) > 20:
+        if _count_display_width(name_key) > 20:
             raise ValueError('avatar name exceeds limit')
         if not HEX_COLOR_RE.match(color_key):
             raise ValueError('invalid avatar color')

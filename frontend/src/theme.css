@@ -3821,10 +3821,13 @@ legend {
 
 .sh-fchat-line {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   line-height: 1.45;
-  font-size: 13px;
   word-break: break-word;
+}
+
+.sh-fchat-line:last-child {
+  margin-bottom: 0;
 }
 
 .sh-fchat-line--system {
@@ -3832,8 +3835,8 @@ legend {
   background: #fff8e8;
   border: 1px solid #f0dab0;
   border-radius: 4px;
-  padding: 3px 6px;
-  font-size: 12px;
+  padding: 4px 6px;
+  line-height: 1.5;
 }
 
 .sh-fchat-line--system .sh-fchat-pid {
@@ -3861,14 +3864,13 @@ legend {
 .sh-fchat-text {
   display: block;
   color: #2f3f4c;
-  padding-left: 4px;
+  padding-left: 8px;
   white-space: pre-wrap;
 }
 
 /* Emoji images inline in floating chat messages */
 .sh-fchat-msgs .chat-emoji-inline {
-  height: 20px;
-  vertical-align: middle;
+  vertical-align: text-bottom;
 }
 
 /* Footer (emoji panel + input row) */

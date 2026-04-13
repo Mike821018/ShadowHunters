@@ -76,8 +76,10 @@ function bindRegisterSubmit({
   goToLobbyPage,
   isValidAsciiCredential,
   countChars,
+  countDisplayWidth,
   toast,
   nicknameMaxChars,
+  nicknameMaxDisplayWidth,
   requireTrip,
 }) {
   if (!el.joinRoomForm || el.joinRoomForm.dataset.bound === 'true') return;
@@ -122,7 +124,7 @@ function bindRegisterSubmit({
       return;
     }
 
-    if (countChars(name) > nicknameMaxChars) {
+    if (countDisplayWidth(name) > nicknameMaxDisplayWidth) {
       toast(t('toast.nickname_too_long', { max: nicknameMaxChars }), 'error');
       return;
     }
@@ -933,6 +935,7 @@ export async function initRegisterPage({
   goToLobbyPage,
   isValidAsciiCredential,
   countChars,
+  countDisplayWidth,
   toast,
 }) {
   bindAvatarPicker({
@@ -948,6 +951,7 @@ export async function initRegisterPage({
 
   const currentLang = resolveLang();
   const nicknameMaxChars = currentLang === 'en' ? 20 : 10;
+  const nicknameMaxDisplayWidth = 20;
 
   const btnBackToRoom = document.getElementById('btnBackToRoom');
   if (btnBackToRoom instanceof HTMLButtonElement && btnBackToRoom.dataset.bound !== 'true') {
@@ -1033,8 +1037,10 @@ export async function initRegisterPage({
     goToLobbyPage,
     isValidAsciiCredential,
     countChars,
+    countDisplayWidth,
     toast,
     nicknameMaxChars,
+    nicknameMaxDisplayWidth,
     requireTrip,
   });
 

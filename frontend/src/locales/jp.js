@@ -46,7 +46,7 @@ export default {
     create: {
       title: '村を作成',
       name_label: '村名',
-      name_placeholder: '村名を入力（最大40文字）',
+      name_placeholder: '村名を入力（最大20文字）',
       name_suffix: '村',
       desc_label: '説明',
       desc_placeholder: '説明を入力（任意、最大100文字）',

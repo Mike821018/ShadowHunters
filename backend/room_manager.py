@@ -5,6 +5,7 @@ import json
 import os
 import pickle
 import threading
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -272,8 +273,29 @@ class RoomManager:
         self._emit_room_state_event(room_id)
         self._persist_room_snapshots()
 
+    _ROOM_NAME_MAX_DISPLAY_WIDTH = 40
+    _ROOM_COMMENT_MAX_DISPLAY_WIDTH = 100
+    _NICKNAME_MAX_DISPLAY_WIDTH = 20
+    _CHAT_MESSAGE_MAX_DISPLAY_WIDTH = 200
+
     def get_api_schemas(self) -> Dict[str, Any]:
         return API_SCHEMAS
+
+    @staticmethod
+    def _normalize_room_name_for_limit(raw_name: Any) -> str:
+        value = str(raw_name or '').strip()
+        while value.endswith('村'):
+            value = value[:-1].rstrip()
+        return value
+
+    @staticmethod
+    def _count_display_width(text: Any) -> int:
+        width = 0
+        for char in str(text or ''):
+            if unicodedata.combining(char):
+                continue
+            width += 2 if unicodedata.east_asian_width(char) in {'F', 'W'} else 1
+        return width
 
     def create_room(
         self,
@@ -1404,8 +1426,14 @@ class RoomManager:
         enable_initial_green_card = bool(payload.get('enable_initial_green_card', False))
         enable_neutral_chaos_mode = bool(payload.get('enable_neutral_chaos_mode', False))
         turn_timeout_minutes = int(payload.get('turn_timeout_minutes', 3) or 3)
-        if not room_name:
+        normalized_room_name = self._normalize_room_name_for_limit(room_name)
+        if not normalized_room_name:
             return self._error('create_room', 'ROOM_NAME_REQUIRED', 'room_name is required', 400)
+        if self._count_display_width(normalized_room_name) > self._ROOM_NAME_MAX_DISPLAY_WIDTH:
+            return self._error('create_room', 'ROOM_NAME_TOO_LONG', f'room_name exceeds max display width {self._ROOM_NAME_MAX_DISPLAY_WIDTH}', 400)
+        safe_room_comment = str(room_comment or '').strip()
+        if self._count_display_width(safe_room_comment) > self._ROOM_COMMENT_MAX_DISPLAY_WIDTH:
+            return self._error('create_room', 'ROOM_COMMENT_TOO_LONG', f'room_comment exceeds max display width {self._ROOM_COMMENT_MAX_DISPLAY_WIDTH}', 400)
         game_room = self.create_room(
             room_name,
             room_comment=str(room_comment or ''),
@@ -1460,6 +1488,8 @@ class RoomManager:
         if game_room.has_account(account):
             return self._error('join_room', 'ACCOUNT_ALREADY_EXISTS', '帳號已存在，請更換', 400)
         name = str(player_info.get('name') or '').strip()
+        if name and self._count_display_width(name) > self._NICKNAME_MAX_DISPLAY_WIDTH:
+            return self._error('join_room', 'NAME_TOO_LONG', f'name exceeds max display width {self._NICKNAME_MAX_DISPLAY_WIDTH}', 400)
         if name and game_room.has_name(name):
             return self._error('join_room', 'NAME_ALREADY_EXISTS', '暱稱已存在，請更換', 400)
         normalized_player_info = dict(player_info)
@@ -1840,7 +1870,7 @@ class RoomManager:
         sender = game_room.players.get(account)
         if not sender:
             return self._error('send_chat', 'PLAYER_NOT_FOUND', '玩家不存在', 404)
-        if len(message) > 200:
+        if self._count_display_width(message) > self._CHAT_MESSAGE_MAX_DISPLAY_WIDTH:
             return self._error('send_chat', 'MESSAGE_TOO_LONG', '訊息最多 200 字', 400)
 
         profile = getattr(sender, 'profile', {}) or {}

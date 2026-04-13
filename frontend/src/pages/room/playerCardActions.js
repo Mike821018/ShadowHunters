@@ -1,3 +1,5 @@
+import { countDisplayWidth } from '../../utils.js';
+
 export async function handlePlayerCardClick(targetAccount, ctx) {
   const {
     state,
@@ -208,7 +210,14 @@ export async function handlePlayerCardClick(targetAccount, ctx) {
       el.ratingDialogSubmit.onclick = async () => {
         const selected = dialog.querySelector('input[name="tripRatingValue"]:checked');
         const rating = selected instanceof HTMLInputElement ? Number(selected.value || 1) : 1;
-        await submitRating(rating, el.ratingDialogComment.value || '');
+        const comment = String(el.ratingDialogComment.value || '');
+        if (countDisplayWidth(comment.trim()) > 40) {
+          el.ratingDialogComment.setCustomValidity(t('identity.trip_rating_comment_placeholder'));
+          el.ratingDialogComment.reportValidity();
+          el.ratingDialogComment.setCustomValidity('');
+          return;
+        }
+        await submitRating(rating, comment);
         closeDialog();
       };
     }

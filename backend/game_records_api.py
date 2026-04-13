@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Any, TYPE_CHECKING
 import uuid
 import base64
 import hashlib
+import unicodedata
 from backend.records_system import (
     GameRecord, PlayerRecord, GameRecordStore, 
     RoomGameHistory, TripRatingRecord
@@ -38,6 +39,15 @@ class GameRecordsAPI:
         if hasattr(self.record_store, 'to_trip_display'):
             return self.record_store.to_trip_display(value)
         return self.encrypt_trip_like_higu(value)
+
+    @staticmethod
+    def _count_display_width(text: Any) -> int:
+        width = 0
+        for char in str(text or ''):
+            if unicodedata.combining(char):
+                continue
+            width += 2 if unicodedata.east_asian_width(char) in {'F', 'W'} else 1
+        return width
 
     def _normalize_camp_code(self, camp: str) -> str:
         code = str(camp or '').strip().lower()
@@ -963,7 +973,7 @@ class GameRecordsAPI:
             raise ValueError('rating must be either 1 or -1')
 
         safe_comment = str(comment or '').strip()
-        if len(safe_comment) > 40:
+        if self._count_display_width(safe_comment) > 40:
             raise ValueError('comment too long')
 
         same_room_rows = [row for row in self.record_store.rating_records if int(row.room_id or 0) == int(room_id)]

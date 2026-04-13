@@ -11,7 +11,7 @@ import { HIGU_CHAT_EMOJIS } from '../pages/room/chatEmoji.js';
 import { buildChatStageLines } from '../pages/room/chatFormatter.js';
 import { getCharacterLocalizedName, getCurrentUiLang } from '../characterInfo.js';
 import { t } from '../i18n.js';
-import { esc, apiFetch } from '../utils.js';
+import { esc, apiFetch, countDisplayWidth } from '../utils.js';
 
 const POLL_MS = 8000;
 const LS_KEY = 'sh.floatingChat.collapsed';
@@ -276,6 +276,12 @@ export async function initFloatingChat({ state }) {
     if (isSending || !account) return;
     const text = String(el.input.value || '').trim();
     if (!text) return;
+    if (countDisplayWidth(text) > 200) {
+      el.input.setCustomValidity(t('room.chat.placeholder'));
+      el.input.reportValidity();
+      el.input.setCustomValidity('');
+      return;
+    }
     isSending = true;
     el.sendBtn.disabled = true;
     try {
