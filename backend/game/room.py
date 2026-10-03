@@ -57,6 +57,7 @@ class room(Thread):
         self.turn_timeout_seconds: int = 3 * 60
         self.turn_last_action_at: float = 0.0
         self.latest_boom_notice: dict = {}
+        self.latest_roll_call_notice: dict = {}  # 村長/GM 重新點名的通知（給前端判斷要不要提示音效）
         self.last_activity_at: float = time.time()
         self.last_message_at: float = self.last_activity_at
         self.manager_ref = None
@@ -371,6 +372,19 @@ class room(Thread):
             p.profile['is_ready'] = False
         self.touch_activity()
 
+    def record_roll_call(self, account, name):
+        """
+        村長（或之後的 GM）重新點名、或是剔除玩家後：重置所有人的準備狀態，
+        並記錄一筆通知，讓前端可以據此播放提示音效（跟 latest_boom_notice 的用法一致）。
+        這兩種情境都是「需要所有人重新按準備」，共用同一套通知／音效。
+        """
+        self.reset_all_ready()
+        self.latest_roll_call_notice = {
+            'account': str(account or ''),
+            'name': str(name or account or ''),
+            'timestamp': int(time.time()),
+        }
+
     def login(self, account, password):
         """
         認證現有住民。以帳號 + 密碼比對已登記玩家。
@@ -391,6 +405,7 @@ class room(Thread):
         self.touch_activity()
         self.touch_turn_action()
         self._clear_turn_timeout_notice()
+        self.latest_roll_call_notice = {}
         self.private_character_visibility = {}
         self.settlement_character_reveal = {}
         self.action_order = list(self.players.keys())
@@ -415,6 +430,7 @@ class room(Thread):
                 self._initial_green_card = self.active_card
                 if self.active_card:
                     self.add_system_message("初始綠卡流程開始")
+                    self.add_system_message(f"[{self.current_player.name or self.current_player.account}] 初始綠卡：{str(getattr(self.active_card, 'name', '') or '未知卡')}")
                     return
             self._initial_green_card_executed = False
             self._initial_green_card = None
@@ -478,6 +494,22 @@ class room(Thread):
 
     def trigger_start_passive_ability(self, player_obj):
         return self._trigger_start_passive_ability(player_obj)
+
+    def activate_standby_ability(self, account):
+        """
+        供 ability_timing=11（不限自己回合，隨時可發動）的角色使用，例如艾莉（Allie）。
+        跟透過 next_step 推進回合的一般能力發動管道完全分開，不受目前輪到誰的回合限制。
+        """
+        if int(getattr(self, 'room_status', 0) or 0) != 2:
+            return False
+        player = self.players.get(account)
+        if not player or not player.character:
+            return False
+        if int(getattr(player.character, 'ability_timing', 0) or 0) != 11:
+            return False
+        if not self._can_activate_ability(player):
+            return False
+        return bool(self._use_ability_with_resolution(player, None))
 
     def _get_previous_alive_player(self, trip):
         if not self.action_order:
@@ -590,6 +622,7 @@ class room(Thread):
         if not player or not getattr(player, 'character', None):
             return False
         snapshot = self._capture_effect_snapshot()
+        was_revealed = bool(getattr(player, 'character_reveal', False))
         activated = bool(player.use_ability(target))
         if not activated:
             return False
@@ -599,6 +632,10 @@ class room(Thread):
         else:
             self.add_system_message(f"[{player.name or player.account}] 發動能力")
         character_name = str(getattr(getattr(player, 'character', None), 'name', '') or '未知角色')
+        # 部分角色（如丹尼爾、布萊恩）發動能力時會順帶揭露自己的身份；
+        # 這種情況下額外補一則揭露系統訊息，跟主動揭示/死亡揭示的訊息風格一致。
+        if not was_revealed and bool(getattr(player, 'character_reveal', False)):
+            self.add_system_message(f"[{player.name or player.account}] 身份揭示為：{character_name}")
         player_display = str(player.name or player.account or '').strip()
         self._emit_effect_delta_messages(snapshot, '角色能力', character_name, source_player=player_display)
         self._resolve_snapshot_deaths(snapshot, allow_loot=False)
@@ -658,6 +695,8 @@ class room(Thread):
                     self.current_player.status = 3
                     self.active_card = self.board.draw('Green')
                     self._initial_green_card = self.active_card
+                    if self.active_card:
+                        self.add_system_message(f"[{self.current_player.name or self.current_player.account}] 初始綠卡：{str(getattr(self.active_card, 'name', '') or '未知卡')}")
                     return
             else:
                 # 所有玩家都執行了初始綠卡，回到常規回合流程

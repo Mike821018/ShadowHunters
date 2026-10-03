@@ -15,6 +15,8 @@ import { bindPlayerCardClickTargets } from './room/playerCardBindings.js';
 import { bindStageInteractions } from './room/stageInteractions.js';
 import { bindChatControls } from './room/chatControls.js';
 import { bindRoomLifecycle } from './room/roomLifecycle.js';
+import { connectRoomEventStream, clearRoomEventSource } from './room/roomEventStream.js';
+import { playGameStartSound, playYourTurnSound, playRollCallSound } from '../soundEffects.js';
 import { bindRoomControls } from './room/roomControls.js';
 import { createStageNextStepStateHandlers } from './room/stageNextStepState.js';
 import {
@@ -33,6 +35,7 @@ import {
   isAbilityPlayerTarget as isAbilityPlayerTargetModule,
   getSelfAbilityState as getSelfAbilityStateModule,
   canActivateSelfAbilityFromCard as canActivateSelfAbilityFromCardModule,
+  canActivateStandbyAbility as canActivateStandbyAbilityModule,
   getCurrentTurnPlayer as getCurrentTurnPlayerModule,
   isReplayViewState as isReplayViewStateModule,
   isRoomLayoutPage as isRoomLayoutPageModule,
@@ -260,6 +263,10 @@ function getSelfAbilityState(state, dataSnapshot = latestRoomSnapshot) {
 
 function canActivateSelfAbilityFromCard(state, dataSnapshot = latestRoomSnapshot) {
   return canActivateSelfAbilityFromCardModule(state, dataSnapshot);
+}
+
+function canActivateStandbyAbility(state, dataSnapshot = latestRoomSnapshot) {
+  return canActivateStandbyAbilityModule(state, dataSnapshot);
 }
 
 function getCurrentTurnPlayer(dataSnapshot = latestRoomSnapshot) {
@@ -827,6 +834,7 @@ export function renderState({
   if (incomingRenderSeq) {
     latestRoomRenderSeq = incomingRenderSeq;
   }
+  const previousRoomSnapshot = latestRoomSnapshot;
   latestRoomSnapshot = data;
   if (el.gameState) el.gameState.textContent = JSON.stringify(data, null, 2);
   renderDamageMeter(el.damageMeter, data);
@@ -860,6 +868,33 @@ export function renderState({
   }
 
   if (sessionDirty) persistSession(state);
+
+  // 開場音效／輪到自己音效／重新點名音效：跟 previousRoomSnapshot 比對狀態轉變才播放，
+  // 避免剛進房間、重新整理、或切換到別的房間時誤判成「剛開局」「剛輪到我」或「剛被點名」。
+  const isFreshRoomEntry = !previousRoomSnapshot
+    || (previousRoomSnapshot?.room?.room_id || null) !== (data?.room?.room_id || null);
+  if (!isFreshRoomEntry) {
+    const previousRoomStatus = Number(previousRoomSnapshot?.room?.room_status || 0);
+    const nextRoomStatus = Number(data?.room?.room_status || 0);
+    if (previousRoomStatus !== 2 && nextRoomStatus === 2) {
+      playGameStartSound();
+    }
+
+    const selfAccount = String(state.account || '').trim();
+    if (selfAccount) {
+      const previousTurnAccount = String(previousRoomSnapshot?.turn?.current_account || '').trim();
+      const nextTurnAccount = String(data?.turn?.current_account || '').trim();
+      if (nextTurnAccount === selfAccount && previousTurnAccount !== selfAccount) {
+        playYourTurnSound();
+      }
+    }
+
+    const previousRollCallAt = Number(previousRoomSnapshot?.roll_call_notice?.timestamp || 0);
+    const nextRollCallAt = Number(data?.roll_call_notice?.timestamp || 0);
+    if (nextRollCallAt > 0 && nextRollCallAt !== previousRollCallAt) {
+      playRollCallSound();
+    }
+  }
 
   const isChatRoom = Boolean(data?.room?.is_chat_room);
   const chatHiddenFieldsets = [
@@ -1781,6 +1816,44 @@ export function bindRoomEvents({
     toast(t('toast.character_ability_not_supported'), 'error');
   };
 
+  // ability_timing===11（例如艾莉 Allie）：不限自己回合，隨時可以點自己的卡片發動，
+  // 走獨立於 next_step 回合推進流程之外的 activate_standby_ability 動作。
+  const startStandbyAbilityActivation = async () => {
+    const abilityState = getSelfAbilityState(state);
+    if (!abilityState || !canActivateStandbyAbility(state)) return;
+
+    const confirmed = await openConfirmDialog({
+      title: t('room.confirm.title'),
+      message: t('toast.character_ability_confirm'),
+      confirmLabel: t('room.confirm.confirm'),
+      cancelLabel: t('room.confirm.cancel'),
+    });
+    if (!confirmed) {
+      toast(t('toast.character_ability_cancelled'));
+      return;
+    }
+
+    if (abilityState.targetType && abilityState.targetType !== 'self') {
+      toast(t('toast.character_ability_not_supported'), 'error');
+      return;
+    }
+
+    try {
+      const data = await dispatch('activate_standby_ability', {
+        room_id: state.roomId,
+        account: state.account || undefined,
+      });
+      renderState(data);
+      toast(t('toast.character_ability_activated'));
+    } catch (error) {
+      if (error?.code === 'ROOM_NOT_FOUND') {
+        goToLobbyPage();
+        return;
+      }
+      console.error(error);
+    }
+  };
+
   const selectAbilityPlayerTarget = async (targetAccount) => {
     if (!pendingAbilityActivation || !state.roomId || !targetAccount) return;
     const abilityDiceMode = getAbilityDiceAnimationMode(pendingAbilityActivation.character);
@@ -1858,11 +1931,14 @@ export function bindRoomEvents({
     renderAutoRefreshControls,
   });
 
+  connectRoomEventStream({ state, dispatch, renderState, toast, t, goToLobbyPage });
+
   const leaveVillage = async () => {
     if (!state.roomId || !state.account) return;
     const leavingRoomId = state.roomId;
     await dispatch('leave_room', { room_id: state.roomId, account: state.account });
     clearRoomAutoRefreshTimer();
+    clearRoomEventSource();
     clearRoomAccount(state, leavingRoomId);
     state.roomId = null;
     persistSession(state);
@@ -1878,6 +1954,7 @@ export function bindRoomEvents({
     const abolishRoomId = state.roomId;
     await dispatch('abolish_room', { room_id: state.roomId, account: state.account });
     clearRoomAutoRefreshTimer();
+    clearRoomEventSource();
     clearRoomAccount(state, abolishRoomId);
     state.roomId = null;
     persistSession(state);
@@ -2180,6 +2257,8 @@ export function bindRoomEvents({
       selectAbilityPlayerTarget,
       canActivateSelfAbilityFromCard,
       startSelfAbilityActivation,
+      canActivateStandbyAbility,
+      startStandbyAbilityActivation,
       markEndTurnAbilityInteractionStarted,
     });
   };
@@ -2212,6 +2291,7 @@ export function bindRoomEvents({
 
   bindRoomLifecycle({
     clearRoomAutoRefreshTimer,
+    clearRoomEventSource,
   });
 
   if (el.roomInfo) {

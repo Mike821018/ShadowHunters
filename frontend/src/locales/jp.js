@@ -23,6 +23,10 @@ export default {
       ascii20: '最大20文字の英数字/記号',
       kanji10: '最大10文字',
     },
+    sound: {
+      on_title: 'サウンド：オン（クリックでミュート）',
+      off_title: 'サウンド：ミュート中（クリックでオン）',
+    },
   },
   lobby: {
     announce: {
@@ -377,6 +381,7 @@ export default {
       initial_green_card_prefix: '初期',
       initial_green_flow_started: '初期グリーンカード処理開始',
       initial_green_card: '初期グリーンカード：{card}',
+      initial_green_card_drawn: '{player} が初期グリーンカードを引きました：{card}',
       game_started: 'ゲーム開始',
       game_ended_winners: 'ゲーム終了。勝者: {winners}',
       card_source: 'カード {card}',
@@ -802,6 +807,8 @@ export default {
     game_started: 'ゲーム開始',
     auto_off: '手動更新に切り替えました',
     auto_on: '{n}秒ごとに自動更新',
+    sound_on: 'サウンドをオンにしました',
+    sound_off: 'サウンドをオフにしました',
     auto_fail: '自動更新失敗、手動に切り替えました',
     login_ok: 'ログイン成功',
     register_ok: '登録成功',

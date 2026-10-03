@@ -30,6 +30,8 @@ export async function handlePlayerCardClick(targetAccount, ctx) {
     selectAbilityPlayerTarget,
     canActivateSelfAbilityFromCard,
     startSelfAbilityActivation,
+    canActivateStandbyAbility,
+    startStandbyAbilityActivation,
     markEndTurnAbilityInteractionStarted,
   } = ctx;
 
@@ -152,6 +154,13 @@ export async function handlePlayerCardClick(targetAccount, ctx) {
     // 玩家已經點自己的卡片準備發動能力：回合結束階段不能再被「自動結束回合」搶先結束。
     markEndTurnAbilityInteractionStarted?.();
     await startSelfAbilityActivation();
+    return;
+  }
+
+  // ability_timing===11（例如艾莉 Allie）：不限自己回合，隨時點自己的卡片都可以發動；
+  // 不受「輪到自己回合」限制，所以不需要跟自動結束回合搶時機。
+  if (isGameOngoing && isSelfCard && selfPlayer?.character_reveal && canActivateStandbyAbility(state, dataSnapshot)) {
+    await startStandbyAbilityActivation();
     return;
   }
 

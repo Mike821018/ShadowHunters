@@ -41,6 +41,7 @@ API_SCHEMAS = {
                         'steal_equipment', 'set_green_card_choice', 'confirm_green_card', 'confirm_equipment',
                         'get_room_state', 'change_color', 'abolish_room', 'toggle_ready', 'vote_kick', 'roll_call',
                         'extend_turn_timeout',
+                        'activate_standby_ability',
                         'send_chat',
                         'register_trip', 'change_trip', 'claim_trip_records', 'modify_trip_records', 'delete_trip_records',
                         'submit_trip_rating',
@@ -134,6 +135,7 @@ class RoomManager:
         'extend_turn_timeout',
         'update_room_settings',
         'reveal_character',
+        'activate_standby_ability',
         'send_chat',
     }
 
@@ -174,6 +176,8 @@ class RoomManager:
         game_room._chat_seq = max(int(getattr(game_room, '_chat_seq', 0) or 0), max_chat_id)
         if not isinstance(getattr(game_room, 'latest_boom_notice', None), dict):
             game_room.latest_boom_notice = {}
+        if not isinstance(getattr(game_room, 'latest_roll_call_notice', None), dict):
+            game_room.latest_roll_call_notice = {}
         if not isinstance(getattr(game_room, 'kick_votes', None), dict):
             game_room.kick_votes = {}
         if not isinstance(getattr(game_room, 'private_character_visibility', None), dict):
@@ -1089,6 +1093,7 @@ class RoomManager:
             },
             'turn_timeout': game_room.get_turn_timeout_snapshot() if hasattr(game_room, 'get_turn_timeout_snapshot') else None,
             'boomed_notice': dict(getattr(game_room, 'latest_boom_notice', {}) or {}),
+            'roll_call_notice': dict(getattr(game_room, 'latest_roll_call_notice', {}) or {}),
             'chat_messages': list(getattr(game_room, 'chat_messages', []) or []),
             'action_order': list(game_room.action_order or []),
             'move_options': [area.name for area in (getattr(game_room, '_move_area_options', []) or []) if area],
@@ -1434,6 +1439,8 @@ class RoomManager:
                 result = self.api_update_room_settings(payload)
             elif action == 'reveal_character':
                 result = self.api_reveal_character(payload)
+            elif action == 'activate_standby_ability':
+                result = self.api_activate_standby_ability(payload)
             elif action == 'send_chat':
                 result = self.api_send_chat(payload)
             elif action == 'register_trip':
@@ -1724,7 +1731,8 @@ class RoomManager:
                 return self._error('vote_kick', 'KICK_FAILED', '剔除失敗', 400)
             game_room.add_system_message(f"村長 [{voter.name or voter_account}] 剔除了 [{target.name or target_account}]")
             game_room.clear_all_kick_votes()
-            game_room.reset_all_ready()
+            # 剔除玩家後所有人需要重新準備，跟「重新點名」一樣用音效提醒大家。
+            game_room.record_roll_call(voter_account, voter.name or voter_account)
             return self._success('vote_kick', self._serialize_room_state(game_room, viewer_account=voter_account))
 
         vote_count = game_room.cast_kick_vote(voter_account, target_account)
@@ -1734,7 +1742,8 @@ class RoomManager:
                 return self._error('vote_kick', 'KICK_FAILED', '剔除失敗', 400)
             game_room.add_system_message(f"[{target.name or target_account}] 已被投票剔除")
             game_room.clear_all_kick_votes()
-            game_room.reset_all_ready()
+            # 剔除玩家後所有人需要重新準備，跟「重新點名」一樣用音效提醒大家。
+            game_room.record_roll_call(voter_account, voter.name or voter_account)
 
         return self._success('vote_kick', self._serialize_room_state(game_room, viewer_account=voter_account))
 
@@ -1756,7 +1765,7 @@ class RoomManager:
         if not bool(requester.profile.get('is_village_manager', False)):
             return self._error('roll_call', 'NOT_VILLAGE_MANAGER', '只有村長可以點名', 403)
 
-        game_room.reset_all_ready()
+        game_room.record_roll_call(account, requester.name or account)
         game_room.add_system_message(f"村長 [{requester.name or account}] 發起點名，所有人需重新準備")
         game_room.touch_activity()
         return self._success('roll_call', self._serialize_room_state(game_room, viewer_account=account))
@@ -1911,6 +1920,35 @@ class RoomManager:
         game_room.add_system_message(f"[{player.name or account}] 主動揭示身份：{role_name}")
         game_room.touch_activity()
         return self._success('reveal_character', self._serialize_room_state(game_room, viewer_account=account))
+
+    def api_activate_standby_ability(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        供 ability_timing=11（不限自己回合，隨時可發動）的角色使用，例如艾莉（Allie）。
+        跟一般透過 next_step 推進回合的能力發動管道（僅限輪到自己回合時）完全分開。
+        """
+        room_id = payload.get('room_id')
+        account = str(payload.get('account') or '').strip()
+        if room_id is None or not account:
+            return self._error('activate_standby_ability', 'INVALID_PAYLOAD', 'room_id and account are required', 400)
+        game_room = self.get_room(room_id)
+        if not game_room:
+            return self._error('activate_standby_ability', 'ROOM_NOT_FOUND', '房間不存在', 404)
+        if int(getattr(game_room, 'room_status', 0) or 0) != 2:
+            return self._error('activate_standby_ability', 'GAME_NOT_STARTED', '遊戲尚未開始', 400)
+        player = game_room.players.get(account)
+        if not player:
+            return self._error('activate_standby_ability', 'PLAYER_NOT_FOUND', '玩家不存在', 404)
+        if not player.character or int(getattr(player.character, 'ability_timing', 0) or 0) != 11:
+            return self._error('activate_standby_ability', 'ABILITY_NOT_SUPPORTED', '此角色沒有可隨時發動的能力', 400)
+        if not player.character_reveal and getattr(player.character, 'ability_requires_reveal', True):
+            return self._error('activate_standby_ability', 'CHARACTER_NOT_REVEALED', '角色尚未揭露，無法發動能力', 400)
+        if not player.can_use_ability:
+            return self._error('activate_standby_ability', 'ABILITY_UNAVAILABLE', '能力已無法使用', 400)
+        activated = bool(game_room.activate_standby_ability(account))
+        if not activated:
+            return self._error('activate_standby_ability', 'ABILITY_ACTIVATION_FAILED', '能力發動失敗', 400)
+        game_room.touch_activity()
+        return self._success('activate_standby_ability', self._serialize_room_state(game_room, viewer_account=account))
 
     def api_send_chat(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         room_id = payload.get('room_id')

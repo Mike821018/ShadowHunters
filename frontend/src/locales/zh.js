@@ -23,6 +23,10 @@ export default {
       ascii20: '最多20位英文/數字/標點符號',
       kanji10: '最多10位中文',
     },
+    sound: {
+      on_title: '音效：開啟中（點擊關閉）',
+      off_title: '音效：已關閉（點擊開啟）',
+    },
   },
   lobby: {
     announce: {
@@ -368,6 +372,7 @@ export default {
       initial_green_card_prefix: '初始',
       initial_green_flow_started: '初始綠卡流程開始',
       initial_green_card: '初始綠卡：{card}',
+      initial_green_card_drawn: '{player} 抽取初始綠卡：{card}',
       game_started: '遊戲開始',
       game_ended_winners: '遊戲結束，勝利者：{winners}',
       card_source: '卡片 {card}',
@@ -801,6 +806,8 @@ export default {
     game_started: '遊戲開始',
     auto_off: '已切換為手動更新',
     auto_on: '已切換為每 {n} 秒自動更新',
+    sound_on: '音效已開啟',
+    sound_off: '音效已關閉',
     auto_fail: '自動更新失敗，已切回手動更新',
     login_ok: '住民登入成功',
     register_ok: '住民登錄成功',

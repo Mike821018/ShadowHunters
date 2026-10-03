@@ -12,6 +12,12 @@ export const PLAYER_COLOR_HEX = {
   Grey: '#a0a0a0',
 };
 
+// 離開房間的路人（已經不在目前玩家名單裡），聊天室／系統訊息裡統一用這個顏色標示。
+export const DEPARTED_PLAYER_COLOR_HEX = '#78716c';
+
+// GM（村長之上的管理身分，尚未實作）專用顏色，先保留起來跟玩家顏色區分。
+export const GM_COLOR_HEX = '#0e7490';
+
 export const STATUS_TEXT = {
   0: 'Waiting',
   1: 'Start',

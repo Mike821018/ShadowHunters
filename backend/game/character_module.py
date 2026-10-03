@@ -28,7 +28,7 @@ class Character():
         self.counter_atk = False
 
         self.can_use_ability = True
-        self.ability_timing = 0 # 0: passive, 1: start, 2: move, 3:area_effect, 4: attack, 5: defense, 6: end, 7: green card, 8: any, 9:dead, 10:start_passive
+        self.ability_timing = 0 # 0: passive, 1: start, 2: move, 3:area_effect, 4: attack, 5: defense, 6: end, 7: green card, 8: any, 9:dead, 10:start_passive, 11:standby (不限自己回合，隨時可發動)
         self.target = "self" # all, others, area, one, other, self, discard
 
     def assign(self, user):
@@ -400,7 +400,7 @@ class Allie(Character):
         self.capital = 'A'
         self.camp = 'Civilian'
         self.hp = 8
-        self.ability_timing = 8 # any
+        self.ability_timing = 11 # standby：不限自己回合，隨時可發動
         self.target = "self"
         self.has_end_game_win_check = True
         self.defer_win_check_until_game_end = True

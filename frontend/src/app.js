@@ -13,6 +13,7 @@ import { bindLobbyEvents, initLobbyPage, refreshRooms as refreshLobbyRooms, rend
 import { bindRoomEvents, initRoomPage, renderState as renderRoomState, renderVillageInfo as renderRoomVillageInfo, setVillageInfoMessage as setRoomVillageInfoMessage } from './pages/room.js';
 import { showConfirmDialog } from './pages/room/choiceDialogs.js';
 import { applyI18n, bindLangSwitcher, initI18n, t } from './i18n.js';
+import { bindSoundToggle } from './soundEffects.js';
 import { persistSession, restoreSession } from './session.js';
 import { createAppState } from './state.js';
 import { createDispatch } from './transport.js';
@@ -142,6 +143,7 @@ async function boot() {
     getAllCharacterInfos,
   });
   bindLangSwitcher(currentLang);
+  bindSoundToggle();
 
   restoreSession(state);
   bindTransportModeEvents({ el, setTransportMode, persistCurrentSession });

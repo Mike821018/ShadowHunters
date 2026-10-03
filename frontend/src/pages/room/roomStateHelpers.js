@@ -38,6 +38,17 @@ export function canActivateSelfAbilityFromCard(state, dataSnapshot) {
   return false;
 }
 
+// timing===11（例如艾莉 Allie）：不限自己回合，隨時都能發動，
+// 所以刻意不比對 currentAccount，跟 canActivateSelfAbilityFromCard 的限制分開。
+export function canActivateStandbyAbility(state, dataSnapshot) {
+  const abilityState = getSelfAbilityState(state, dataSnapshot);
+  if (!abilityState) return false;
+  if (abilityState.roomStatus !== 2) return false;
+  if (abilityState.timing !== 11) return false;
+  if (!abilityState.revealed || !abilityState.canUseAbility) return false;
+  return true;
+}
+
 export function getCurrentTurnPlayer(dataSnapshot) {
   const currentAccount = String(dataSnapshot?.turn?.current_account || '').trim();
   if (!currentAccount) return null;

@@ -1,4 +1,5 @@
 import { renderChatTextWithEmojis } from './chatEmoji.js';
+import { PLAYER_COLOR_HEX, DEPARTED_PLAYER_COLOR_HEX } from '../../constants.js';
 
 export function buildChatStageLines({
   messages,
@@ -37,6 +38,33 @@ export function buildChatStageLines({
     'Chainsaw', 'Butcher Knife', 'Rusted Broad Axe', 'Masamune', 'Machine Gun', 'Handgun',
   ]);
 
+  // 把玩家選的顏色轉成在聊天室白色背景上也看得清楚的文字顏色：顏色太亮（例如白、黃）
+  // 時會往黑色方向調暗一些，其他顏色基本維持原樣，盡量保留 Mike 原本選的那個顏色。
+  const toReadableTextHex = (hex) => {
+    const match = /^#([0-9a-fA-F]{6})$/.exec(String(hex || '').trim());
+    if (!match) return hex;
+    const r = parseInt(match[1].slice(0, 2), 16);
+    const g = parseInt(match[1].slice(2, 4), 16);
+    const b = parseInt(match[1].slice(4, 6), 16);
+    const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    if (luma <= 0.6) return hex;
+    const darkenFactor = Math.min(0.75, ((luma - 0.6) / 0.4) * 0.75);
+    const scale = 1 - darkenFactor;
+    const toHex = (value) => Math.max(0, Math.round(value * scale)).toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  };
+
+  // 目前玩家（有開場後選的顏色）回傳對應的可讀文字顏色；已經離開房間、不在目前玩家
+  // 名單裡的帳號，統一回傳「路人」顏色，不特別分辨是誰。
+  const getPlayerLabelColor = (account) => {
+    const acc = String(account || '').trim();
+    if (!acc) return null;
+    const player = data?.players?.[acc];
+    if (!player) return DEPARTED_PLAYER_COLOR_HEX;
+    const hex = PLAYER_COLOR_HEX[player.color];
+    return hex ? toReadableTextHex(hex) : null;
+  };
+
   const fmtTime = (ts) => {
     const d = new Date((ts || 0) * 1000);
     return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
@@ -69,9 +97,16 @@ export function buildChatStageLines({
   const initialGreenCardBySource = new Map();
   const initialGreenCardByTarget = new Map();
 
-  const pidPlain = (name) => {
+  const pidPlain = (name, accountHint = '') => {
     const rawName = decodeHtml(name);
-    return `<span class="chat-pid">${esc(getDisplayNameByLabel(rawName))}</span>`;
+    const rawHint = decodeHtml(accountHint);
+    // accountHint 如果剛好是目前真的在房間裡的帳號（例如勝利者清單那種情境），優先用它；
+    // 否則照原本的方式用名字去反查帳號（多數系統訊息只有名字，沒有真正的帳號可用）。
+    const hintedAccount = String(rawHint || '').trim();
+    const resolvedAccount = (hintedAccount && data?.players?.[hintedAccount]) ? hintedAccount : resolveAccountByLabel(rawName);
+    const colorHex = resolvedAccount ? getPlayerLabelColor(resolvedAccount) : DEPARTED_PLAYER_COLOR_HEX;
+    const styleAttr = colorHex ? ` style="color:${colorHex}"` : '';
+    return `<span class="chat-pid"${styleAttr}>${esc(getDisplayNameByLabel(rawName))}</span>`;
   };
 
   const resolveAccountByLabel = (label) => {
@@ -128,12 +163,12 @@ export function buildChatStageLines({
     }
     const rawHint = decodeHtml(accountHint);
     const roleName = String(explicitRoleName || '').trim() || getVisibleRoleName(rawName, rawHint);
-    return `${pidPlain(rawName)}<span class="chat-role">(${esc(roleName || '???')})</span>`;
+    return `${pidPlain(rawName, rawHint)}<span class="chat-role">(${esc(roleName || '???')})</span>`;
   };
 
   const pid = (name, accountHint = '') => {
     if (showRoleInSystemMessages) return pidRole(name, accountHint || name);
-    return pidPlain(name);
+    return pidPlain(name, accountHint);
   };
 
   const parseLeadingBracketedValue = (text, suffixToken) => {
@@ -387,7 +422,7 @@ export function buildChatStageLines({
     if ((m = text.match(/^\[(.+)\]\s*初始綠卡：(.+)$/))) {
       const cardName = String(m[2] || '').trim();
       rememberInitialGreenCard(m[1], cardName);
-      return t('room.system.initial_green_card', { card: greenCardLabel(cardName, m[1], '') });
+      return t('room.system.initial_green_card_drawn', { player: pidRole(esc(m[1]), m[1]), card: greenCardLabel(cardName, m[1], '') });
     }
     if ((m = text.match(/^初始綠卡：(.+)$/))) {
       const cardName = String(m[1] || '').trim();
@@ -629,7 +664,7 @@ export function buildChatStageLines({
     }
 
     const safeText = esc(text);
-    return safeText.replace(/\[([^\]]+)\]/g, (_, n) => showRoleInSystemMessages ? pidRole(n, n) : `<span class="chat-pid">${n}</span>`);
+    return safeText.replace(/\[([^\]]+)\]/g, (_, n) => showRoleInSystemMessages ? pidRole(n, n) : pidPlain(n, n));
   };
 
   const chatLines = [];
@@ -663,7 +698,9 @@ export function buildChatStageLines({
     const isSelf = Boolean(state?.account) && account === String(state.account || '');
     const cls = isSelf ? 'chat-line chat-line-self' : 'chat-line';
     const chatTextHtml = renderChatTextWithEmojis(text, esc);
-    chatLines.push(`<div class="${cls}"><div class="chat-sender">${esc(name || '-')}<span class="chat-time">(${timeStr})</span>:</div><div class="chat-text">${chatTextHtml}</div></div>`);
+    const senderColorHex = account ? getPlayerLabelColor(account) : null;
+    const senderStyleAttr = senderColorHex ? ` style="color:${senderColorHex}"` : '';
+    chatLines.push(`<div class="${cls}"><div class="chat-sender"${senderStyleAttr}>${esc(name || '-')}<span class="chat-time">(${timeStr})</span>:</div><div class="chat-text">${chatTextHtml}</div></div>`);
   });
 
   const timeoutRemain = Number(data?.turn_timeout?.remaining_seconds);

@@ -23,6 +23,10 @@ export default {
       ascii20: 'Max 20 characters',
       kanji10: 'Max 20 characters',
     },
+    sound: {
+      on_title: 'Sound: On (click to mute)',
+      off_title: 'Sound: Muted (click to unmute)',
+    },
   },
   lobby: {
     announce: {
@@ -378,6 +382,7 @@ export default {
       initial_green_card_prefix: 'Initial ',
       initial_green_flow_started: 'Initial Green Card phase started',
       initial_green_card: 'Initial Green Card: {card}',
+      initial_green_card_drawn: '{player} drew the Initial Green Card: {card}',
       game_started: 'Game started',
       game_ended_winners: 'Game ended. Winners: {winners}',
       card_source: 'Card {card}',
@@ -804,6 +809,8 @@ export default {
     game_started: 'Game started',
     auto_off: 'Switched to manual refresh',
     auto_on: 'Auto-refresh every {n}s',
+    sound_on: 'Sound on',
+    sound_off: 'Sound off',
     auto_fail: 'Auto-refresh failed, switched to manual',
     login_ok: 'Login successful',
     register_ok: 'Registration successful',

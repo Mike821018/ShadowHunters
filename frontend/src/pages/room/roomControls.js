@@ -1,4 +1,5 @@
 import { AUTO_REFRESH_OPTIONS } from '../../constants.js';
+import { clearRoomEventSource } from './roomEventStream.js';
 
 export function bindRoomControls({
   el,
@@ -97,6 +98,7 @@ export function bindRoomControls({
   const isReplayPage = String(state?.page || '') === 'replay-room';
   if (isReplayPage) {
     clearRoomAutoRefreshTimer();
+    clearRoomEventSource();
     if (el.autoRefreshOptions) el.autoRefreshOptions.innerHTML = '';
   } else {
     renderAutoRefreshControls({
@@ -125,6 +127,7 @@ export function bindRoomControls({
 
   el.btnRoomBackLobby?.addEventListener('click', () => {
     clearRoomAutoRefreshTimer();
+    clearRoomEventSource();
     goToLobbyPage();
   });
 
