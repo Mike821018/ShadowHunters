@@ -310,6 +310,7 @@ class RoomManager:
         expansion_mode: str = 'all',
         enable_initial_green_card: bool = False,
         enable_neutral_chaos_mode: bool = False,
+        enable_badge_unique_character_select: bool = False,
         turn_timeout_minutes: int = 3,
     ) -> room.room:
         game_room = room.room()
@@ -325,6 +326,7 @@ class RoomManager:
         game_room.expansion_mode = self._normalize_expansion_mode(expansion_mode)
         game_room.enable_initial_green_card = bool(enable_initial_green_card)
         game_room.enable_neutral_chaos_mode = bool(enable_neutral_chaos_mode)
+        game_room.enable_badge_unique_character_select = bool(enable_badge_unique_character_select)
         valid_timeout_minutes = [2, 3, 5, 10, 20, 30]
         chosen = int(turn_timeout_minutes or 3)
         if chosen not in valid_timeout_minutes:
@@ -496,6 +498,12 @@ class RoomManager:
             if camp_name in forced_by_camp:
                 forced_by_camp[camp_name] += 1
 
+        badge_unique = bool(getattr(game_room, 'enable_badge_unique_character_select', False))
+        used_badges = set()
+        if badge_unique:
+            for character_cls in forced_role_classes.values():
+                used_badges.add(self._character_badge_letter(character_cls))
+
         character_pool = []
         neutral_chaos_enabled = bool(getattr(game_room, 'enable_neutral_chaos_mode', False))
         neutral_chaos_available = False
@@ -507,7 +515,7 @@ class RoomManager:
             neutral_chaos_available = (not has_non_neutral_forced) and len(civilian_pool) >= neutral_need
 
             if neutral_chaos_available:
-                character_pool.extend(self._pick_character_instances(civilian_pool, neutral_need))
+                character_pool.extend(self._pick_character_instances(civilian_pool, neutral_need, used_badges=used_badges, badge_unique=badge_unique))
             else:
                 game_room.enable_neutral_chaos_mode = False
                 game_room.add_system_message('中立大亂鬥因中立角色數量不足或指定角色不符，已自動回復原本陣營設定')
@@ -521,9 +529,9 @@ class RoomManager:
             hunter_pool = [cls for cls in self._resolve_camp_classes(character_module.hunter_camp, expansion_mode) if cls not in forced_class_set]
             civilian_pool = [cls for cls in self._resolve_camp_classes(character_module.civilian_camp, expansion_mode) if cls not in forced_class_set]
 
-            character_pool.extend(self._pick_character_instances(shadow_pool, shadow_need))
-            character_pool.extend(self._pick_character_instances(hunter_pool, hunter_need))
-            character_pool.extend(self._pick_character_instances(civilian_pool, civilian_need))
+            character_pool.extend(self._pick_character_instances(shadow_pool, shadow_need, used_badges=used_badges, badge_unique=badge_unique))
+            character_pool.extend(self._pick_character_instances(hunter_pool, hunter_need, used_badges=used_badges, badge_unique=badge_unique))
+            character_pool.extend(self._pick_character_instances(civilian_pool, civilian_need, used_badges=used_badges, badge_unique=badge_unique))
         random.shuffle(character_pool)
 
         character_iter = iter(character_pool)
@@ -548,6 +556,11 @@ class RoomManager:
             return str(character_cls().camp or '').strip()
         except Exception:
             return ''
+
+    def _character_badge_letter(self, character_cls: Any) -> str:
+        # 徽章字母＝角色英文名稱（self.name）首字，與前端各處「同徽章角色」判斷一致。
+        name = self._character_name(character_cls)
+        return name[:1].upper() if name else ''
 
     def _build_character_alias_index(self, expansion_mode: str) -> Dict[str, Any]:
         available = []
@@ -633,12 +646,45 @@ class RoomManager:
 
         return forced_classes
 
-    def _pick_character_instances(self, classes, count: int):
+    def _pick_character_instances(self, classes, count: int, used_badges: Optional[set] = None, badge_unique: bool = False):
         if count <= 0:
             return []
         if len(classes) < count:
             raise ValueError('insufficient character pool for selected expansion mode')
-        picked = random.sample(classes, count)
+
+        if not (badge_unique and used_badges is not None):
+            picked = random.sample(list(classes), count)
+            return [character_cls() for character_cls in picked]
+
+        # 徽章唯一：合併多組卡組時，同一徽章字母（角色英文名首字，如 Agnes/Allie
+        # 皆為 A）常常分散在不同卡組中成對出現。逐一挑選時跳過「字母已被用掉」的角色
+        # （含本次陣營內已選到的），避免同一場遊戲出現兩位同徽章角色。
+        # 若候選用盡仍湊不滿本陣營所需人數，才退回允許重複徽章（盡力而為，不中斷開局）。
+        pool = list(classes)
+        random.shuffle(pool)
+        picked: List[Any] = []
+        leftover: List[Any] = []
+        local_used = set(used_badges)
+        for character_cls in pool:
+            badge = self._character_badge_letter(character_cls)
+            if badge and badge in local_used:
+                leftover.append(character_cls)
+                continue
+            picked.append(character_cls)
+            if badge:
+                local_used.add(badge)
+            if len(picked) >= count:
+                break
+
+        if len(picked) < count:
+            random.shuffle(leftover)
+            picked.extend(leftover[: count - len(picked)])
+
+        for character_cls in picked:
+            badge = self._character_badge_letter(character_cls)
+            if badge:
+                used_badges.add(badge)
+
         return [character_cls() for character_cls in picked]
 
     def _normalize_expansion_mode(self, mode: Any) -> str:
@@ -682,11 +728,13 @@ class RoomManager:
         expansion_mode = self._normalize_expansion_mode(getattr(game_room, 'expansion_mode', 'all'))
         enable_initial_green_card = bool(getattr(game_room, 'enable_initial_green_card', False))
         enable_neutral_chaos_mode = bool(getattr(game_room, 'enable_neutral_chaos_mode', False))
+        enable_badge_unique_character_select = bool(getattr(game_room, 'enable_badge_unique_character_select', False))
         timeout_minutes = int(getattr(game_room, 'turn_timeout_seconds', 180) or 180) // 60
         return (
             f"{self._format_card_set_summary(expansion_mode)}"
             f" / 初始綠卡={'On' if enable_initial_green_card else 'Off'}"
             f" / 中立大亂鬥={'On' if enable_neutral_chaos_mode else 'Off'}"
+            f" / 徽章唯一={'On' if enable_badge_unique_character_select else 'Off'}"
             f" / 暴斃時間={timeout_minutes}分"
         )
 
@@ -788,6 +836,7 @@ class RoomManager:
             'expansion_mode': self._normalize_expansion_mode(getattr(game_room, 'expansion_mode', 'all')),
             'enable_initial_green_card': bool(getattr(game_room, 'enable_initial_green_card', False)),
             'enable_neutral_chaos_mode': bool(getattr(game_room, 'enable_neutral_chaos_mode', False)),
+            'enable_badge_unique_character_select': bool(getattr(game_room, 'enable_badge_unique_character_select', False)),
             'turn_timeout_minutes': int(getattr(game_room, 'turn_timeout_seconds', 180) or 180) // 60,
             'max_players': max(1, int(getattr(game_room, 'max_players', 8) or 8)),
             'player_count': len(game_room.players),
@@ -1425,6 +1474,7 @@ class RoomManager:
         expansion_mode = self._resolve_expansion_mode_from_payload(payload, default_mode='all')
         enable_initial_green_card = bool(payload.get('enable_initial_green_card', False))
         enable_neutral_chaos_mode = bool(payload.get('enable_neutral_chaos_mode', False))
+        enable_badge_unique_character_select = bool(payload.get('enable_badge_unique_character_select', False))
         turn_timeout_minutes = int(payload.get('turn_timeout_minutes', 3) or 3)
         normalized_room_name = self._normalize_room_name_for_limit(room_name)
         if not normalized_room_name:
@@ -1446,6 +1496,7 @@ class RoomManager:
             expansion_mode=expansion_mode,
             enable_initial_green_card=enable_initial_green_card,
             enable_neutral_chaos_mode=enable_neutral_chaos_mode,
+            enable_badge_unique_character_select=enable_badge_unique_character_select,
             turn_timeout_minutes=turn_timeout_minutes,
         )
         return self._success('create_room', self._serialize_room(game_room))
@@ -1763,6 +1814,7 @@ class RoomManager:
             'expansion_mode',
             'enable_initial_green_card',
             'enable_neutral_chaos_mode',
+            'enable_badge_unique_character_select',
             'turn_timeout_minutes',
             'use_basic_card_set',
             'card_set_basic',
@@ -1811,6 +1863,7 @@ class RoomManager:
 
         enable_initial_green_card = bool(payload.get('enable_initial_green_card', getattr(game_room, 'enable_initial_green_card', False)))
         enable_neutral_chaos_mode = bool(payload.get('enable_neutral_chaos_mode', getattr(game_room, 'enable_neutral_chaos_mode', False)))
+        enable_badge_unique_character_select = bool(payload.get('enable_badge_unique_character_select', getattr(game_room, 'enable_badge_unique_character_select', False)))
         timeout_minutes_raw = payload.get('turn_timeout_minutes', int(getattr(game_room, 'turn_timeout_seconds', 180) or 180) // 60)
         try:
             timeout_minutes = int(timeout_minutes_raw or 3)
@@ -1825,6 +1878,7 @@ class RoomManager:
         game_room.expansion_mode = expansion_mode
         game_room.enable_initial_green_card = enable_initial_green_card
         game_room.enable_neutral_chaos_mode = enable_neutral_chaos_mode
+        game_room.enable_badge_unique_character_select = enable_badge_unique_character_select
         game_room.turn_timeout_seconds = int(timeout_minutes * 60)
         game_room.touch_activity()
         game_room.add_system_message(

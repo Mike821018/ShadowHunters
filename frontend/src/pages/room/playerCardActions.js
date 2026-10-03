@@ -30,6 +30,7 @@ export async function handlePlayerCardClick(targetAccount, ctx) {
     selectAbilityPlayerTarget,
     canActivateSelfAbilityFromCard,
     startSelfAbilityActivation,
+    markEndTurnAbilityInteractionStarted,
   } = ctx;
 
   const getTargetDisplayName = (account) => {
@@ -121,6 +122,8 @@ export async function handlePlayerCardClick(targetAccount, ctx) {
   }
 
   if (isGameOngoing && isSelfCard && hasNotRevealed) {
+    // 玩家已經點自己的卡片準備揭露身分：回合結束階段不能再被「自動結束回合」搶先結束。
+    markEndTurnAbilityInteractionStarted?.();
     const confirmed = await openConfirmDialog({
       title: t('room.confirm.title'),
       message: t('toast.reveal_character_confirm'),
@@ -146,6 +149,8 @@ export async function handlePlayerCardClick(targetAccount, ctx) {
   }
 
   if (isGameOngoing && isSelfCard && selfPlayer?.character_reveal && canActivateSelfAbilityFromCard(state, dataSnapshot)) {
+    // 玩家已經點自己的卡片準備發動能力：回合結束階段不能再被「自動結束回合」搶先結束。
+    markEndTurnAbilityInteractionStarted?.();
     await startSelfAbilityActivation();
     return;
   }

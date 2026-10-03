@@ -21,12 +21,14 @@ function formatRoomSettingsSummary({ t }, room) {
   const expansionMode = String(room?.expansion_mode || 'all');
   const boomTimeoutMinutes = Number(room?.turn_timeout_minutes || 3);
   const neutralChaosMode = Boolean(room?.enable_neutral_chaos_mode);
+  const badgeUniqueMode = Boolean(room?.enable_badge_unique_character_select);
   const cardPoolSummary = formatCardSetSummary({ t }, expansionMode);
   return [
     `${t('room.info.trip_rule')}:${formatToggleSummary({ t }, Boolean(room?.require_trip))}`,
     cardPoolSummary,
     `${t('room.info.initial_green_card')}:${formatToggleSummary({ t }, Boolean(room?.enable_initial_green_card))}`,
     `${t('room.info.neutral_chaos_mode')}:${formatToggleSummary({ t }, neutralChaosMode)}`,
+    `${t('room.info.badge_unique_mode')}:${formatToggleSummary({ t }, badgeUniqueMode)}`,
     `${t('room.info.boom_timeout')}:${t('room.info.boom_timeout_fmt_minutes', { n: boomTimeoutMinutes })}`,
   ].join(' / ');
 }
@@ -69,6 +71,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
   const boomTimeoutMinutes = Number(room.turn_timeout_minutes || 3);
   const expansionMode = String(room.expansion_mode || 'all');
   const neutralChaosMode = Boolean(room.enable_neutral_chaos_mode);
+  const badgeUniqueMode = Boolean(room.enable_badge_unique_character_select);
   const { useBasic, useExtend } = expansionModeToCardFlags(expansionMode);
   const settingsDialog = canEditSettings
     ? `
@@ -90,6 +93,11 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
             <span>${esc(t('lobby.create.expansion_mode_extend'))}</span>
           </label>
           <span class="field-hint room-settings-hint">${esc(t('lobby.create.expansion_mode_hint'))}</span>
+          <label class="checkbox-row checkbox-row-inline room-settings-checkbox">
+            <input type="checkbox" data-setting-badge-unique-check ${badgeUniqueMode ? 'checked' : ''} />
+            <span>${esc(t('lobby.create.badge_unique_label'))}</span>
+          </label>
+          <span class="field-hint room-settings-hint">${esc(t('lobby.create.badge_unique_hint'))}</span>
         </span>
         <span class="village-settings-group village-settings-group-timeout">
           <strong>${esc(t('lobby.create.turn_timeout_label'))}</strong>

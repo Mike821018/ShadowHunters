@@ -96,6 +96,7 @@ export function bindLobbyEvents({
     const expansion_mode = resolveExpansionMode();
     const enable_initial_green_card = el.enableInitialGreenCardCheck?.checked ?? false;
     const enable_neutral_chaos_mode = el.enableNeutralChaosModeCheck?.checked ?? false;
+    const enable_badge_unique_character_select = el.badgeUniqueCheck?.checked ?? false;
     const turn_timeout_minutes = Math.max(1, Number.parseInt(el.turnTimeoutSelect?.value || '3', 10) || 3);
     if (!baseName) {
       toast(t('toast.room_name_required'), 'error');
@@ -132,6 +133,7 @@ export function bindLobbyEvents({
       expansion_mode,
       enable_initial_green_card,
       enable_neutral_chaos_mode,
+      enable_badge_unique_character_select,
       turn_timeout_minutes,
     });
     state.roomId = data.room_id;
@@ -150,6 +152,7 @@ export function bindLobbyEvents({
     if (el.turnTimeoutSelect) el.turnTimeoutSelect.value = '3';
     if (el.enableInitialGreenCardCheck) el.enableInitialGreenCardCheck.checked = false;
     if (el.enableNeutralChaosModeCheck) el.enableNeutralChaosModeCheck.checked = false;
+    if (el.badgeUniqueCheck) el.badgeUniqueCheck.checked = false;
     await refreshRooms();
     goToRoomPage(data.room_id);
   });

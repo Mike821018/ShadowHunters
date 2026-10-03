@@ -36,15 +36,15 @@
     <div class="wrap s_clear" id="wrap">
       <main class="main">
         <section class="panel" tabindex="0">
-          <fieldset>
-            <legend><strong id="lobbyTitle" data-i18n="lobby.announce.title">伺服器公告</strong></legend>
+          <div class="panel-box">
+            <div class="panel-header"><strong id="lobbyTitle" data-i18n="lobby.announce.title">伺服器公告</strong></div>
             <div class="card-body">
               <p id="announcementText" class="announcement-text" aria-live="polite" data-i18n="lobby.announce.loading">公告載入中...</p>
             </div>
-          </fieldset>
+          </div>
 
-          <fieldset>
-            <legend><strong data-i18n="lobby.rooms.title">遊戲列表</strong></legend>
+          <div class="panel-box">
+            <div class="panel-header"><strong data-i18n="lobby.rooms.title">遊戲列表</strong></div>
             <div class="card-body">
               <button id="btnRefreshRooms" class="btn" data-i18n="lobby.rooms.refresh">重新整理</button>
               <div class="rooms-table-wrap">
@@ -69,10 +69,10 @@
                 </table>
               </div>
             </div>
-          </fieldset>
+          </div>
 
-          <fieldset>
-            <legend><strong data-i18n="lobby.create.title">建立村子</strong></legend>
+          <div class="panel-box">
+            <div class="panel-header"><strong data-i18n="lobby.create.title">建立村子</strong></div>
             <form id="createRoomForm" class="card-body form-grid">
               <label for="roomName" data-i18n="lobby.create.name_label">村子名稱</label>
               <div class="input-with-suffix">
@@ -138,6 +138,11 @@
                   <span data-i18n="lobby.create.expansion_mode_extend">E 擴充卡組</span>
                 </label>
                 <span class="field-hint" data-i18n="lobby.create.expansion_mode_hint">（可同時勾選；至少要選一組）</span>
+                <label class="checkbox-row checkbox-row-inline">
+                  <input type="checkbox" id="badgeUniqueCheck" aria-describedby="badgeUniqueHint" />
+                  <span data-i18n="lobby.create.badge_unique_label">徽章唯一</span>
+                </label>
+                <span id="badgeUniqueHint" class="field-hint" data-i18n="lobby.create.badge_unique_hint">（同時使用多組卡組時，避免兩位玩家抽到同一字母徽章的角色）</span>
               </div>
 
               <label class="option-title" for="enableInitialGreenCardCheck" data-i18n="lobby.create.initial_green_card_label">初始綠卡</label>
@@ -155,7 +160,7 @@
               <div></div>
               <button class="btn" type="submit" data-i18n="lobby.create.submit">建立村子</button>
             </form>
-          </fieldset>
+          </div>
         </section>
       </main>
     </div>

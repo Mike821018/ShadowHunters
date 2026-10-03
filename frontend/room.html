@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>暗影獵人｜村莊</title>
-    <link rel="stylesheet" href="./src/theme.css" />
+    <link rel="stylesheet" href="./src/theme.css?v=20261003-issue70-mutualexclusion1" />
   </head>
   <body data-page="room" class="room-page">
     <div id="header">
@@ -48,7 +48,7 @@
                     <textarea id="chatInput" class="txt chat-input" maxlength="200" rows="3" data-i18n-placeholder="room.chat.placeholder" placeholder="輸入訊息（最多 200 字）"></textarea>
                     <div class="chat-action-stack">
                       <div class="chat-emoji-wrap">
-                        <button id="chatEmojiToggle" class="btn chat-emoji-toggle" type="button" aria-haspopup="dialog" aria-controls="chatEmojiPanel" aria-expanded="false" aria-label="表情符號">😊</button>
+                        <button id="chatEmojiToggle" class="btn chat-emoji-toggle" type="button" aria-haspopup="dialog" aria-controls="chatEmojiPanel" aria-expanded="false" aria-label="表情符號"><img src="/assets/emoji/higu/QB.jpg" alt="表情符號" class="chat-emoji-toggle-icon" /></button>
                         <div id="chatEmojiPanel" class="chat-emoji-panel" role="dialog" aria-modal="false" hidden>
                           <div class="chat-emoji-panel-head">
                             <strong>表情</strong>
@@ -156,7 +156,7 @@
                         hidden
                       >
                         <span id="activeCardName" class="stage-active-card-name"></span>
-                        <span class="stage-card-caption" aria-hidden="true">執行中</span>
+                        <span class="stage-card-caption" aria-hidden="true">發動</span>
                       </span>
 
                       <div class="stage-center-badges" aria-label="中央徽章">
@@ -256,7 +256,7 @@
             </fieldset>
           </div>
 
-          <fieldset>
+          <fieldset class="room-damage-meter-fieldset">
             <legend><strong data-i18n="room.damage_meter.title">傷害計量表</strong></legend>
             <div class="card-body">
               <div id="damageMeter" class="damage-meter" aria-live="polite"></div>
@@ -286,6 +286,6 @@
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./src/app.js?v=20260402-issue52-floatingchatfix1"></script>
+    <script type="module" src="./src/app.js?v=20261003-issue70-mutualexclusion1"></script>
   </body>
 </html>

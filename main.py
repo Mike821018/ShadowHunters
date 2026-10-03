@@ -9,6 +9,8 @@ from urllib.request import urlopen
 from backend.http_server import run_server
 from backend.room_manager import API_SCHEMAS, RoomManager
 from backend.validation import (
+	validate_badge_unique_character_select,
+	validate_badge_unique_record_backfill,
 	validate_catherine_start_passive_heal_flow,
 	validate_forced_character_config,
 	validate_game_flow,
@@ -29,6 +31,8 @@ def run_validations():
 	roll_7_validation = validate_roll_7_flow()
 	unknown_green_validation = validate_unknown_green_card_forced_effects()
 	forced_character_validation = validate_forced_character_config()
+	badge_unique_validation = validate_badge_unique_character_select()
+	badge_unique_record_validation = validate_badge_unique_record_backfill()
 	werewolf_counter_validation = validate_werewolf_counter_attack_flow()
 	moody_goblin_validation = validate_moody_goblin_no_equipment_flow()
 	green_confirm_timeout_validation = validate_green_confirm_timeout_flow()
@@ -45,6 +49,10 @@ def run_validations():
 	print(unknown_green_validation)
 	print('forced character validation ok')
 	print(forced_character_validation)
+	print('badge unique validation ok')
+	print(badge_unique_validation)
+	print('badge unique record validation ok')
+	print(badge_unique_record_validation)
 	print('werewolf counter validation ok')
 	print(werewolf_counter_validation)
 	print('moody goblin validation ok')
@@ -93,6 +101,7 @@ def _resolve_connect_host(bind_host: str) -> str:
 def run_test_suite(host: str, port: int, games: int, eight_player_games: int, batch_size: int):
 	run_validations()
 	_run_subprocess([sys.executable, '-m', 'scripts.issue6_smoke'], 'issue6 smoke')
+	_run_subprocess([sys.executable, '-m', 'scripts.issue66_gameplay_matrix_validator'], 'gameplay matrix validator')
 	connect_host = _resolve_connect_host(host)
 
 	env = os.environ.copy()

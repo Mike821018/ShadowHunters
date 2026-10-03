@@ -34,7 +34,6 @@ export const HIGU_CHAT_EMOJIS = [
   { code: '[QB]', filename: 'QB.jpg' },
   { code: '[大鯨]', filename: 'taigei.jpg' },
   { code: '[大鯨失色]', filename: 'taigei2.jpg' },
-  { code: '[嚼嚼]', filename: 'akagi.gif' },
   { code: '[問號]', filename: '35.gif' },
   { code: '[鈴谷]', filename: 'sanman.jpg' },
 
@@ -49,7 +48,6 @@ export const HIGU_CHAT_EMOJIS = [
   { code: '[嚼]', filename: '08.gif', variant: 'chew-medium' },
   { code: '[中嚼]', filename: '08.gif', variant: 'chew-large' },
   { code: '[大嚼]', filename: '08.gif', variant: 'chew-xlarge' },
-  { code: '[波浪嚼]', filename: '08.gif', variant: 'chew-wave' },
 ];
 
 const HIGU_EMOJI_BY_CODE = new Map(HIGU_CHAT_EMOJIS.map((emoji) => [emoji.code, emoji]));

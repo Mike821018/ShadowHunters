@@ -169,7 +169,7 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       const canOpenTripProfile = roomStatus === 3 && hasVisibleTrip;
       const encodedTrip = encodeURIComponent(String(displayTrip || '').trim());
       const tripContentHtml = canOpenTripProfile
-        ? `<a class="player-trip-link" href="./resident_register.html?trip=${encodedTrip}&profileTab=nicknames">${esc(tripDisplayText)}</a>`
+        ? `<a class="player-trip-link" href="./resident_register.html?trip=${encodedTrip}&profileTab=nicknames" target="_blank" rel="noopener">${esc(tripDisplayText)}</a>`
         : `<span class="player-role-name">${esc(tripDisplayText)}</span>`;
       const isInvulnerable = Boolean(p.is_invulnerable);
       const invulnerabilitySource = String(

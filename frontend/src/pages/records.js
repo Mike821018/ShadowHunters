@@ -60,6 +60,10 @@ function parseOptionBadges(rawOptions) {
       badgeSet.add('C');
       return;
     }
+    if (normalized === 'badge unique' || normalized === 'unique badges' || normalized === '徽章唯一') {
+      badgeSet.add('U');
+      return;
+    }
     if (normalized === 'all') {
       badgeSet.add('B');
       badgeSet.add('E');
@@ -91,6 +95,13 @@ function optionBadgeMeta(code) {
       className: 'records-option-badge records-option-badge-neutral',
       title: t('records.badge_neutral_chaos_title'),
       desc: t('records.badge_neutral_chaos_desc'),
+    };
+  }
+  if (code === 'U') {
+    return {
+      className: 'records-option-badge records-option-badge-blue',
+      title: t('records.badge_unique_title'),
+      desc: t('records.badge_unique_desc'),
     };
   }
   if (code === 'B') {

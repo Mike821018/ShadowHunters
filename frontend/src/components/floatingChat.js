@@ -12,6 +12,7 @@ import { buildChatStageLines } from '../pages/room/chatFormatter.js';
 import { getCharacterLocalizedName, getCurrentUiLang } from '../characterInfo.js';
 import { t } from '../i18n.js';
 import { esc, apiFetch, countDisplayWidth } from '../utils.js';
+import { registerFloatingPanel, notifyFloatingPanelOpened } from './floatingPanelGroup.js';
 
 const POLL_MS = 8000;
 const LS_KEY = 'sh.floatingChat.collapsed';
@@ -80,7 +81,7 @@ function buildDOM() {
           <div class="sh-fchat-emoji-grid">${buildEmojiGridHtml()}</div>
         </div>
         <div class="sh-fchat-foot-row">
-          <button class="sh-fchat-emoji-toggle" type="button" aria-label="表情符號" aria-expanded="false">😊</button>
+          <button class="sh-fchat-emoji-toggle" type="button" aria-label="表情符號" aria-expanded="false"><img src="/assets/emoji/higu/QB.jpg" alt="表情符號" class="sh-fchat-emoji-toggle-icon" /></button>
           <textarea class="sh-fchat-input" maxlength="200" rows="2" placeholder="輸入訊息…" aria-label="輸入聊天訊息"></textarea>
           <button class="sh-fchat-send" type="button">送出</button>
         </div>
@@ -200,6 +201,7 @@ export async function initFloatingChat({ state }) {
     unread = 0;
     updateBadge();
     localStorage.setItem(LS_KEY, 'false');
+    notifyFloatingPanelOpened('chat');
     scrollToBottom();
     el.input.focus();
   }
@@ -212,6 +214,8 @@ export async function initFloatingChat({ state }) {
     localStorage.setItem(LS_KEY, 'true');
   }
 
+  registerFloatingPanel('chat', collapse);
+
   // ── message rendering ─────────────────────────────────────────────────────
   function renderAllMessages(roomData) {
     const chatLines = buildMaskedChatHtml(roomData, account);
@@ -219,15 +223,6 @@ export async function initFloatingChat({ state }) {
       el.msgs.innerHTML = '<p class="sh-fchat-empty">尚無訊息</p>';
     } else {
       el.msgs.innerHTML = chatLines.join('');
-      // Floating chat should be read-only for card tokens to avoid panel overlap issues.
-      el.msgs.querySelectorAll('.chat-card-token').forEach((tokenEl) => {
-        tokenEl.removeAttribute('role');
-        tokenEl.removeAttribute('tabindex');
-        tokenEl.removeAttribute('data-card-name');
-        tokenEl.removeAttribute('data-card-type');
-        tokenEl.removeAttribute('data-card-color');
-        tokenEl.setAttribute('aria-disabled', 'true');
-      });
     }
     scrollToBottom();
   }

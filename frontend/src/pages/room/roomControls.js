@@ -53,6 +53,7 @@ export function bindRoomControls({
       state,
       onSelect: applyAutoRefreshSetting,
       onToggleSkipTargetConfirm: applySkipTargetConfirmSetting,
+      onToggleAutoEndTurn: applyAutoEndTurnSetting,
     });
     if (state.autoRefreshSeconds > 0) {
       // Issue 35.3: 點擊設定時立即刷新一次
@@ -75,8 +76,22 @@ export function bindRoomControls({
       state,
       onSelect: applyAutoRefreshSetting,
       onToggleSkipTargetConfirm: applySkipTargetConfirmSetting,
+      onToggleAutoEndTurn: applyAutoEndTurnSetting,
     });
     toast(state.skipTargetConfirm ? t('toast.target_confirm_skip_off') : t('toast.target_confirm_skip_on'));
+  };
+
+  const applyAutoEndTurnSetting = (enabled) => {
+    state.autoEndTurn = Boolean(enabled);
+    persistSession(state);
+    renderAutoRefreshControls({
+      el,
+      state,
+      onSelect: applyAutoRefreshSetting,
+      onToggleSkipTargetConfirm: applySkipTargetConfirmSetting,
+      onToggleAutoEndTurn: applyAutoEndTurnSetting,
+    });
+    toast(state.autoEndTurn ? t('toast.auto_end_turn_on') : t('toast.auto_end_turn_off'));
   };
 
   const isReplayPage = String(state?.page || '') === 'replay-room';
@@ -89,6 +104,7 @@ export function bindRoomControls({
       state,
       onSelect: applyAutoRefreshSetting,
       onToggleSkipTargetConfirm: applySkipTargetConfirmSetting,
+      onToggleAutoEndTurn: applyAutoEndTurnSetting,
     });
     syncAutoRefreshTimer();
   }

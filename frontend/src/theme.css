@@ -210,11 +210,28 @@ fieldset {
   margin: 0 0 12px;
   padding: 0;
   background: #fff;
+  min-width: 0;
+}
+
+.panel-box {
+  border: 1px solid var(--line);
+  margin: 0 0 12px;
+  padding: 0;
+  background: #fff;
+  min-width: 0;
 }
 
 legend {
   padding: 0 8px;
   color: var(--primary);
+}
+
+.panel-header {
+  padding: 6px 8px;
+  background: var(--panel);
+  color: var(--primary);
+  font-weight: 700;
+  border-bottom: 1px solid var(--line);
 }
 
 .damage-meter {
@@ -520,6 +537,17 @@ legend {
   font-size: 22px;
   line-height: 1;
   padding: 6px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-emoji-toggle-icon {
+  display: block;
+  width: 22px;
+  height: 22px;
+  object-fit: cover;
+  border-radius: 4px;
 }
 
 .chat-emoji-panel {
@@ -1746,7 +1774,10 @@ legend {
 .active-card-dialog {
   position: fixed;
   inset: auto auto auto auto;
-  z-index: 200;
+  /* Above the floating chat / HP / players panels (z-index: 200) so the
+     card-info popup is never painted behind them when opened from inside
+     the floating chat widget on mobile. */
+  z-index: 300;
   margin: 0;
   width: min(300px, calc(100vw - 24px));
   border: 1px solid #d6e4ef;
@@ -2150,11 +2181,19 @@ legend {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(242, 249, 255, 0.98) 100%);
   color: #17384c;
   box-shadow: 0 18px 48px rgba(17, 41, 62, 0.24);
+  /* 跟 .active-card-dialog 同樣的原因：手機瀏覽器對 <dialog>.showModal() 的
+     top layer 支援不一定完整可靠，遇到沒有正確把 dialog 提升到 top layer
+     的情況時，這個 dialog 就會落回一般的堆疊順序，被 z-index:200 的浮動
+     聊天室／傷害計量表／村民列表蓋住（例如角色揭露確認、綠卡選擇、完場結算
+     後的玩家評價都共用這個 class）。明確指定比浮動視窗更高的 z-index，
+     確保在這類環境下也一定會顯示在浮動視窗之上。 */
+  z-index: 300;
 }
 
 .area-choice-dialog::backdrop {
   background: rgba(15, 23, 42, 0.35);
   backdrop-filter: blur(2px);
+  z-index: 300;
 }
 
 .area-choice-form {
@@ -3452,6 +3491,43 @@ legend {
   .auto-refresh-group {
     white-space: normal;
   }
+
+  .panel > fieldset,
+  .panel > .panel-box {
+    margin-left: -12px;
+    margin-right: -12px;
+  }
+  .panel > fieldset > .panel-header,
+  .panel > .panel-box > .panel-header {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .panel > fieldset > .card-body,
+  .panel > .panel-box > .card-body {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+
+@media (max-width: 430px) {
+  .wrap {
+    width: calc(100% - 16px);
+  }
+  .panel > fieldset,
+  .panel > .panel-box {
+    margin-left: -8px;
+    margin-right: -8px;
+  }
+  .panel > fieldset > .panel-header,
+  .panel > .panel-box > .panel-header {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .panel > fieldset > .card-body,
+  .panel > .panel-box > .card-body {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -3941,7 +4017,18 @@ legend {
   line-height: 1;
   flex-shrink: 0;
   height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: border-color 0.1s, background 0.1s;
+}
+
+.sh-fchat-emoji-toggle-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+  object-fit: cover;
+  border-radius: 3px;
 }
 
 .sh-fchat-emoji-toggle:hover,
@@ -4620,3 +4707,402 @@ legend {
   }
 }
 
+
+/* Issue 69 - 手機版「遊戲桌面」卡片佈局簡化
+   原本 .table-stage 的 12 張卡片（6 張場地卡 + 骰子 + 執行中卡片 + 下一步按鈕 + 6 張牌庫/棄牌堆)
+   全部使用 vw 為單位的最小寬高與百分比絕對定位，是針對桌面寬版面（約 700px 以上）手動排成六角桌型調校的，
+   在手機窄螢幕下容器寬度大幅縮小、但卡片維持最小寬高下限，導致卡片彼此重疊、也可能超出容器邊界蓋到下方的
+   村民列表／系統訊息。這裡在手機斷點內改為由上而下、不重疊的直式清單版面：場地卡 2 欄、骰子/執行中卡片/
+   下一步按鈕各自整列、牌庫與棄牌堆各自 3 欄並補上標題文字，不影響桌面／平板版原本的六角桌型。 */
+@media (max-width: 640px) {
+  .room-layout-game-fieldset .room-game-surface {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .room-layout-stage-row > .room-layout-game-fieldset > .card-body {
+    overflow: visible;
+  }
+
+  [data-page="room"] .table-stage,
+  [data-page="replay-room"] .table-stage,
+  .room-page .table-stage,
+  .table-stage {
+    position: static;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+    padding: 10px 8px;
+  }
+
+  .table-stage .stage-card {
+    position: relative;
+    top: auto;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    width: auto;
+    height: auto;
+  }
+
+  /* 場地卡：固定 2 欄，依實際場地編號 1~6（而非原本的六角排列順序）由上而下排列 */
+  [data-page="room"] .table-stage .stage-card-field,
+  [data-page="replay-room"] .table-stage .stage-card-field,
+  .room-page .table-stage .stage-card-field,
+  .table-stage .stage-card-field {
+    flex: 0 0 calc(50% - 6px);
+    width: auto;
+    height: auto;
+    min-height: 100px;
+    padding: 10px 8px 8px;
+  }
+
+  .table-stage .stage-card-1 { order: 1; }
+  .table-stage .stage-card-2 { order: 2; }
+  .table-stage .stage-card-3 { order: 3; }
+  .table-stage .stage-card-4 { order: 4; }
+  .table-stage .stage-card-5 { order: 5; }
+  .table-stage .stage-card-6 { order: 6; }
+
+  /* 場地環狀連接線：照真正的場地編號順序（1→2→3→4→5→6→回到1）在卡片之間的縫隙畫一條短線，
+     中間那排（場地 6、場地 3，畫面上顯示的編號）之間故意不畫，表示這兩個實際上不是直接相鄰 */
+  .table-stage .stage-card-field::after {
+    content: "";
+    position: absolute;
+    background: #6fa2bf;
+    pointer-events: none;
+  }
+
+  .table-stage .stage-card-1::after {
+    top: 50%;
+    left: 100%;
+    width: 12px;
+    height: 2px;
+    transform: translateY(-50%);
+  }
+
+  .table-stage .stage-card-2::after {
+    left: 50%;
+    top: 100%;
+    width: 2px;
+    height: 12px;
+    transform: translateX(-50%);
+  }
+
+  .table-stage .stage-card-4::after {
+    left: 50%;
+    top: 100%;
+    width: 2px;
+    height: 12px;
+    transform: translateX(-50%);
+  }
+
+  .table-stage .stage-card-6::after {
+    top: 50%;
+    right: 100%;
+    width: 12px;
+    height: 2px;
+    transform: translateY(-50%);
+  }
+
+  .table-stage .stage-card-5::after {
+    left: 50%;
+    bottom: 100%;
+    width: 2px;
+    height: 12px;
+    transform: translateX(-50%);
+  }
+
+  .table-stage .stage-card-3::after {
+    left: 50%;
+    bottom: 100%;
+    width: 2px;
+    height: 12px;
+    transform: translateX(-50%);
+  }
+
+  [data-page="room"] .table-stage .stage-field-occupants,
+  [data-page="replay-room"] .table-stage .stage-field-occupants,
+  .room-page .table-stage .stage-field-occupants,
+  .table-stage .stage-field-occupants {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    min-height: 32px;
+  }
+
+  /* 中央骰子：獨立整列、置中顯示 */
+  .table-stage .stage-center-badges {
+    order: 10;
+    position: static;
+    transform: none;
+    flex: 0 0 calc(66.666% - 8px);
+    justify-content: center;
+    margin: 4px 0;
+  }
+
+  /* 執行中卡片：獨立整列，並補上「發動」提示文字，說明此格顯示的是正在發動效果的卡片 */
+  [data-page="room"] .table-stage .stage-card-active,
+  [data-page="replay-room"] .table-stage .stage-card-active,
+  .room-page .table-stage .stage-card-active,
+  .table-stage .stage-card-active {
+    order: 11;
+    flex: 0 0 calc(33.333% - 4px);
+    width: auto;
+    height: auto;
+    min-height: 56px;
+    margin: 4px 0;
+    padding: 4px 6px;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .table-stage .stage-active-card-name {
+    position: static;
+    transform: none;
+    width: auto;
+    font-size: 11px;
+  }
+
+  .table-stage .stage-card-active .stage-card-caption {
+    display: block;
+    position: static;
+    font-size: 10px;
+    color: #2a3540;
+  }
+
+  .table-stage .stage-card-active[data-card-color="black"] .stage-card-caption {
+    color: #dce8f0;
+  }
+
+  /* 下一步／結束回合按鈕：獨立整列、加大觸控面積 */
+  [data-page="room"] .table-stage .stage-next-step-button,
+  [data-page="replay-room"] .table-stage .stage-next-step-button,
+  .room-page .table-stage .stage-next-step-button,
+  .table-stage .stage-next-step-button {
+    order: 12;
+    position: static;
+    top: auto;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    flex: 0 0 100%;
+    width: 100%;
+    min-height: 48px;
+    font-size: 15px;
+  }
+
+  /* 牌庫／棄牌堆：隱藏「牌庫」「棄牌」標題文字節省空間，但牌組方塊本身維持顯示＋可點擊抽牌 */
+  .table-stage .stage-pile-title {
+    display: none;
+  }
+
+  [data-page="room"] .table-stage .stage-card-pile,
+  [data-page="replay-room"] .table-stage .stage-card-pile,
+  .room-page .table-stage .stage-card-pile,
+  .table-stage .stage-card-pile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    flex: 0 0 calc(33.333% - 8px);
+    width: auto;
+    height: auto;
+    min-height: 56px;
+  }
+
+  .table-stage .stage-card-pile .stage-pile-count {
+    position: static;
+    transform: none;
+  }
+
+  .table-stage .stage-card-7 { order: 21; }
+  .table-stage .stage-card-8 { order: 22; }
+  .table-stage .stage-card-9 { order: 23; }
+  .table-stage .stage-card-10 { order: 25; }
+  .table-stage .stage-card-11 { order: 26; }
+  .table-stage .stage-card-12 { order: 27; }
+}
+
+/* 手機版點擊輸入框畫面自動放大修正：iOS Safari 等瀏覽器在 focus 到 font-size 小於 16px 的
+   input/textarea/select 時，會自動把整個頁面放大方便輸入，點兩下才能縮回去，體驗不好。
+   這裡把目前已知低於 16px 的兩個輸入元件（語言切換下拉選單、浮動聊天室輸入框）在手機斷點內
+   調整為 16px，避免觸發這個自動放大行為；桌面/平板版維持原本的 13px 不變。 */
+@media (max-width: 640px) {
+  .lang-select {
+    font-size: 16px;
+  }
+
+  .sh-fchat-input {
+    font-size: 16px;
+  }
+}
+/* 手機版浮動收合面板：血量、玩家列表（系統訊息、主畫面內嵌聊天室在手機版「遊戲房間」直接整個
+   隱藏，不提供浮動面板；但在「回放／記錄」頁面兩者都維持原本的顯示方式，因為查看記錄時本來就是
+   要看對戰紀錄內容，而且回放頁沒有右下角浮動聊天室可以替代）。
+   把 room.html/replay_room.html 裡原本固定顯示的「傷害計量表」（血量）跟「村民列表」
+   （玩家）兩個 fieldset，在手機斷點內搬進各自獨立、可收合的浮動面板（跟右下角的浮動
+   聊天室同樣的操作方式），疊在聊天室按鈕的正上方：由下往上依序是聊天室、血量、玩家。
+   這兩個 fieldset 的內容還是由原本的 room.js/replayRoom.js 更新（id 不變），這裡純粹
+   只是改變它們顯示的位置。桌面／平板版不受影響（CSS 只在手機寬度生效，JS 也只在手機
+   寬度才會搬動這兩個區塊）。 */
+@media (max-width: 640px) {
+  [data-page="room"] .room-layout-system-fieldset {
+    display: none;
+  }
+
+  /* 主畫面內嵌的聊天室只在「遊戲房間」頁面隱藏：手機版已經有右下角浮動聊天室可以收發訊息，
+     不需要再重複顯示一份；回放頁沒有浮動聊天室，所以維持原本顯示，確保還能看到對戰當時的
+     聊天內容。 */
+  [data-page="room"] .room-chat-fieldset {
+    display: none;
+  }
+
+  .sh-floating-fieldset {
+    position: fixed;
+    right: 20px;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    font-size: 14px;
+    font-family: inherit;
+  }
+
+  .sh-floating-hp {
+    bottom: 160px;
+  }
+
+  .sh-floating-players {
+    bottom: 222px;
+  }
+
+  .sh-ffs-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    padding: 0;
+    background: #6fa2bf;
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.24);
+    font-size: 20px;
+    line-height: 1;
+    transition: background 0.15s, box-shadow 0.15s;
+  }
+
+  .sh-ffs-toggle-icon {
+    line-height: 1;
+  }
+
+  .sh-ffs-toggle-btn:hover {
+    background: #7fb0cb;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+  }
+
+  .sh-ffs-toggle-btn:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+  }
+
+  .sh-ffs-toggle-btn.is-open {
+    background: #4a7f9c;
+  }
+
+  .sh-ffs-panel {
+    display: flex;
+    flex-direction: column;
+    width: min(320px, calc(100vw - 40px));
+    max-height: min(420px, calc(100vh - 160px));
+    background: #fff;
+    border: 1px solid var(--line-strong, #6eb1d5);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(21, 49, 67, 0.22);
+    overflow: hidden;
+  }
+
+  .sh-ffs-panel[hidden] {
+    display: none !important;
+  }
+
+  .sh-ffs-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--primary, #09c);
+    color: #fff;
+    font-weight: 600;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+
+  .sh-ffs-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sh-ffs-collapse-btn {
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 22px;
+    line-height: 1;
+    padding: 0 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .sh-ffs-collapse-btn:hover {
+    opacity: 0.75;
+  }
+
+  .sh-ffs-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px 10px;
+    background: #fff;
+  }
+
+  .sh-ffs-body fieldset {
+    margin: 0 0 10px;
+  }
+
+  .sh-ffs-body fieldset:last-child {
+    margin-bottom: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .sh-floating-fieldset {
+    right: 14px;
+  }
+
+  .sh-floating-hp {
+    bottom: 146px;
+  }
+
+  .sh-floating-players {
+    bottom: 200px;
+  }
+
+  .sh-ffs-toggle-btn {
+    width: 46px;
+    height: 46px;
+    font-size: 18px;
+  }
+}

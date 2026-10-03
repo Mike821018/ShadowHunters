@@ -48,6 +48,7 @@ class room(Thread):
         self.expansion_mode: str = 'all'  # all | no_extend
         self.enable_initial_green_card: bool = False  # 遊戲開始時執行初始綠卡
         self.enable_neutral_chaos_mode: bool = False  # 中立大亂鬥（全中立角色）
+        self.enable_badge_unique_character_select: bool = False  # 徽章唯一：避免合併卡組時同一徽章字母的角色同場出現
         # 開發除錯用：可在開局前指定帳號對應角色（不對一般 UI 顯示）
         self.debug_forced_characters: dict = {}
         self.max_players: int = 8
@@ -1284,8 +1285,14 @@ class room(Thread):
         #          Erstwhile Altar        → next_step(action=True, target=<目標player>)
         #          ※ 抽到行動卡時保持 status=3，前端顯示卡牌後呼叫 card_effect(target)
         elif p.status == 3:
-            if self._initial_green_card_executed and self.active_card:
-                # 初始綠卡期間，僅允許透過 card_effect 結算，不允許 next_step 跳過。
+            if self.active_card:
+                # 已經有一張待結算的 active_card（不論是初始綠卡，還是一般區域抽到的
+                # 行動卡／裝備卡），一律直接忽略這次呼叫，只能透過 card_effect／
+                # confirm_equipment 結算完畢後才能繼續；避免同一名玩家在同一個
+                # 抽卡區域因為重複送出 next_step（例如雙開分頁、網路重試、快速連點）
+                # 造成 self.board.draw() 被呼叫兩次：牌堆正確地少了兩張牌，但
+                # self.active_card 只會保留最後一次抽到的卡，第一張抽到的卡就這樣
+                # 從牌堆消失、卻完全沒有結算到效果。
                 return
             if action and p.area:
                 if p.area.is_draw:

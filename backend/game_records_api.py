@@ -127,6 +127,12 @@ class GameRecordsAPI:
                     room_state.get('enable_neutral_chaos_mode', self._infer_neutral_chaos_from_players(record.players)),
                 )
             ),
+            'enable_badge_unique_character_select': parse_bool(
+                settings.get(
+                    'enable_badge_unique_character_select',
+                    room_state.get('enable_badge_unique_character_select', False),
+                )
+            ),
             'turn_timeout_minutes': max(
                 1,
                 parse_int(settings.get('turn_timeout_minutes', room_state.get('turn_timeout_minutes')), 3),
@@ -149,6 +155,7 @@ class GameRecordsAPI:
                 'require_trip',
                 'enable_initial_green_card',
                 'enable_neutral_chaos_mode',
+                'enable_badge_unique_character_select',
                 'turn_timeout_minutes',
             ):
                 if merged_room_state.get(key) != settings[key]:
@@ -223,6 +230,7 @@ class GameRecordsAPI:
                 game_settings={
                     'enable_initial_green_card': bool(getattr(room, 'enable_initial_green_card', False)),
                     'enable_neutral_chaos_mode': bool(getattr(room, 'enable_neutral_chaos_mode', False)),
+                    'enable_badge_unique_character_select': bool(getattr(room, 'enable_badge_unique_character_select', False)),
                     'expansion_mode': str(getattr(room, 'expansion_mode', 'all') or 'all'),
                     'max_players': int(getattr(room, 'max_players', 8) or 8),
                     'require_trip': bool(getattr(room, 'require_trip', False)),
@@ -560,6 +568,8 @@ class GameRecordsAPI:
                 options.append('Initial Green Card')
             if settings.get('enable_neutral_chaos_mode'):
                 options.append('Neutral Chaos Mode')
+            if settings.get('enable_badge_unique_character_select'):
+                options.append('Badge Unique')
             if settings.get('require_trip'):
                 options.append('TRIP Verification')
             if str(settings.get('expansion_mode') or ''):

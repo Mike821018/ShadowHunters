@@ -20,6 +20,7 @@ import { createStatusHelpers, createToast, loadAnnouncement, renderPlayerCards }
 import { getDomElements } from './dom.js';
 import { countChars, countDisplayWidth, esc, getInitial, isValidAsciiCredential, normalizeVillageName, withVillageSuffix } from './utils.js';
 import { initFloatingChat } from './components/floatingChat.js';
+import { initFloatingSysInfo } from './components/floatingSysInfo.js';
 const state = createAppState();
 
 const el = getDomElements();
@@ -216,6 +217,13 @@ async function boot() {
 
   // Non-blocking: initialise floating chat overlay on pages without a chat room
   initFloatingChat({ state }).catch(() => {});
+
+  // Non-blocking: on mobile, move the HP meter / player list into floating panels
+  try {
+    initFloatingSysInfo({ state });
+  } catch {
+    // ignore — leave the page in its normal inline layout on failure
+  }
 }
 
 boot().catch((err) => {

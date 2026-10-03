@@ -84,7 +84,7 @@ export function buildChatStageLines({
   };
 
   const getVisibleRoleName = (label, accountHint = '') => {
-    const account = String(accountHint || resolveAccountByLabel(label) || '').trim();
+    const account = String(resolveAccountByLabel(label) || accountHint || '').trim();
     if (!account) {
       const replayRole = String(replayRoleByName[String(label || '').trim()] || '').trim();
       if (!replayRole) return '';
@@ -108,7 +108,7 @@ export function buildChatStageLines({
   };
 
   const getRoleRevealStatusLabel = (label, accountHint = '') => {
-    const account = String(accountHint || resolveAccountByLabel(label) || '').trim();
+    const account = String(resolveAccountByLabel(label) || accountHint || '').trim();
     if (!account) {
       return showRoleInSystemMessages ? t('ui.role_reveal_revealed') : t('ui.role_reveal_hidden');
     }
@@ -357,20 +357,22 @@ export function buildChatStageLines({
     if ((m = text.match(/^村長 \[(.+)\] 延長目前回合倒數：\[(.+)\] 重新開始計時$/))) {
       return t('room.system.extend_turn_timeout', { target: pid(esc(m[2]), m[2]) });
     }
-    if ((m = text.match(/^村長更新房間設定：Card:(.+?) \/ 初始綠卡=(On|Off)(?: \/ 中立大亂鬥=(On|Off))? \/ 暴斃時間=(\d+)分$/))) {
+    if ((m = text.match(/^村長更新房間設定：Card:(.+?) \/ 初始綠卡=(On|Off)(?: \/ 中立大亂鬥=(On|Off))?(?: \/ 徽章唯一=(On|Off))? \/ 暴斃時間=(\d+)分$/))) {
       return t('room.system.updated_room_settings', {
         card_pool: formatRoomCardPoolLabel(m[1]),
         initial_green: settingToggleLabel(m[2]),
         neutral_chaos: settingToggleLabel(m[3] || 'Off'),
-        timeout: esc(t('room.info.boom_timeout_fmt_minutes', { n: m[4] })),
+        badge_unique: settingToggleLabel(m[4] || 'Off'),
+        timeout: esc(t('room.info.boom_timeout_fmt_minutes', { n: m[5] })),
       });
     }
-    if ((m = text.match(/^本場配置：Card:(.+?) \/ 初始綠卡=(On|Off)(?: \/ 中立大亂鬥=(On|Off))? \/ 暴斃時間=(\d+)分$/))) {
+    if ((m = text.match(/^本場配置：Card:(.+?) \/ 初始綠卡=(On|Off)(?: \/ 中立大亂鬥=(On|Off))?(?: \/ 徽章唯一=(On|Off))? \/ 暴斃時間=(\d+)分$/))) {
       return t('room.system.game_config_settings', {
         card_pool: formatRoomCardPoolLabel(m[1]),
         initial_green: settingToggleLabel(m[2]),
         neutral_chaos: settingToggleLabel(m[3] || 'Off'),
-        timeout: esc(t('room.info.boom_timeout_fmt_minutes', { n: m[4] })),
+        badge_unique: settingToggleLabel(m[4] || 'Off'),
+        timeout: esc(t('room.info.boom_timeout_fmt_minutes', { n: m[5] })),
       });
     }
     if ((m = text.match(/^本場配置：暗影=(\d+) \/ 獵人=(\d+) \/ 中立=(\d+)$/))) {

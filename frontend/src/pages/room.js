@@ -53,6 +53,9 @@ let latestRoomRenderSeq = 0;
 let diceRollAnimating = false;
 let diceRollBusy = false;
 let stageNextStepBusy = false;
+let autoEndTurnTimer = null;
+let autoEndTurnRunner = null;
+let endTurnAbilityInteractionActive = false;
 let pendingAbilityActivation = null;
 let pendingDiceAction = null;
 let diceRollInterval = null;
@@ -330,7 +333,7 @@ function getGreenConfirmPromptState(state, dataSnapshot = latestRoomSnapshot) {
   return selectGreenConfirmPromptState(state, dataSnapshot);
 }
 
-const { updateStagePilePromptState, updateStageNextStepButtonState } = createStageNextStepStateHandlers({
+const { updateStagePilePromptState, updateStageNextStepButtonState: updateStageNextStepButtonStateBase } = createStageNextStepStateHandlers({
   t,
   getLatestRoomSnapshot: () => latestRoomSnapshot,
   getDrawablePileColors,
@@ -351,20 +354,91 @@ const { updateStagePilePromptState, updateStageNextStepButtonState } = createSta
   getStageNextStepButton,
 });
 
+// 包一層：所有既有呼叫點（renderState、各種 next_step 動作後）不需修改，
+// 就能一併檢查是否該排程「自動結束回合」。
+function updateStageNextStepButtonState(state, dataSnapshot) {
+  updateStageNextStepButtonStateBase(state, dataSnapshot);
+  maybeHandleAutoEndTurn(state, dataSnapshot || latestRoomSnapshot);
+}
+
 function clearRoomAutoRefreshTimer() {
   if (roomAutoRefreshTimer) {
     window.clearTimeout(roomAutoRefreshTimer);
     roomAutoRefreshTimer = null;
   }
+  // 離開/更新房間時一併清掉自動結束回合的延遲計時器，避免離開後仍觸發。
+  if (autoEndTurnTimer) {
+    window.clearTimeout(autoEndTurnTimer);
+    autoEndTurnTimer = null;
+  }
+}
+
+// 回合結束階段只要玩家開始跟自己的角色互動（揭露角色，或點自己的卡片準備發動
+// 能力，例如艾利 Allie 揭露後回滿血），就呼叫這個函式：立刻取消目前排程中的
+// 「自動結束回合」計時器，並記住這次回合結束階段不要再自動排程，把決定權留給
+// 玩家自己手動按「結束回合」；離開這個回合結束階段（換人或自己進入下一回合）
+// 時會自動重置，不影響下一次。
+function markEndTurnAbilityInteractionStarted() {
+  endTurnAbilityInteractionActive = true;
+  if (autoEndTurnTimer) {
+    window.clearTimeout(autoEndTurnTimer);
+    autoEndTurnTimer = null;
+  }
+}
+
+// 自動結束回合：輪到自己且進入回合結束階段（status 6）時，隨機延遲 2-5 秒後
+// 自動觸發跟手動點擊「結束回合」相同的動作。預設開啟（state.autoEndTurn 未設定時視為開啟）。
+// 正常情況下這個功能照常運作；只有在玩家已經開始揭露角色／準備發動能力
+// （markEndTurnAbilityInteractionStarted 被呼叫過）時才會暫停，避免搶在玩家
+// 揭露＋發動能力完成前就把回合自動結束掉。
+function maybeHandleAutoEndTurn(state, snapshot) {
+  const autoEndTurnEnabled = state?.autoEndTurn !== false;
+  const roomStatus = Number(snapshot?.room?.room_status || 0);
+  const selfAccount = String(state?.account || '').trim();
+  const currentAccount = String(snapshot?.turn?.current_account || '').trim();
+  const selfStatus = Number(snapshot?.players?.[selfAccount]?.status || 0);
+
+  // 離開「輪到自己、回合結束階段」這個情境時重置旗標，避免延續影響到下一次。
+  if (!(roomStatus === 2 && selfAccount && selfAccount === currentAccount && selfStatus === 6)) {
+    endTurnAbilityInteractionActive = false;
+  }
+
+  const shouldAutoEnd = Boolean(
+    autoEndTurnEnabled
+    && typeof autoEndTurnRunner === 'function'
+    && state?.roomId
+    && roomStatus === 2
+    && selfAccount
+    && selfAccount === currentAccount
+    && selfStatus === 6
+    && !endTurnAbilityInteractionActive
+    && !diceRollBusy
+    && !diceRollAnimating
+    && !stageNextStepBusy
+  );
+  if (!shouldAutoEnd) {
+    if (autoEndTurnTimer) {
+      window.clearTimeout(autoEndTurnTimer);
+      autoEndTurnTimer = null;
+    }
+    return;
+  }
+  if (autoEndTurnTimer) return; // 已排程過，避免同一次回合結束階段重複排程
+  const delayMs = 2000 + Math.floor(Math.random() * 3001); // 隨機 2000-5000ms
+  autoEndTurnTimer = window.setTimeout(() => {
+    autoEndTurnTimer = null;
+    autoEndTurnRunner?.();
+  }, delayMs);
 }
 
 function formatAutoRefreshLabel(seconds, selected) {
   return selected ? `${seconds}s` : String(seconds);
 }
 
-function renderAutoRefreshControls({ el, state, onSelect, onToggleSkipTargetConfirm }) {
+function renderAutoRefreshControls({ el, state, onSelect, onToggleSkipTargetConfirm, onToggleAutoEndTurn }) {
   if (!el.autoRefreshOptions) return;
   const requireTargetConfirmChecked = !Boolean(state.skipTargetConfirm);
+  const autoEndTurnChecked = state.autoEndTurn !== false;
   el.autoRefreshOptions.innerHTML = `
     <span class="auto-refresh-label">[${t('room.auto_refresh.label')}]</span>
     <span class="auto-refresh-group" role="group" aria-label="${t('room.auto_refresh.aria_label')}">
@@ -379,6 +453,10 @@ function renderAutoRefreshControls({ el, state, onSelect, onToggleSkipTargetConf
       <input type="checkbox" data-skip-target-confirm ${requireTargetConfirmChecked ? 'checked' : ''}>
       ${t('room.auto_refresh.skip_target_confirm')}
     </label>
+    <label class="auto-refresh-skip-confirm">
+      <input type="checkbox" data-auto-end-turn ${autoEndTurnChecked ? 'checked' : ''}>
+      ${t('room.auto_refresh.auto_end_turn')}
+    </label>
   `;
   el.autoRefreshOptions.querySelectorAll('[data-auto-refresh-seconds]').forEach((button) => {
     button.addEventListener('click', () => onSelect(Number(button.getAttribute('data-auto-refresh-seconds'))));
@@ -387,6 +465,12 @@ function renderAutoRefreshControls({ el, state, onSelect, onToggleSkipTargetConf
   if (skipToggle instanceof HTMLInputElement) {
     skipToggle.addEventListener('change', () => {
       onToggleSkipTargetConfirm?.(!skipToggle.checked);
+    });
+  }
+  const autoEndTurnToggle = el.autoRefreshOptions.querySelector('[data-auto-end-turn]');
+  if (autoEndTurnToggle instanceof HTMLInputElement) {
+    autoEndTurnToggle.addEventListener('change', () => {
+      onToggleAutoEndTurn?.(autoEndTurnToggle.checked);
     });
   }
 }
@@ -1148,6 +1232,8 @@ export function bindRoomEvents({
       updateStageNextStepButtonState(state);
     }
   };
+  // 讓模組層級的自動結束回合計時器能呼叫到這裡定義的 runStageNextStep。
+  autoEndTurnRunner = runStageNextStep;
 
   const moveToPromptArea = async (areaName) => {
     if (!state.roomId || !state.account || stageNextStepBusy) return;
@@ -1839,6 +1925,7 @@ export function bindRoomEvents({
         turn_timeout_minutes: patch.turn_timeout_minutes ?? Number(roomInfo.turn_timeout_minutes || 3),
         enable_initial_green_card: patch.enable_initial_green_card ?? Boolean(roomInfo.enable_initial_green_card),
         enable_neutral_chaos_mode: patch.enable_neutral_chaos_mode ?? Boolean(roomInfo.enable_neutral_chaos_mode),
+        enable_badge_unique_character_select: patch.enable_badge_unique_character_select ?? Boolean(roomInfo.enable_badge_unique_character_select),
       });
       renderState(data);
       toast(t('room.settings.updated'));
@@ -1938,6 +2025,7 @@ export function bindRoomEvents({
     const extendCheck = dialog.querySelector('[data-setting-extend-check]');
     const initialGreenCheck = dialog.querySelector('[data-setting-initial-green-check]');
     const neutralChaosCheck = dialog.querySelector('[data-setting-neutral-chaos-check]');
+    const badgeUniqueCheck = dialog.querySelector('[data-setting-badge-unique-check]');
 
     const turnTimeoutMinutes = Number.parseInt(String(timeoutSelect?.value || ''), 10);
     const useBasic = Boolean(basicCheck?.checked);
@@ -1958,6 +2046,7 @@ export function bindRoomEvents({
       turn_timeout_minutes: turnTimeoutMinutes,
       enable_initial_green_card: Boolean(initialGreenCheck?.checked),
       enable_neutral_chaos_mode: Boolean(neutralChaosCheck?.checked),
+      enable_badge_unique_character_select: Boolean(badgeUniqueCheck?.checked),
     });
 
     if (dialog.open) {
@@ -2091,6 +2180,7 @@ export function bindRoomEvents({
       selectAbilityPlayerTarget,
       canActivateSelfAbilityFromCard,
       startSelfAbilityActivation,
+      markEndTurnAbilityInteractionStarted,
     });
   };
 

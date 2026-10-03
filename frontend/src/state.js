@@ -7,6 +7,7 @@ export function createAppState() {
     transportMode: 'auto',
     autoRefreshSeconds: 0,
     skipTargetConfirm: false,
+    autoEndTurn: true,
     eventSeq: 0,
     avatarPage: 1,
     page: rawPage,

@@ -296,6 +296,55 @@ def validate_forced_character_config() -> Dict[str, Any]:
     }
 
 
+def validate_badge_unique_character_select(seed: int = 42) -> Dict[str, Any]:
+    # 徽章唯一：同時使用多組卡組時，不應讓同一場遊戲出現兩位徽章字母
+    # （角色英文名首字，如 Agnes/Allie 皆為 A）相同的角色。
+    manager = RoomManager()
+    game_room = manager.create_room(
+        'validation-badge-unique',
+        expansion_mode='all',
+        enable_badge_unique_character_select=True,
+    )
+    for i in range(7):
+        manager.join_room(
+            game_room.room_id,
+            {
+                'trip': f'badge-unique-{i + 1}',
+                'account': f'badge-unique-{i + 1}',
+                'password': 'pw',
+                'name': f'Badge Unique {i + 1}',
+            },
+        )
+    game_room = manager.start_game(game_room.room_id, seed=seed)
+    badges = [p.character.name[:1].upper() for p in game_room.players.values()]
+    assert len(badges) == len(set(badges)), f'duplicate badge letters assigned: {badges}'
+
+    # 關閉徽章唯一時應維持原本行為（允許重複徽章），確認切換互不影響。
+    off_room = manager.create_room(
+        'validation-badge-unique-off',
+        expansion_mode='all',
+        enable_badge_unique_character_select=False,
+    )
+    for i in range(7):
+        manager.join_room(
+            off_room.room_id,
+            {
+                'trip': f'badge-off-{i + 1}',
+                'account': f'badge-off-{i + 1}',
+                'password': 'pw',
+                'name': f'Badge Off {i + 1}',
+            },
+        )
+    off_room = manager.start_game(off_room.room_id, seed=seed)
+    assert bool(getattr(off_room, 'enable_badge_unique_character_select', False)) is False
+
+    return {
+        'room_id': game_room.room_id,
+        'badges': sorted(badges),
+        'enable_badge_unique_character_select': bool(getattr(game_room, 'enable_badge_unique_character_select', False)),
+    }
+
+
 def validate_werewolf_counter_attack_flow() -> Dict[str, Any]:
     game_room = room()
     game_room.board = board(game_room)
@@ -584,6 +633,60 @@ def validate_room_idle_cleanup_by_message() -> Dict[str, Any]:
             }
         finally:
             _stop_room_threads(restored_manager)
+
+
+def validate_badge_unique_record_backfill() -> Dict[str, Any]:
+    # 紀錄閱覽頁的「選項」欄位需要能把徽章唯一設定顯示成藍色 U 徽章，
+    # 跟 B/E 卡組徽章一樣，方便事後回顧這場遊戲開了哪些設定。
+    with TemporaryDirectory() as tmp_dir:
+        db_path = Path(tmp_dir) / 'records-badge-unique-validation.db'
+        store = GameRecordStore(db_path=str(db_path))
+        api = GameRecordsAPI(store)
+        record = GameRecord(
+            record_id='badge-unique-record-validation',
+            room_id=2337,
+            game_date='2026-04-05T12:05:00',
+            game_duration_seconds=321,
+            game_settings={
+                'enable_initial_green_card': False,
+                'enable_neutral_chaos_mode': False,
+                'enable_badge_unique_character_select': True,
+                'expansion_mode': 'all',
+                'room_name': 'Badge Unique Validation',
+                'room_comment': 'regression check',
+                'require_trip': False,
+            },
+            players=[
+                PlayerRecord(
+                    player_id=f'player-{index + 1}',
+                    player_name=f'Player {index + 1}',
+                    character_name=f'Character {index + 1}',
+                    character_camp='Shadow' if index == 0 else 'Hunter',
+                    is_alive=True,
+                    final_hp=10,
+                    damage_taken=0,
+                    cards_played=0,
+                )
+                for index in range(4)
+            ],
+            winner_camp='hunter',
+            winner_players=['player-2'],
+            final_state={'room': {'room_name': 'Badge Unique Validation'}},
+        )
+        store.save_game_record(record)
+
+        detail = api.api_get_game_record(record.record_id)
+        listing = api.api_get_game_records(page=1, page_size=20)
+        assert detail['game_settings']['enable_badge_unique_character_select'] is True
+        assert detail['final_state']['room']['enable_badge_unique_character_select'] is True
+        assert listing['entries']
+        assert 'Badge Unique' in str(listing['entries'][0]['options'])
+
+        return {
+            'record_id': detail['record_id'],
+            'badge_unique': detail['game_settings']['enable_badge_unique_character_select'],
+            'options': listing['entries'][0]['options'],
+        }
 
 
 def validate_neutral_chaos_record_backfill() -> Dict[str, Any]:

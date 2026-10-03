@@ -55,6 +55,7 @@ export function getDomElements() {
     chatVillageCheck: document.getElementById('chatVillageCheck'),
     expansionBasicCheck: document.getElementById('expansionBasicCheck'),
     expansionExtendCheck: document.getElementById('expansionExtendCheck'),
+    badgeUniqueCheck: document.getElementById('badgeUniqueCheck'),
     turnTimeoutSelect: document.getElementById('turnTimeoutSelect'),
     enableInitialGreenCardCheck: document.getElementById('enableInitialGreenCardCheck'),
     enableNeutralChaosModeCheck: document.getElementById('enableNeutralChaosModeCheck'),
