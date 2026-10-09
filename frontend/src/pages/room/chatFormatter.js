@@ -38,8 +38,11 @@ export function buildChatStageLines({
     'Chainsaw', 'Butcher Knife', 'Rusted Broad Axe', 'Masamune', 'Machine Gun', 'Handgun',
   ]);
 
-  // 把玩家選的顏色轉成在聊天室白色背景上也看得清楚的文字顏色：顏色太亮（例如白、黃）
+  // 把玩家選的顏色轉成在聊天室白色背景上也看得清楚的文字顏色：顏色太亮（例如黃色）
   // 時會往黑色方向調暗一些，其他顏色基本維持原樣，盡量保留 Mike 原本選的那個顏色。
+  // （原本白色、灰色這兩個沒有色相的顏色調暗後會跟黑色混淆，這裡一度加過例外表處理；
+  // 後來直接把 constants.js 裡白色、灰色的色碼本身換成玫紅色／靛藍色，色塊選取列跟這裡
+  // 都會用新顏色，不需要再另外處理，所以把例外表拿掉了。）
   const toReadableTextHex = (hex) => {
     const match = /^#([0-9a-fA-F]{6})$/.exec(String(hex || '').trim());
     if (!match) return hex;
@@ -626,6 +629,25 @@ export function buildChatStageLines({
         value: esc(m[1]),
       });
     }
+    // 2026-10-09 修正：炸藥的擲骰訊息（[Dynamite] 擲出 D4=... D6=...）跟上面的
+    // Spiritual Doll 是同一種模式——後端用卡名當作 [中括號] 裡的角色名稱方便記錄，
+    // 但前端沒有專門處理，掉進下面「把 [名稱] 當成玩家名字」的通用規則，變成顯示
+    // 「Dynamite(???)」這種看起來像是某個神秘玩家在講話的奇怪畫面。補上專用規則。
+    if ((m = text.match(/^\[Dynamite\] 擲出 D4=(\d+) D6=(\d+)（合計=7），啞彈無事發生$/))) {
+      return t('room.system.dynamite_dud', {
+        card: buildCardToken({ cardName: 'Dynamite', cardType: 'action' }),
+        d4: esc(m[1]),
+        d6: esc(m[2]),
+      });
+    }
+    if ((m = text.match(/^\[Dynamite\] 擲出 D4=(\d+) D6=(\d+)（合計=(\d+)）$/))) {
+      return t('room.system.dynamite_rolled', {
+        card: buildCardToken({ cardName: 'Dynamite', cardType: 'action' }),
+        d4: esc(m[1]),
+        d6: esc(m[2]),
+        total: esc(m[3]),
+      });
+    }
     if ((m = text.match(/^\[(.+)\] 死亡，身份揭示為 (.+)$/))) return t('room.system.died_revealed', { player: pid(esc(m[1]), m[1]), role: esc(getCharacterLocalizedName(m[2], lang)) });
     if ((m = text.match(/^\[(.+)\] 回合超時，判定暴斃$/))) return t('room.system.timed_out_boom', { player: pid(esc(m[1]), m[1]) });
     const revealedIdentity = parseLeadingBracketedValue(text, '] 主動揭示身份：');
@@ -633,7 +655,11 @@ export function buildChatStageLines({
       return t('room.system.revealed_identity', { player: pidRole(esc(revealedIdentity.value), revealedIdentity.value), role: esc(getCharacterLocalizedName(revealedIdentity.rest, lang)) });
     }
 
-    if (/^(全員準備完成，遊戲開始|遊戲開始(?:，|$))/.test(text)) return t('room.system.game_started');
+    // 2026-10-09 修正：這兩則訊息原本共用同一個翻譯字串，畫面上看起來像「遊戲開始」
+    // 顯示了兩次（其實是兩個不同時機點的訊息：全員準備完成 vs. 真正發放角色進入回合），
+    // 容易讓人誤會是 bug。改成各自獨立的文字，意思分開但不互相重複。
+    if (/^全員準備完成，遊戲開始/.test(text)) return t('room.system.all_players_ready');
+    if (/^遊戲開始(?:，|$)/.test(text)) return t('room.system.game_started');
 
     if ((m = text.match(/^遊戲結束，勝利者：(.+)$/))) {
       const winnerAccounts = Array.isArray(data?.winners)

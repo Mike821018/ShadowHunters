@@ -106,6 +106,7 @@ export function getDomElements() {
     villageInfoList: document.getElementById('villageInfoList'),
     damageMeter: document.getElementById('damageMeter'),
     chatMessages: document.getElementById('chatMessages'),
+    chatScrollBottomBtn: document.getElementById('chatScrollBottomBtn'),
     systemMessages: document.getElementById('systemMessages'),
     chatInput: document.getElementById('chatInput'),
     chatEmojiToggle: document.getElementById('chatEmojiToggle'),

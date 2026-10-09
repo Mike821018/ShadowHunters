@@ -26,7 +26,7 @@
  * panel opens — see floatingPanelGroup.js.
  */
 
-import { registerFloatingPanel, notifyFloatingPanelOpened } from './floatingPanelGroup.js';
+import { registerFloatingPanel, notifyFloatingPanelOpened, notifyFloatingPanelClosed } from './floatingPanelGroup.js';
 
 const MOBILE_QUERY = '(max-width: 640px)';
 
@@ -130,10 +130,23 @@ function createFloatingFieldsetPanel({ fieldsetSelector, wrapClass, lsKey, icon,
       // ignore storage errors (private browsing, quota, etc.)
     }
     render();
-    if (!collapsed) notifyFloatingPanelOpened(wrapClass);
+    if (!collapsed) {
+      notifyFloatingPanelOpened(wrapClass);
+    } else {
+      // 收合後，之前被這個面板擋住而被往上推開的其他按鈕要歸位。
+      notifyFloatingPanelClosed();
+    }
   }
 
-  registerFloatingPanel(wrapClass, () => setCollapsed(true));
+  // 額外提供版面座標資訊，讓 floatingPanelGroup 判斷這個面板展開時是否會
+  // 擋到其他按鈕，需要的話把被擋住的按鈕往上推開（見該檔案說明）。
+  registerFloatingPanel(wrapClass, () => setCollapsed(true), {
+    isOpen: () => !collapsed,
+    getToggleEl: () => toggleBtn,
+    getPanelEl: () => panel,
+    applyOffset: (px) => { wrap.style.bottom = `${px}px`; },
+    resetOffset: () => { wrap.style.bottom = ''; },
+  });
 
   toggleBtn.addEventListener('click', () => setCollapsed(!collapsed));
   collapseBtn.addEventListener('click', () => setCollapsed(true));

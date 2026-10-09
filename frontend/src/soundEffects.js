@@ -4,6 +4,9 @@ const SOUND_STORE_KEY = 'sh.sound.enabled';
 const GAME_START_SRC = './assets/sounds/game_start.wav';
 const YOUR_TURN_SRC = './assets/sounds/your_turn.wav';
 const ROLL_CALL_SRC = './assets/sounds/roll_call.wav';
+// 「需要你確認/操作」通知音：目前沿用「重新點名」音檔頂著（Mike 2026-10 確認可以先這樣），
+// 之後如果有專屬音檔，只要換這裡指到的路徑即可，呼叫端的 playActionNeededSound() 不用動。
+const ACTION_NEEDED_SRC = ROLL_CALL_SRC;
 
 function readStoredEnabled() {
   try {
@@ -80,6 +83,17 @@ export function playYourTurnSound() {
 /** 重新點名音效：村長（或之後的 GM）發起重新點名時，所有人都會播放。 */
 export function playRollCallSound() {
   playFile(ROLL_CALL_SRC);
+}
+
+/**
+ * 需要你確認/操作音效：原本輪到自己的主回合已經有 playYourTurnSound() 涵蓋，
+ * 這個是給「不是輪到你的主回合、但需要你確認」的情境用的，例如：
+ *   - 別人對你使用需要你確認的綠卡（卡片效果要你選擇/確認）
+ *   - 你剛才被卡片效果卡住等別人確認，對方確認完、輪到你可以繼續操作了
+ * 這兩種情境裡 current_account 並不會變成你，所以沒辦法用輪到自己那套判斷。
+ */
+export function playActionNeededSound() {
+  playFile(ACTION_NEEDED_SRC);
 }
 
 function updateToggleButtonUi(button) {

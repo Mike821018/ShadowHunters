@@ -170,13 +170,16 @@ export async function handlePlayerCardClick(targetAccount, ctx) {
 
     const submitRating = async (rating, comment = '') => {
       try {
+        // silent: true — 這個呼叫自己在下面 catch 裡會判斷詳細原因、顯示對應的
+        // 正確提示（例如「此玩家尚未登記 TRIP」），不需要 dispatch() 自己再跳一次
+        // 籠統的「請求資料錯誤」，避免同一次失敗彈出兩個意思不一致的提示。
         await dispatch('submit_trip_rating', {
           room_id: state.roomId,
           account: state.account,
           target_account: targetAccount,
           rating,
           comment,
-        });
+        }, { silent: true });
         toast(t('toast.trip_rating_saved'));
       } catch (error) {
         const detail = String(error?.message || error?.detail || '').toLowerCase();

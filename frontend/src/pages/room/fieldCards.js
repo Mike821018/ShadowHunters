@@ -244,7 +244,10 @@ export function renderStageFieldCards({
         .map((occupant) => {
           if (!occupant) return '<span class="stage-field-occupant is-empty" aria-hidden="true"></span>';
           const fill = PLAYER_COLOR_HEX[occupant.color] || '#c9d8e4';
-          const border = occupant.color === 'White' ? '#9aa7b2' : 'rgba(0, 0, 0, 0.22)';
+          // 原本顏色代號還是 White/Black/... 時，白色色塊 (#f0f0f0) 太淺、需要額外加深色外框
+          // 才看得清楚；2026-10-03 顏色代號改成 Color1~Color9、原本的白色也換成玫紅色後，
+          // 9 種顏色本身都夠深、不再需要這個特例，統一用原本給其他顏色的外框即可。
+          const border = 'rgba(0, 0, 0, 0.22)';
           return `<button class="stage-field-occupant" type="button" data-occupant-account="${escapeHtml(occupant.account)}" data-occupant-name="${escapeHtml(occupant.name)}" title="${escapeHtml(`${occupant.name} / ${occupant.color || '-'}`)}" aria-label="查看 ${escapeHtml(occupant.name)}" style="background:${fill}; border-color:${border};"></button>`;
         })
         .join('');

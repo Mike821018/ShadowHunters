@@ -44,6 +44,8 @@ class room(Thread):
         self.trip_min_games: int = 0  # 加入村子所需的 Trip 最低遊戲場數
         self.manager_trip: str = ''  # 村長 Trip（匹配者視為村長身分）
         self.manager_trip_encrypted: bool = True  # 村長 Trip 是否為加密後值
+        self.gm_trip: str = ''  # GM Trip（匹配者視為 GM 身分：旁觀主持，不下場、不佔 4~8 人名額，跟村長互斥）
+        self.gm_trip_encrypted: bool = True  # GM Trip 是否為加密後值
         self.is_chat_room: bool = False  # 聊天村：不開局、較高人數上限
         self.expansion_mode: str = 'all'  # all | no_extend
         self.enable_initial_green_card: bool = False  # 遊戲開始時執行初始綠卡
@@ -401,6 +403,26 @@ class room(Thread):
     #  game start
     ####################
 
+    def _format_start_camp_summary(self) -> str:
+        # 開局公告用的陣營人數摘要（例：暗影=3 / 獵人=3 / 中立=2）；原本這份邏輯寫在
+        # room_manager.py 的 RoomManager._format_start_camp_summary()，因為開局訊息
+        # 改成統一在 game_start() 這裡發送（見上面的修正說明），所以把這份純粹只依賴
+        # self.players 的計算邏輯搬過來，RoomManager 那邊改成直接呼叫這裡，只維護一份。
+        camp_counts = {'Shadow': 0, 'Hunter': 0, 'Civilian': 0}
+        for player_obj in self.players.values():
+            camp_name = str(
+                getattr(player_obj, 'camp', '')
+                or getattr(getattr(player_obj, 'character', None), 'camp', '')
+                or ''
+            ).strip()
+            if camp_name in camp_counts:
+                camp_counts[camp_name] += 1
+        return (
+            f"暗影={camp_counts['Shadow']}"
+            f" / 獵人={camp_counts['Hunter']}"
+            f" / 中立={camp_counts['Civilian']}"
+        )
+
     def game_start(self):
         self.touch_activity()
         self.touch_turn_action()
@@ -408,10 +430,25 @@ class room(Thread):
         self.latest_roll_call_notice = {}
         self.private_character_visibility = {}
         self.settlement_character_reveal = {}
-        self.action_order = list(self.players.keys())
+        # GM（旁觀主持）不下場，不進入行動順序、不分配場地/token/傷害表位置。
+        playing_players = {
+            account: p for account, p in self.players.items()
+            if not bool(p.profile.get('is_gm', False))
+        }
+        self.action_order = list(playing_players.keys())
         random.shuffle(self.action_order)
-        self.board.game_set(self.players)
+        self.board.game_set(playing_players)
         self.room_status = 2
+        # 2026-10-09 修正：「遊戲開始」「本場配置」這兩則系統訊息，原本分別由
+        # api_start_game()（手動開始）跟 api_toggle_ready()（全員準備自動開局）各自
+        # 在呼叫 start_game() 之後補上，但 start_game() 內部（也就是這裡的 game_start()）
+        # 已經會同步跑完角色分配、首位玩家判定、甚至初始綠卡抽卡流程，等呼叫端拿回
+        # 控制權才補的這兩則訊息反而排到「首位行動玩家」「初始綠卡流程開始」之後，
+        # 順序變得很奇怪（本場配置應該最先公告，而不是夾在個別玩家的抽卡事件中間）。
+        # 改成一開局（room_status 剛切成 2）就在這裡發一次，兩條開局路徑共用同一份，
+        # 不用各自維護一份、也不會因為忘了改其中一邊而漏掉或重複。
+        self.add_system_message('遊戲開始，發放角色並進入回合流程')
+        self.add_system_message(f'本場配置：{self._format_start_camp_summary()}')
         if self.manager_ref and hasattr(self.manager_ref, 'records_api'):
             self.manager_ref.records_api.on_game_start(self)
         for p in self.players.values():
@@ -688,7 +725,10 @@ class room(Thread):
             if self.current_player:
                 self._initial_green_card_players_executed.add(self.current_player.account)
 
-            all_executed = self._initial_green_card_players_executed == set(self.players.keys())
+            # 用 action_order（已排除 GM）判斷是否所有「場上玩家」都執行過初始綠卡，
+            # 不能用 self.players.keys()：GM 不在 action_order 裡，永遠不會被加進
+            # _initial_green_card_players_executed，用 players.keys() 比對會讓這個流程卡住。
+            all_executed = self._initial_green_card_players_executed == set(self.action_order)
             if not all_executed:
                 self._set_next_alive_player_after_trip(self.current_player.trip if self.current_player else '')
                 if self.current_player:
@@ -862,6 +902,16 @@ class room(Thread):
             if not p.is_alive or not p.character or not p.can_use_ability:
                 continue
             if p.character.ability_timing != 9:
+                continue
+            # 2026-10-09 修正：Bob 這類「take_all_kill_loot_requires_ability」角色，能力
+            # 本質上是「掠奪裝備時要不要全拿」的判斷，發動時機點應該落在掠奪那一步
+            # （_resolve_pending_kill_loot／設定 _pending_kill_loot.allow_full 那段，
+            # 那裡本來就正確呼叫 _can_activate_ability() 檢查揭露狀態），不該在這個
+            # 死亡自動觸發迴圈就直接呼叫 ability() 把裝備拿光——這裡沒有檢查揭露，
+            # 會讓 Bob 不用揭露身分就能每次擊殺自動全拿裝備，而且裝備被拿光後，
+            # 掠奪那一步看到的 equipment_list 已經是空的，等於讓真正的揭露檢查變成
+            # 永遠不會生效的死碼。這裡跳過即可，讓掠奪那一步照原邏輯決定能不能全拿。
+            if getattr(p.character, 'take_all_kill_loot_requires_ability', False):
                 continue
 
             for dead in deaths:
@@ -1171,10 +1221,14 @@ class room(Thread):
 
         # ─── STATUS 1: 回合開始 ──────────────────────────────────────────────
         # [UI操作] 伺服器通知前端該玩家是否有「回合開始」能力可用。
-        #          若有可用能力：前端顯示「發動能力」按鈕及對應目標選擇介面。
-        #          若無能力或選擇跳過：直接進入移動階段。
-        # [UI回傳] 發動能力 → next_step(action=True,  target=<目標player 或 None>)
-        #          跳過     → next_step(action=False)
+        #          有可用能力（ability_timing=1）：前端顯示「發動能力」按鈕及對應目標選擇介面，
+        #          在玩家按下「行動骰」之前，隨時都能發動，用完後仍停留在開始階段。
+        #          移動能力（ability_timing=2，如 Emi）：同樣在按下行動骰之前就能發動，
+        #          實際判定交給下面 STATUS 2 的既有邏輯（見下方說明）。
+        #          沒有能力可用，或玩家不想再等：按下「行動骰」即可，由伺服器直接擲骰決定移動結果。
+        # [UI回傳] 發動開場能力 → next_step(action=True,  target=<目標player 或 None>)
+        #          發動移動能力 → next_step(action=True,  target=<鄰近的 area 物件>)
+        #          按下行動骰   → next_step(action=False)（會直接落入下面 STATUS 2 的擲骰流程）
         if p.status == 1:
             # Gregor 的 immortal 於「自己的下一個回合開始」到期
             if p.immortal:
@@ -1189,10 +1243,21 @@ class room(Thread):
             if int(getattr(self, 'room_status', 0) or 0) == 3:
                 return
 
-            if action and self._can_activate_ability(p):
+            # 開場主動能力（ability_timing=1）：按下行動骰之前都可以發動，
+            # 用完後停留在開始階段（status 仍為 1），不強制進入擲骰流程，
+            # 讓玩家自行決定要不要立刻按下行動骰；真正結束開始階段的時機點，
+            # 改成「玩家按下行動骰」那一刻才算數。移動能力（timing=2）則完全
+            # 交給下面 STATUS 2 的既有邏輯判定（見下方 if p.status == 2 不再是
+            # elif，讓本次呼叫在沒有開場能力可用時可以直接落入該區塊）。
+            if (
+                action
+                and self._can_activate_ability(p)
+                and int(getattr(p.character, 'ability_timing', 0) or 0) == 1
+            ):
                 self._use_ability_with_resolution(p, target)
                 if int(getattr(self, 'room_status', 0) or 0) == 3:
                     return
+                return
             p.status = 2
             # update → 通知前端進入「擲骰移動」介面，顯示當前場地配置
 
@@ -1216,7 +1281,10 @@ class room(Thread):
         #          一般移動骰到 7 選區域         → next_step(target=<選擇的 area 物件>)
         #          Compass 擲骰（第一／二次）    → next_step()
         #          Compass 選擇區域             → next_step(target=<選擇的 area 物件>)
-        elif p.status == 2:
+        # 注意：此處原本是 elif，改成獨立的 if，讓 STATUS 1 在沒有開場能力
+        # 可用（或選擇不使用）時，可以在同一次呼叫內直接落入本區塊——也就是
+        # 玩家按下「行動骰」的那一刻，才由這裡決定要擲骰還是發動移動能力。
+        if p.status == 2:
             has_compass = any(eq.name == "Mystic Compass" for eq in p.equipment_list)
             has_move_ability = bool(
                 p.character and p.character.ability_timing == 2 and self._can_activate_ability(p)

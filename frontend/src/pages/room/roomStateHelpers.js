@@ -27,7 +27,13 @@ export function canActivateSelfAbilityFromCard(state, dataSnapshot) {
   if (abilityState.currentAccount !== abilityState.account) return false;
   if (!abilityState.revealed || !abilityState.canUseAbility) return false;
 
-  if ([1, 2, 6].includes(abilityState.timing)) {
+  if (abilityState.timing === 2) {
+    // 移動能力（如 Emi）：從回合開始階段（status=1）到按下行動骰（status=2）之前都能發動，
+    // 跟開場能力（timing=1）用完仍停留在原地不同，發動後會直接跳過擲骰進入區域效果。
+    return abilityState.status === 1 || abilityState.status === 2;
+  }
+
+  if ([1, 6].includes(abilityState.timing)) {
     return abilityState.status === abilityState.timing;
   }
 

@@ -1,5 +1,6 @@
 import { t } from '../i18n.js';
 import { apiFetch } from '../utils.js';
+import { optionBadgeMeta, positionOptionPopover } from './room/roomSettingsBadges.js';
 
 function winnerBadge(camp, tokenLabel) {
   if (camp === 'hunter') {
@@ -82,49 +83,6 @@ function parseOptionBadges(rawOptions) {
   return { badges: Array.from(badgeSet), extras };
 }
 
-function optionBadgeMeta(code) {
-  if (code === 'G') {
-    return {
-      className: 'records-option-badge records-option-badge-green',
-      title: t('records.badge_green_title'),
-      desc: t('records.badge_green_desc'),
-    };
-  }
-  if (code === 'C') {
-    return {
-      className: 'records-option-badge records-option-badge-neutral',
-      title: t('records.badge_neutral_chaos_title'),
-      desc: t('records.badge_neutral_chaos_desc'),
-    };
-  }
-  if (code === 'U') {
-    return {
-      className: 'records-option-badge records-option-badge-blue',
-      title: t('records.badge_unique_title'),
-      desc: t('records.badge_unique_desc'),
-    };
-  }
-  if (code === 'B') {
-    return {
-      className: 'records-option-badge records-option-badge-blue',
-      title: t('records.badge_basic_title'),
-      desc: t('records.badge_basic_desc'),
-    };
-  }
-  if (code === 'E') {
-    return {
-      className: 'records-option-badge records-option-badge-blue',
-      title: t('records.badge_extend_title'),
-      desc: t('records.badge_extend_desc'),
-    };
-  }
-  return {
-    className: 'records-option-badge',
-    title: code,
-    desc: code,
-  };
-}
-
 function renderOptionsCell(rawOptions) {
   const { badges, extras } = parseOptionBadges(rawOptions);
   if (!badges.length && !extras.length) return '<span class="lighttxt">-</span>';
@@ -155,9 +113,7 @@ function bindOptionBadgePopover(host) {
       pop.innerHTML = `<strong>${title}</strong><p>${desc}</p>`;
       document.body.appendChild(pop);
 
-      const rect = source.getBoundingClientRect();
-      pop.style.left = `${Math.max(8, rect.left + (rect.width / 2))}px`;
-      pop.style.top = `${Math.max(8, rect.bottom + 8)}px`;
+      positionOptionPopover(pop, source.getBoundingClientRect());
 
       window.setTimeout(() => {
         const close = (ev) => {

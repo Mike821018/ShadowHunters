@@ -445,6 +445,43 @@ legend {
   padding: 8px;
 }
 
+.chat-messages-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-messages-wrap .chat-messages {
+  flex: 1;
+}
+
+.chat-scroll-bottom-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 4px 14px;
+  border: 1px solid var(--line-strong, #6eb1d5);
+  border-radius: 999px;
+  background: var(--primary, #09c);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.6;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(21, 49, 67, 0.25);
+}
+
+.chat-scroll-bottom-btn:hover {
+  opacity: 0.9;
+}
+
+.chat-scroll-bottom-btn[hidden] {
+  display: none !important;
+}
+
 .chat-line {
   display: block;
   margin-bottom: 8px;
@@ -1417,6 +1454,29 @@ legend {
   margin: 0;
   font-size: 12px;
   line-height: 1.45;
+}
+
+/* 村子資訊設定徽章列（取代原本文字化的 TRIP/卡組/綠卡/亂鬥/徽章/暴斃時間）：
+   顏色複用 records-option-badge 系統，只顯示目前有效的設定；TRIP 強調色、暴斃時間數值另外做樣式。
+   2026-10-09：未啟用徽章改成直接不顯示（不再用灰階表示關閉），原本的 .village-settings-badge-off
+   灰階樣式已經沒有任何地方在用，移除。 */
+.village-settings-badge-trip-on {
+  background: #e0f7fa;
+  border-color: #4fb3bf;
+  color: #0e7490;
+}
+
+.village-settings-badge-timeout {
+  width: auto;
+  min-width: 22px;
+  padding: 0 7px;
+  background: #fff3e0;
+  border-color: #f3b76b;
+  color: #8a5300;
+}
+
+.village-info-settings-badges-line {
+  padding-top: 2px;
 }
 
 #tripProfileGamesTbody td:nth-child(5) {
@@ -3908,12 +3968,45 @@ legend {
 }
 
 /* Message list */
+.sh-fchat-msgs-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .sh-fchat-msgs {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 8px 10px;
   background: #fff;
+}
+
+.sh-fchat-scroll-bottom-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 3px 12px;
+  border: 1px solid var(--line-strong, #6eb1d5);
+  border-radius: 999px;
+  background: var(--primary, #09c);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.6;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(21, 49, 67, 0.25);
+}
+
+.sh-fchat-scroll-bottom-btn:hover {
+  opacity: 0.9;
+}
+
+.sh-fchat-scroll-bottom-btn[hidden] {
+  display: none !important;
 }
 
 .sh-fchat-empty {
@@ -5047,6 +5140,18 @@ legend {
 
   .sh-ffs-toggle-btn.is-open {
     background: #4a7f9c;
+  }
+
+  /* 手機版玩家列表收合成浮動按鈕時，裡面的玩家卡片雖然還是會正常閃爍，
+     但按鈕本身收合時看不到卡片，使用者不會注意到要點開——用同一組既有的
+     attack-target-pulse／area-target-pulse 動畫讓按鈕本身也跟著閃爍提示。
+     renderState() 裡會依目前的 playerPromptClass 切換這兩個 class。 */
+  .sh-ffs-toggle-btn.attack-target-prompt {
+    animation: attack-target-pulse 0.65s ease-in-out infinite;
+  }
+
+  .sh-ffs-toggle-btn.area-target-prompt {
+    animation: area-target-pulse 0.65s ease-in-out infinite;
   }
 
   .sh-ffs-panel {

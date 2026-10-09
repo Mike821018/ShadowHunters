@@ -97,15 +97,13 @@ export function createStageNextStepStateHandlers({
     } else if (greenConfirm.active) {
       disabled = true;
       label = greenConfirm.needsChoice ? t('room.table_next_step.choose_effect') : t('room.table_next_step.wait_target_confirm');
-    } else if (selfStatus === 1) {
-      if (getPendingAbilityActivation()) {
-        disabled = true;
-        label = t('room.table_next_step.choose_target');
-      } else {
-        label = t('room.table_next_step.turn_start');
-        phase = 'turn-start';
-      }
-    } else if (selfStatus === 2) {
+    } else if (selfStatus === 1 && getPendingAbilityActivation()) {
+      disabled = true;
+      label = t('room.table_next_step.choose_target');
+    } else if (selfStatus === 1 || selfStatus === 2) {
+      // status=1（回合開始）跟 status=2（擲骰移動）現在共用同一套按鈕行為：
+      // 「回合開始」按鈕本身已經沒有獨立用途（按下行動骰之前，開場/移動能力都還能發動），
+      // 這裡一律顯示停用狀態，引導玩家改用中央骰子區塊按下行動骰。
       disabled = true;
       label = t('room.table_next_step.roll_move_dice');
     } else if (pendingKillLoot.active) {
@@ -161,7 +159,12 @@ export function createStageNextStepStateHandlers({
       && selfAccount
       && roomStatus === 2
       && selfAccount === currentAccount
-      && (Boolean(pendingDiceAction) || selfStatus === 5 || (selfStatus === 2 && !movePrompt.active))
+      && (
+        Boolean(pendingDiceAction)
+        || selfStatus === 5
+        || selfStatus === 1
+        || (selfStatus === 2 && !movePrompt.active)
+      )
       && !diceRollBusy
       && !diceRollAnimating
       && !stageNextStepBusy

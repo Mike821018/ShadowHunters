@@ -34,7 +34,11 @@ class Character():
     def assign(self, user):
         user.camp = self.camp
         user.hp = self.hp
-        user.counter_atk = self.counter_atk
+        # 2026-10-09 修正：這裡原本會把 self.counter_atk（狼男＝True）在一開局角色分配
+        # 時就直接複製給玩家，導致狼男還沒揭露身份就已經能發動被動反打。Mike 確認這個
+        # 自製版本的規則是「要揭露才能反擊」，不該像原版桌遊那樣允許未揭露反打。
+        # counter_atk（連同 force_atk、leech 這兩個同樣是被動戰鬥屬性）本來就只在
+        # reveal() 裡複製一次，開局分配這裡不該提前複製，拿掉這行就對了。
         user.check_win_timing = int(getattr(self, 'check_win_timing', 1) or 1)
         # UI 與狀態同步規則：開場皆視為可用（除非後續被禁用或已用盡）。
         # ability_requires_reveal 僅影響「可否主動發動」，不影響可用顯示。

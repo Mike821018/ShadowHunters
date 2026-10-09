@@ -81,7 +81,10 @@ export function createDamageMeterHandlers({ t, esc }) {
               <div class="damage-meter-cell" role="cell">
                 ${players.map((player) => {
                   const fill = PLAYER_COLOR_HEX[player.color] || '#cccccc';
-                  const outline = player.color === 'White' ? '#9aa7b2' : 'rgba(0, 0, 0, 0.25)';
+                  // 原本顏色代號還是 White/Black/... 時，白色色塊 (#f0f0f0) 太淺、需要額外加深色外框
+                  // 才看得清楚；2026-10-03 顏色代號改成 Color1~Color9、原本的白色也換成玫紅色後，
+                  // 9 種顏色本身都夠深、不再需要這個特例，統一用原本給其他顏色的外框即可。
+                  const outline = 'rgba(0, 0, 0, 0.25)';
                   return `<button class="damage-meter-player-chip" type="button" data-player-account="${esc(player.account)}" title="${esc(`${player.name} / ${player.color || '-'} / ${player.exactDamage}`)}" aria-label="${esc(t('ui.player_label', { name: player.name || player.account }))}" style="background:${fill}; border-color:${outline};"></button>`;
                 }).join('')}
               </div>

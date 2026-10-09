@@ -13,10 +13,10 @@ import { renderStageFieldCards } from './room/fieldCards.js';
 import { handlePlayerCardClick } from './room/playerCardActions.js';
 import { bindPlayerCardClickTargets } from './room/playerCardBindings.js';
 import { bindStageInteractions } from './room/stageInteractions.js';
-import { bindChatControls } from './room/chatControls.js';
+import { bindChatControls, isChatNearBottom, scrollChatToBottom, updateChatScrollBottomButton } from './room/chatControls.js';
 import { bindRoomLifecycle } from './room/roomLifecycle.js';
 import { connectRoomEventStream, clearRoomEventSource } from './room/roomEventStream.js';
-import { playGameStartSound, playYourTurnSound, playRollCallSound } from '../soundEffects.js';
+import { playGameStartSound, playYourTurnSound, playRollCallSound, playActionNeededSound } from '../soundEffects.js';
 import { bindRoomControls } from './room/roomControls.js';
 import { createStageNextStepStateHandlers } from './room/stageNextStepState.js';
 import {
@@ -228,7 +228,19 @@ function playDiceAnimation(finalD6, finalD4, mode = 'both') {
 }
 
 function getAbilityDiceAnimationMode(characterName) {
-  return String(characterName || '').trim() === 'Unknown' ? 'd4' : 'd6';
+  // 2026-10-06 修正：原本的寫法是「只要不是 Unknown 就回報 'd6'」，等於永遠是 truthy，
+  // 導致所有「不需要擲骰」的發動能力角色（例如楓花 Fu-ka）都被誤判成擲骰流程——
+  // 玩家選好目標之後，程式不會直接發動能力，而是改成等玩家再按一次行動骰才會真正送出，
+  // 但畫面上完全沒有提示要再按一次，玩家只看到選目標之後整個卡住、什麼都沒發生。
+  // 這跟之前行動骰按鈕的 P0 bug 是同一種成因：room.js 自己另外維護了一份跟
+  // room/diceAnimation.js 裡同名函式邏輯不一致的副本（後者才是正確、但完全沒被
+  // import 使用的孤兒模組）。這裡改成跟 diceAnimation.js 一致的正確邏輯：
+  // 只有 Franklin、George 這兩個角色的能力需要擲骰動畫，其餘所有角色（包括 Fu-ka）
+  // 都回傳空字串，讓 selectAbilityPlayerTarget／activateSelfAbility 直接發動能力。
+  const normalized = String(characterName || '').trim();
+  if (normalized === 'Franklin') return 'd6';
+  if (normalized === 'George') return 'd4';
+  return '';
 }
 
 function getCardDiceAnimationMeta(cardName) {
@@ -526,12 +538,32 @@ function renderChatStage({ el, esc }, data, state) {
     getLocalizedCardName,
   });
 
+  // 上滑看歷史訊息時不要被新訊息打斷畫面：只有原本就在底部附近才自動捲到新訊息，
+  // 否則維持使用者原本的捲動位置（內容只會往後追加，位置不會因此跑掉），
+  // 並透過 updateChatScrollBottomButton 顯示「回到最新訊息」按鈕讓使用者自行選擇。
+  const chatWasNearBottom = isChatNearBottom(el.chatMessages);
+  const chatPrevScrollTop = el.chatMessages.scrollTop;
+  const systemWasNearBottom = el.systemMessages ? isChatNearBottom(el.systemMessages) : true;
+  const systemPrevScrollTop = el.systemMessages ? el.systemMessages.scrollTop : 0;
+
   el.chatMessages.innerHTML = chatLines.length ? chatLines.join('') : `<p class="lighttxt">${esc(t('room.chat.empty'))}</p>`;
   if (el.systemMessages) {
     el.systemMessages.innerHTML = systemLines.length ? systemLines.join('') : `<p class="lighttxt">${esc(t('room.chat.empty'))}</p>`;
   }
-  el.chatMessages.scrollTop = el.chatMessages.scrollHeight;
-  if (el.systemMessages) el.systemMessages.scrollTop = el.systemMessages.scrollHeight;
+
+  if (chatWasNearBottom) {
+    scrollChatToBottom(el.chatMessages);
+  } else {
+    el.chatMessages.scrollTop = chatPrevScrollTop;
+  }
+  if (el.systemMessages) {
+    if (systemWasNearBottom) {
+      el.systemMessages.scrollTop = el.systemMessages.scrollHeight;
+    } else {
+      el.systemMessages.scrollTop = systemPrevScrollTop;
+    }
+  }
+  updateChatScrollBottomButton(el);
 }
 
 function setSelectOptions(selectEl, values, placeholder) {
@@ -894,6 +926,28 @@ export function renderState({
     if (nextRollCallAt > 0 && nextRollCallAt !== previousRollCallAt) {
       playRollCallSound();
     }
+
+    // 綠卡確認通知：current_account 在綠卡確認這段流程裡不會變成目標玩家，
+    // 所以不能靠上面「輪到自己」那段判斷，要另外比對 green_confirm_prompt：
+    //   1) 我剛被對方的卡片效果指定為需要確認/選擇的目標 → 提示我該確認了。
+    //   2) 我剛才是被卡住等對方確認的那個人（我是 source_account），
+    //      現在這個 pending 已經消失（對方確認完了）→ 提示我可以繼續操作了。
+    if (selfAccount) {
+      const previousGreenPrompt = previousRoomSnapshot?.green_confirm_prompt || null;
+      const nextGreenPrompt = data?.green_confirm_prompt || null;
+
+      const previousWaitingForMe = Boolean(previousGreenPrompt?.waiting_confirm);
+      const nextWaitingForMe = Boolean(nextGreenPrompt?.waiting_confirm);
+      if (nextWaitingForMe && !previousWaitingForMe) {
+        playActionNeededSound();
+      }
+
+      const previousBlockedAsSource = String(previousGreenPrompt?.source_account || '').trim() === selfAccount;
+      const nextBlockedAsSource = String(nextGreenPrompt?.source_account || '').trim() === selfAccount;
+      if (previousBlockedAsSource && !nextBlockedAsSource) {
+        playActionNeededSound();
+      }
+    }
   }
 
   const isChatRoom = Boolean(data?.room?.is_chat_room);
@@ -959,6 +1013,17 @@ export function renderState({
   renderPlayerCards(el.roomCards, data, { view: 'room', enableVoteKick: true, targetAccounts: playerPromptTargets, targetPromptClass: playerPromptClass, onEquipmentChipClick: handleEquipmentChipClick, onShieldChipClick: handleShieldChipClick });
   patchRoomCardsLayout();
   renderPlayerCards(el.battleCards, data, { view: 'flow', targetAccounts: playerPromptTargets, targetPromptClass: playerPromptClass, onEquipmentChipClick: handleEquipmentChipClick, onShieldChipClick: handleShieldChipClick });
+
+  // 手機版玩家列表會被 floatingSysInfo.js 整個移進右下角的浮動收合面板，
+  // 面板收合時看不到裡面正在閃爍的玩家卡片，所以額外讓收合按鈕本身也跟著閃爍，
+  // 用跟玩家卡片一樣的 class／動畫（攻擊=紅色、區域效果等=藍色），保持視覺一致；
+  // 桌面版沒有這個浮動按鈕（floatingSysInfo 在寬螢幕是no-op），這段查詢會是 null，安全跳過。
+  const floatingPlayersToggleBtn = document.querySelector('.sh-floating-players .sh-ffs-toggle-btn');
+  if (floatingPlayersToggleBtn) {
+    const hasPlayerTargetPrompt = playerPromptTargets.length > 0;
+    floatingPlayersToggleBtn.classList.toggle('attack-target-prompt', hasPlayerTargetPrompt && playerPromptClass === 'attack-target-prompt');
+    floatingPlayersToggleBtn.classList.toggle('area-target-prompt', hasPlayerTargetPrompt && playerPromptClass === 'area-target-prompt');
+  }
 
   const playerTargets = orderedPlayerEntries(data)
     .filter(([, p]) => p.alive)
@@ -1100,7 +1165,12 @@ export function bindRoomEvents({
         || (
           currentAccount === selfAccount
           && (
-            (selfStatus === 2 && !movePrompt.active)
+            // 2026-10-06：補回 issue_86 回合流程重新設計的部分，之前為了配合沒重啟的
+            // 舊後端而暫時拿掉，忘記這裡跟 stageProgression.js 裡有重複的一份邏輯，
+            // 只恢復了模組檔案、沒有一起恢復這裡——開場階段（status=1）現在也能直接按
+            // 行動骰，一次完成「結束開始階段＋擲骰決定移動結果」。
+            selfStatus === 1
+            || (selfStatus === 2 && !movePrompt.active)
             || selfStatus === 5
           )
         )
@@ -1230,7 +1300,7 @@ export function bindRoomEvents({
     }
     if (roomStatus !== 2 || !selfAccount || selfAccount !== currentAccount) return;
     if (greenConfirm.active) return;
-    if (selfStatus === 2 || (selfStatus === 5 && !counterAttackPrompt.active)) {
+    if (selfStatus === 1 || selfStatus === 2 || (selfStatus === 5 && !counterAttackPrompt.active)) {
       await rollDiceFromCenter();
       return;
     }

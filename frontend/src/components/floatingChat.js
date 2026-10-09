@@ -12,7 +12,7 @@ import { buildChatStageLines } from '../pages/room/chatFormatter.js';
 import { getCharacterLocalizedName, getCurrentUiLang } from '../characterInfo.js';
 import { t } from '../i18n.js';
 import { esc, apiFetch, countDisplayWidth } from '../utils.js';
-import { registerFloatingPanel, notifyFloatingPanelOpened } from './floatingPanelGroup.js';
+import { registerFloatingPanel, notifyFloatingPanelOpened, notifyFloatingPanelClosed } from './floatingPanelGroup.js';
 
 const POLL_MS = 8000;
 const LS_KEY = 'sh.floatingChat.collapsed';
@@ -75,7 +75,10 @@ function buildDOM() {
         <span class="sh-fchat-title">聊天室</span>
         <button class="sh-fchat-collapse-btn" type="button" aria-label="收合聊天室">−</button>
       </div>
-      <div class="sh-fchat-msgs" role="log" aria-live="polite" aria-label="聊天訊息" tabindex="0"></div>
+      <div class="sh-fchat-msgs-wrap">
+        <div class="sh-fchat-msgs" role="log" aria-live="polite" aria-label="聊天訊息" tabindex="0"></div>
+        <button class="sh-fchat-scroll-bottom-btn" type="button" hidden></button>
+      </div>
       <div class="sh-fchat-foot">
         <div class="sh-fchat-emoji-panel" hidden>
           <div class="sh-fchat-emoji-grid">${buildEmojiGridHtml()}</div>
@@ -99,6 +102,7 @@ function buildDOM() {
     title:       wrap.querySelector('.sh-fchat-title'),
     collapseBtn: wrap.querySelector('.sh-fchat-collapse-btn'),
     msgs:        wrap.querySelector('.sh-fchat-msgs'),
+    scrollBottomBtn: wrap.querySelector('.sh-fchat-scroll-bottom-btn'),
     emojiPanel:  wrap.querySelector('.sh-fchat-emoji-panel'),
     emojiGrid:   wrap.querySelector('.sh-fchat-emoji-grid'),
     emojiToggle: wrap.querySelector('.sh-fchat-emoji-toggle'),
@@ -161,6 +165,19 @@ export async function initFloatingChat({ state }) {
   }
   function scrollToBottom() { el.msgs.scrollTop = el.msgs.scrollHeight; }
 
+  // 上滑看歷史訊息時，顯示「回到最新訊息」按鈕，讓使用者自己決定要不要跳回底部。
+  function updateScrollBottomBtn() {
+    if (!el.scrollBottomBtn) return;
+    const nearBottom = isNearBottom();
+    el.scrollBottomBtn.hidden = nearBottom;
+    if (!el.scrollBottomBtn.textContent) el.scrollBottomBtn.textContent = t('room.chat.scroll_to_bottom');
+  }
+  el.msgs.addEventListener('scroll', updateScrollBottomBtn);
+  el.scrollBottomBtn?.addEventListener('click', () => {
+    scrollToBottom();
+    updateScrollBottomBtn();
+  });
+
   // ── badge ─────────────────────────────────────────────────────────────────
   function updateBadge() {
     if (unread > 0) {
@@ -203,6 +220,7 @@ export async function initFloatingChat({ state }) {
     localStorage.setItem(LS_KEY, 'false');
     notifyFloatingPanelOpened('chat');
     scrollToBottom();
+    updateScrollBottomBtn();
     el.input.focus();
   }
 
@@ -212,19 +230,38 @@ export async function initFloatingChat({ state }) {
     el.toggleBtn.setAttribute('aria-expanded', 'false');
     setEmojiOpen(false);
     localStorage.setItem(LS_KEY, 'true');
+    // 聊天面板收合後，之前被它擋住而被往上推開的血量／玩家按鈕要歸位。
+    notifyFloatingPanelClosed();
   }
 
-  registerFloatingPanel('chat', collapse);
+  // 額外提供版面座標資訊，讓 floatingPanelGroup 判斷聊天面板展開時
+  // 是否會擋到血量／玩家按鈕，需要的話把那些按鈕往上推開（見該檔案說明）。
+  registerFloatingPanel('chat', collapse, {
+    isOpen: () => !collapsed,
+    getToggleEl: () => el.toggleBtn,
+    getPanelEl: () => el.panel,
+    applyOffset: (px) => { el.wrap.style.bottom = `${px}px`; },
+    resetOffset: () => { el.wrap.style.bottom = ''; },
+  });
 
   // ── message rendering ─────────────────────────────────────────────────────
-  function renderAllMessages(roomData) {
+  function renderAllMessages(roomData, { forceScrollBottom = false } = {}) {
+    const wasNearBottom = isNearBottom();
+    const prevScrollTop = el.msgs.scrollTop;
     const chatLines = buildMaskedChatHtml(roomData, account);
     if (!chatLines.length) {
       el.msgs.innerHTML = '<p class="sh-fchat-empty">尚無訊息</p>';
     } else {
       el.msgs.innerHTML = chatLines.join('');
     }
-    scrollToBottom();
+    // 只有原本就在底部附近（或被明確要求）才自動跟到最新訊息，
+    // 否則保持使用者原本的捲動位置，避免上滑看歷史訊息時畫面被強制拉回底部。
+    if (forceScrollBottom || wasNearBottom) {
+      scrollToBottom();
+    } else {
+      el.msgs.scrollTop = prevScrollTop;
+    }
+    updateScrollBottomBtn();
   }
 
   // ── polling ───────────────────────────────────────────────────────────────
@@ -251,12 +288,7 @@ export async function initFloatingChat({ state }) {
       unread += newMsgs.length;
       updateBadge();
     }
-    const keepBottom = isNearBottom();
     renderAllMessages(result.data || {});
-    if (!keepBottom) {
-      const { scrollHeight, clientHeight } = el.msgs;
-      el.msgs.scrollTop = Math.max(0, scrollHeight - clientHeight - 20);
-    }
     const name = String(result?.data?.room?.village_name || '').trim();
     if (name) el.title.textContent = `聊天室・${name}`;
   }
@@ -290,7 +322,7 @@ export async function initFloatingChat({ state }) {
           const maxId = Math.max(...messages.map((m) => Number(m.id || 0)));
           lastSeenId = maxId;
         }
-        renderAllMessages(roomData);
+        renderAllMessages(roomData, { forceScrollBottom: true });
       }
     } finally {
       isSending = false;
@@ -317,7 +349,7 @@ export async function initFloatingChat({ state }) {
   });
 
   // ── initialize ────────────────────────────────────────────────────────────
-  renderAllMessages(initResult.data || {});
+  renderAllMessages(initResult.data || {}, { forceScrollBottom: true });
   if (!collapsed) expand();
 
   startPolling();

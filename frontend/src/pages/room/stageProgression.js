@@ -48,7 +48,8 @@ export function createStageProgressionHandlers({
         || (
           currentAccount === selfAccount
           && (
-            (selfStatus === 2 && !movePrompt.active)
+            selfStatus === 1
+            || (selfStatus === 2 && !movePrompt.active)
             || selfStatus === 5
           )
         )
@@ -144,7 +145,7 @@ export function createStageProgressionHandlers({
     }
     if (roomStatus !== 2 || !selfAccount || selfAccount !== currentAccount) return;
     if (greenConfirm.active) return;
-    if (selfStatus === 2 || selfStatus === 5) {
+    if (selfStatus === 1 || selfStatus === 2 || selfStatus === 5) {
       await rollDiceFromCenter();
       return;
     }

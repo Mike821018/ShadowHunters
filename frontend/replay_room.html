@@ -43,7 +43,10 @@
               <legend><strong data-i18n="room.stage.chat">聊天室</strong></legend>
               <div class="card-body">
                 <div id="chatStage" class="room-stage-surface room-chat-surface" aria-live="polite">
-                  <div id="chatMessages" class="chat-messages" data-i18n-aria="room.chat.messages_aria" aria-label="聊天室訊息"></div>
+                  <div class="chat-messages-wrap">
+                    <div id="chatMessages" class="chat-messages" data-i18n-aria="room.chat.messages_aria" aria-label="聊天室訊息"></div>
+                    <button id="chatScrollBottomBtn" class="chat-scroll-bottom-btn" type="button" hidden data-i18n="room.chat.scroll_to_bottom">回到最新訊息</button>
+                  </div>
                 </div>
               </div>
             </fieldset>

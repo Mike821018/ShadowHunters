@@ -2,6 +2,27 @@ import { t } from '../../i18n.js';
 import { countDisplayWidth } from '../../utils.js';
 import { HIGU_CHAT_EMOJIS, getEmojiAssetPath } from './chatEmoji.js';
 
+const CHAT_NEAR_BOTTOM_THRESHOLD = 60;
+
+// 判斷聊天訊息框是否已滾到接近底部：浮動聊天寬版訊息框也適用。
+export function isChatNearBottom(messagesEl) {
+  if (!(messagesEl instanceof HTMLElement)) return true;
+  const { scrollTop, scrollHeight, clientHeight } = messagesEl;
+  return scrollHeight - scrollTop - clientHeight < CHAT_NEAR_BOTTOM_THRESHOLD;
+}
+
+export function scrollChatToBottom(messagesEl) {
+  if (!(messagesEl instanceof HTMLElement)) return;
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+// 根據目前滾動位置，顯示／隱藏「回到最新訊息」按鈕。
+// 只在不接近底部（也就是上滑看歷史訊息中）時才出現，避免擋住正常聊天流程。
+export function updateChatScrollBottomButton(el) {
+  if (!(el?.chatScrollBottomBtn instanceof HTMLElement) || !(el?.chatMessages instanceof HTMLElement)) return;
+  el.chatScrollBottomBtn.hidden = isChatNearBottom(el.chatMessages);
+}
+
 export function bindChatControls({
   el,
   state,
@@ -120,6 +141,9 @@ export function bindChatControls({
       if (el.chatInput) el.chatInput.value = '';
       setEmojiPanelOpen(false);
       renderState(data);
+      // 自己送出的訊息一定要看得到，不管剛才滾到哪裡都強制回到最新。
+      scrollChatToBottom(el.chatMessages);
+      updateChatScrollBottomButton(el);
     } catch (error) {
       if (error?.code === 'ROOM_NOT_FOUND') {
         goToLobbyPage();
@@ -144,6 +168,21 @@ export function bindChatControls({
       if (event.shiftKey) return;
       event.preventDefault();
       void sendChatMessage();
+    });
+  }
+
+  // 上滑看聊天記錄時不要被新訊息打斷：顯示／隱藏「回到最新訊息」按鈕，
+  // 並讓使用者自行決定要不要跳回底部，取代以往每次更新都強制捲到底的做法。
+  if (el.chatMessages) {
+    el.chatMessages.addEventListener('scroll', () => {
+      updateChatScrollBottomButton(el);
+    });
+    updateChatScrollBottomButton(el);
+  }
+  if (el.chatScrollBottomBtn) {
+    el.chatScrollBottomBtn.addEventListener('click', () => {
+      scrollChatToBottom(el.chatMessages);
+      updateChatScrollBottomButton(el);
     });
   }
 }

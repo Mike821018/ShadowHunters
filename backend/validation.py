@@ -45,9 +45,12 @@ def validate_game_flow(seed: int = 7) -> Dict[str, Any]:
 
     game_room.board.roll_dice = scripted_roll_dice
 
+    # 新版回合開始階段：status=1 時呼叫 next_step(action=False) 就等於
+    # 「按下行動骰」，會在同一次呼叫內直接完成擲骰（可能已經直接移動到
+    # status=3），不再是單純把 status 推進到 2 而已。
     manager.next_step(game_room.room_id, action=False)
     assert game_room.current_player is not None
-    assert game_room.current_player.status == 2
+    assert game_room.current_player.status != 1
 
     for _ in range(8):
         if game_room.current_player.status != 2:
@@ -120,9 +123,10 @@ def validate_roll_7_flow(seed: int = 13) -> Dict[str, Any]:
         )
 
     game_room = manager.start_game(game_room.room_id, seed=seed)
-    manager.next_step(game_room.room_id, action=False)
     assert game_room.current_player is not None
-    assert game_room.current_player.status == 2
+    # 新版回合開始階段：剛輪到自己時 status 停留在 1（開始階段），
+    # 要按下行動骰（next_step）才會真正擲骰、推進到 2。
+    assert game_room.current_player.status == 1
 
     original_roll_dice = game_room.board.roll_dice
 
@@ -130,7 +134,9 @@ def validate_roll_7_flow(seed: int = 13) -> Dict[str, Any]:
         return (1, 6)
 
     game_room.board.roll_dice = scripted_roll_dice
-    manager.next_step(game_room.room_id)
+    # status 還是 1：這一次呼叫等於「按下行動骰」，會直接落入擲骰邏輯，
+    # 骰出總和 7，應該直接進入「可任選六個區域之一」的待選狀態。
+    manager.next_step(game_room.room_id, action=False)
 
     assert game_room.current_player.status == 2
     expected_options = len(game_room.board.field)
@@ -216,31 +222,54 @@ def validate_forced_character_config() -> Dict[str, Any]:
                 'name': f'Forced Player {i + 1}',
             },
         )
+    # 指定角色的權限現在只保留給 GM；這裡另外加一位 GM（直接在 profile 標記、
+    # 不透過 trip 配對），不下場、不計入 4 人開局門欛。
+    manager.join_room(
+        game_room.room_id,
+        {
+            'trip': 'forced-gm',
+            'account': 'forced-gm',
+            'password': 'pw',
+            'name': 'Forced GM',
+            'is_gm': True,
+        },
+    )
 
-    # 非村長也可設定自己的除錯角色指定：開局前把 player-1 固定成 Werewolf。
-    ok_result = manager.api_update_room_settings({
+    # 指定角色的權限現在只保留給 GM；一般玩家（包含指定自己）一律被擋下。
+    self_denied_result = manager.api_update_room_settings({
         'room_id': game_room.room_id,
         'account': 'forced-player-1',
         'debug_forced_characters': {
             'forced-player-1': 'Werewolf',
         },
     })
-    assert bool(ok_result.get('ok'))
+    assert not bool(self_denied_result.get('ok'))
+    assert str((self_denied_result.get('error') or {}).get('code') or '') == 'ONLY_GM_CAN_FORCE_CHARACTER'
 
-    # 非村長不可指定其他玩家角色。
-    denied_result = manager.api_update_room_settings({
+    other_denied_result = manager.api_update_room_settings({
         'room_id': game_room.room_id,
         'account': 'forced-player-1',
         'debug_forced_characters': {
             'forced-player-2': 'Vampire',
         },
     })
-    assert not bool(denied_result.get('ok'))
-    assert str((denied_result.get('error') or {}).get('code') or '') == 'FORCED_CHARACTER_SCOPE_DENIED'
+    assert not bool(other_denied_result.get('ok'))
+    assert str((other_denied_result.get('error') or {}).get('code') or '') == 'ONLY_GM_CAN_FORCE_CHARACTER'
+
+    # GM 可以指定場上其他玩家的角色，但不能指定自己（GM 沒有角色）。
+    gm_self_denied_result = manager.api_update_room_settings({
+        'room_id': game_room.room_id,
+        'account': 'forced-gm',
+        'debug_forced_characters': {
+            'forced-gm': 'Werewolf',
+        },
+    })
+    assert not bool(gm_self_denied_result.get('ok'))
+    assert str((gm_self_denied_result.get('error') or {}).get('code') or '') == 'GM_CANNOT_FORCE_OWN_CHARACTER'
 
     invalid_config_result = manager.api_update_room_settings({
         'room_id': game_room.room_id,
-        'account': 'forced-player-1',
+        'account': 'forced-gm',
         'debug_forced_characters': {
             'forced-player-1': 'Bob',
         },
@@ -248,19 +277,22 @@ def validate_forced_character_config() -> Dict[str, Any]:
     assert not bool(invalid_config_result.get('ok'))
     assert str((invalid_config_result.get('error') or {}).get('code') or '') == 'INVALID_FORCED_CHARACTER_CONFIG'
 
-    # 還原為可通過配置，再開始遊戲。
-    reset_result = manager.api_update_room_settings({
+    # GM 指定場上其他玩家（forced-player-1）固定成 Werewolf。
+    ok_result = manager.api_update_room_settings({
         'room_id': game_room.room_id,
-        'account': 'forced-player-1',
+        'account': 'forced-gm',
         'debug_forced_characters': {
             'forced-player-1': 'Werewolf',
         },
     })
-    assert bool(reset_result.get('ok'))
+    assert bool(ok_result.get('ok'))
 
     game_room = manager.start_game(game_room.room_id, seed=31)
     assigned_role = str(getattr(getattr(game_room.players['forced-player-1'], 'character', None), 'name', '') or '')
     assert assigned_role == 'Werewolf'
+    # GM 旁觀主持、不下場，開局後不會有角色丟不会在行動順序裡。
+    assert game_room.players['forced-gm'].character is None
+    assert 'forced-gm' not in game_room.action_order
 
     check_room = manager.create_room('validation-forced-character-check')
     for i in range(4):

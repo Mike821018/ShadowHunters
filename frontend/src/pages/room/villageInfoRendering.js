@@ -1,37 +1,5 @@
-function expansionModeToCardFlags(mode) {
-  const normalized = String(mode || 'all').trim();
-  if (normalized === 'no_extend') return { useBasic: true, useExtend: false };
-  if (normalized === 'expansion_only') return { useBasic: false, useExtend: true };
-  return { useBasic: true, useExtend: true };
-}
-
-function formatCardSetSummary({ t }, mode) {
-  const { useBasic, useExtend } = expansionModeToCardFlags(mode);
-  const parts = [];
-  if (useBasic) parts.push('[B]');
-  if (useExtend) parts.push('[E]');
-  return parts.length ? `${t('room.info.card_pool')}:${parts.join('+')}` : `${t('room.info.card_pool')}:-`;
-}
-
-function formatToggleSummary({ t }, value) {
-  return value ? t('room.info.setting_on') : t('room.info.setting_off');
-}
-
-function formatRoomSettingsSummary({ t }, room) {
-  const expansionMode = String(room?.expansion_mode || 'all');
-  const boomTimeoutMinutes = Number(room?.turn_timeout_minutes || 3);
-  const neutralChaosMode = Boolean(room?.enable_neutral_chaos_mode);
-  const badgeUniqueMode = Boolean(room?.enable_badge_unique_character_select);
-  const cardPoolSummary = formatCardSetSummary({ t }, expansionMode);
-  return [
-    `${t('room.info.trip_rule')}:${formatToggleSummary({ t }, Boolean(room?.require_trip))}`,
-    cardPoolSummary,
-    `${t('room.info.initial_green_card')}:${formatToggleSummary({ t }, Boolean(room?.enable_initial_green_card))}`,
-    `${t('room.info.neutral_chaos_mode')}:${formatToggleSummary({ t }, neutralChaosMode)}`,
-    `${t('room.info.badge_unique_mode')}:${formatToggleSummary({ t }, badgeUniqueMode)}`,
-    `${t('room.info.boom_timeout')}:${t('room.info.boom_timeout_fmt_minutes', { n: boomTimeoutMinutes })}`,
-  ].join(' / ');
-}
+import { expansionModeToCardFlags } from './roomSettingsBadges.js';
+import { renderVillageSettingsBadges, bindVillageSettingsBadgePopover } from './villageSettingsBadges.js';
 
 export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage, state, t, isRoomLayoutPage, isReplayViewState }, data) {
   if (!el.villageInfoList) return;
@@ -134,7 +102,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
         </form>
       </dialog>`
     : '';
-  const roomSettings = formatRoomSettingsSummary({ t }, room);
+  const roomSettingsBadgesHtml = renderVillageSettingsBadges({ t }, room);
   const replayNotice = String(room.replay_notice || '').trim();
   const turnTimeout = data?.turn_timeout || null;
   const timeoutRemain = Number(turnTimeout?.remaining_seconds);
@@ -197,7 +165,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
       <span class="village-info-item"><strong>${esc(t('room.info.room_id'))}</strong>${room.room_id ?? '-'}</span>
       <span class="village-info-item"><strong>${esc(t('room.info.status'))}</strong><span class="${statusClass}">${esc(statusText)}</span></span>
       <span class="village-info-item"><strong>${esc(t('room.info.count'))}</strong>${Number(room.player_count || 0)}/${maxPlayers}</span>
-      <span class="village-info-settings-line">(${esc(roomSettings)})</span>
+      <span class="village-info-settings-line village-info-settings-badges-line">${roomSettingsBadgesHtml}</span>
     </li>
     <li class="village-info-row village-info-row-actions">
       ${canRegister ? `<button id="btnOpenResidentRegister" class="btn btn-inline" type="button">${esc(t('room.info.open_register'))}</button>` : ''}
@@ -212,6 +180,8 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
     ${timeoutWarnRow}
     ${boomedNoticeRow}
   `;
+
+  bindVillageSettingsBadgePopover(el.villageInfoList);
 
   if (canRegister) {
     const btn = el.villageInfoList.querySelector('#btnOpenResidentRegister');

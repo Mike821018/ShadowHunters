@@ -18,8 +18,15 @@ from backend.game_records_api import GameRecordsAPI
 from backend.records_system import GameRecordStore
 
 
+# 2026-10-03：原本用 White/Black/Red/.../Grey 這種顏色名稱當代號，
+# 但白色、灰色實際顯示的色碼已經改成玫紅色／靛藍色，名稱跟實際顏色對不上，
+# 以後如果還要再調其他顏色也會有一樣的問題；改成跟顏色本身無關的通用代號
+# Color1~Color9，之後不管怎麼調色碼都不會再有名稱跟顏色對不上的疑慮。
+# 這是 Mike 確認過的破壞性改動：2026-10-03 以前的對戰紀錄裡玩家顏色欄位存的是
+# 舊名稱字串（White/Black/...），改名後這些舊紀錄的顏色會查不到對應色碼、
+# 顯示不出玩家顏色（不影響紀錄其他內容），Mike 已確認可以接受這個影響。
 PLAYER_COLORS = [
-    'White', 'Black', 'Red', 'Blue', 'Yellow', 'Green', 'Purple', 'Orange', 'Grey'
+    'Color1', 'Color2', 'Color3', 'Color4', 'Color5', 'Color6', 'Color7', 'Color8', 'Color9'
 ]
 
 
@@ -279,6 +286,8 @@ class RoomManager:
 
     _ROOM_NAME_MAX_DISPLAY_WIDTH = 40
     _ROOM_COMMENT_MAX_DISPLAY_WIDTH = 100
+    _MANAGER_TRIP_MIN_GAMES = 10  # 擔任村長所需的 Trip 最低累積場次
+    _GM_TRIP_MIN_GAMES = 30  # 擔任 GM 所需的 Trip 最低累積場次（高於村長）
     _NICKNAME_MAX_DISPLAY_WIDTH = 20
     _CHAT_MESSAGE_MAX_DISPLAY_WIDTH = 200
 
@@ -310,6 +319,8 @@ class RoomManager:
         trip_min_games: int = 0,
         manager_trip: str = '',
         manager_trip_encrypted: bool = True,
+        gm_trip: str = '',
+        gm_trip_encrypted: bool = True,
         is_chat_room: bool = False,
         expansion_mode: str = 'all',
         enable_initial_green_card: bool = False,
@@ -326,6 +337,8 @@ class RoomManager:
         game_room.trip_min_games = max(0, int(trip_min_games or 0))
         game_room.manager_trip = str(manager_trip or '').strip()
         game_room.manager_trip_encrypted = manager_trip_encrypted is not False
+        game_room.gm_trip = str(gm_trip or '').strip()
+        game_room.gm_trip_encrypted = gm_trip_encrypted is not False
         game_room.is_chat_room = bool(is_chat_room)
         game_room.expansion_mode = self._normalize_expansion_mode(expansion_mode)
         game_room.enable_initial_green_card = bool(enable_initial_green_card)
@@ -412,7 +425,8 @@ class RoomManager:
         if bool(getattr(game_room, 'is_chat_room', False)):
             raise ValueError('chat rooms cannot start game')
 
-        player_count = len(game_room.players)
+        # GM 旁觀主持、不下場，不計入 4~8 人的開局人數限制。
+        player_count = len(self._non_gm_players(game_room))
         if player_count not in range(4, 9):
             raise ValueError('Shadow Hunters requires 4 to 8 players')
 
@@ -465,9 +479,18 @@ class RoomManager:
             raise ValueError('room not found')
         return game_room
 
+    def _non_gm_players(self, game_room: room.room) -> Dict[str, Any]:
+        """回傳排除 GM（旁觀主持，不下場）之後的「場上玩家」字典，維持原本插入順序。"""
+        return {
+            account: p for account, p in game_room.players.items()
+            if not bool(p.profile.get('is_gm', False))
+        }
+
     def _assign_colors(self, game_room: room.room):
+        # GM 不下場，不分配遊戲用色（聊天室/系統訊息改用保留的 GM_COLOR_HEX，不佔用這 9 色）。
+        playing_players = self._non_gm_players(game_room)
         used = set()
-        for p in game_room.players.values():
+        for p in playing_players.values():
             if p.color in PLAYER_COLORS and p.color not in used:
                 used.add(p.color)
 
@@ -475,7 +498,7 @@ class RoomManager:
         random.shuffle(remaining)
         remain_idx = 0
 
-        for p in game_room.players.values():
+        for p in playing_players.values():
             if p.color in PLAYER_COLORS and p.color in used:
                 # keep preselected unique color
                 used.discard(p.color)
@@ -485,7 +508,9 @@ class RoomManager:
                 remain_idx += 1
 
     def _assign_characters(self, game_room: room.room):
-        player_count = len(game_room.players)
+        # GM 不下場，不佔用角色分配池、不計入 4~8 人的陣營人數配置。
+        playing_players = self._non_gm_players(game_room)
+        player_count = len(playing_players)
         camp_config = dict(character_module.camp_setting[player_count])
         expansion_mode = self._normalize_expansion_mode(getattr(game_room, 'expansion_mode', 'all'))
         forced_role_raw = getattr(game_room, 'debug_forced_characters', {}) or {}
@@ -539,7 +564,7 @@ class RoomManager:
         random.shuffle(character_pool)
 
         character_iter = iter(character_pool)
-        for account, p in game_room.players.items():
+        for account, p in playing_players.items():
             forced_cls = forced_role_classes.get(str(account or '').strip())
             if forced_cls is not None:
                 p.assign_character(forced_cls())
@@ -612,7 +637,8 @@ class RoomManager:
         if not forced_roles:
             return {}
 
-        player_count = len(game_room.players)
+        # GM 不下場，不計入 4~8 人的陣營人數配置查表。
+        player_count = len(self._non_gm_players(game_room))
         camp_config = character_module.camp_setting[player_count]
         alias_index = self._build_character_alias_index(expansion_mode)
 
@@ -743,20 +769,10 @@ class RoomManager:
         )
 
     def _format_start_camp_summary(self, game_room: room.room) -> str:
-        camp_counts = {'Shadow': 0, 'Hunter': 0, 'Civilian': 0}
-        for player_obj in getattr(game_room, 'players', {}).values():
-            camp_name = str(
-                getattr(player_obj, 'camp', '')
-                or getattr(getattr(player_obj, 'character', None), 'camp', '')
-                or ''
-            ).strip()
-            if camp_name in camp_counts:
-                camp_counts[camp_name] += 1
-        return (
-            f"暗影={camp_counts['Shadow']}"
-            f" / 獵人={camp_counts['Hunter']}"
-            f" / 中立={camp_counts['Civilian']}"
-        )
+        # 2026-10-09：邏輯搬到 game/room.py 的 room._format_start_camp_summary()
+        # （開局訊息現在統一在 game_start() 裡面發送，需要在那裡就算出這份摘要），
+        # 這裡保留這個方法只是避免有其他地方還在呼叫，直接轉呼叫過去、不重複維護。
+        return game_room._format_start_camp_summary()
 
     def _coerce_optional_bool(self, value: Any) -> Optional[bool]:
         if value is None:
@@ -1143,6 +1159,7 @@ class RoomManager:
                     'zone': p.zone,
                     'area': p.area.name if p.area else None,
                     'is_village_manager': bool(p.profile.get('is_village_manager', False)),
+                    'is_gm': bool(p.profile.get('is_gm', False)),  # GM：旁觀主持，不下場，不計入 4~8 人名額
                     'character_reveal': p.character_reveal,
                     'settlement_character_reveal': bool(settlement_reveal_map.get(account, p.character_reveal)),
                     'character': p.character.name if (p.character and game_room.can_view_character(viewer_account, account)) else None,
@@ -1253,6 +1270,17 @@ class RoomManager:
 
         # 若輸入的是未加密 Trip，允許同時比對明文與 higu 加密值，方便過渡。
         return manager_trip == trip or self.encrypt_trip_like_higu(manager_trip) == trip
+
+    def is_gm_trip(self, game_room: room.room, trip: str) -> bool:
+        gm_trip = str(getattr(game_room, 'gm_trip', '') or '').strip()
+        if not gm_trip or not trip:
+            return False
+
+        if getattr(game_room, 'gm_trip_encrypted', True):
+            return gm_trip == trip
+
+        # 若輸入的是未加密 Trip，允許同時比對明文與 higu 加密值，方便過渡。
+        return gm_trip == trip or self.encrypt_trip_like_higu(gm_trip) == trip
 
     def _resolve_target(self, game_room: room.room, target_ref: Optional[Dict[str, Any]]):
         if not target_ref:
@@ -1477,6 +1505,36 @@ class RoomManager:
         if manager_trip and not manager_trip_encrypted:
             manager_trip = self.encrypt_trip_like_higu(manager_trip)
             manager_trip_encrypted = True
+        gm_trip = str(payload.get('gm_trip', '') or '').strip()
+        gm_trip_encrypted = payload.get('gm_trip_encrypted', True) is not False
+        if gm_trip and not gm_trip_encrypted:
+            gm_trip = self.encrypt_trip_like_higu(gm_trip)
+            gm_trip_encrypted = True
+        # 村長跟 GM 互斥，一個村子最多只能設定其中一種身分的 Trip。
+        if manager_trip and gm_trip:
+            return self._error('create_room', 'MANAGER_GM_MUTUALLY_EXCLUSIVE', '村長與 GM 最多只能設定一種', 400)
+        if manager_trip:
+            if not self.is_trip_registered_in_db(manager_trip):
+                return self._error('create_room', 'MANAGER_TRIP_NOT_REGISTERED', '村長 Trip 未登記，無法設定', 403)
+            manager_games = self.get_trip_games_count_from_db(manager_trip)
+            if manager_games < self._MANAGER_TRIP_MIN_GAMES:
+                return self._error(
+                    'create_room',
+                    'MANAGER_TRIP_GAME_COUNT_NOT_ENOUGH',
+                    f'村長 Trip 遊戲場次不足，至少需要 {self._MANAGER_TRIP_MIN_GAMES} 場',
+                    403,
+                )
+        if gm_trip:
+            if not self.is_trip_registered_in_db(gm_trip):
+                return self._error('create_room', 'GM_TRIP_NOT_REGISTERED', 'GM Trip 未登記，無法設定', 403)
+            gm_games = self.get_trip_games_count_from_db(gm_trip)
+            if gm_games < self._GM_TRIP_MIN_GAMES:
+                return self._error(
+                    'create_room',
+                    'GM_TRIP_GAME_COUNT_NOT_ENOUGH',
+                    f'GM Trip 遊戲場次不足，至少需要 {self._GM_TRIP_MIN_GAMES} 場',
+                    403,
+                )
         is_chat_room = bool(payload.get('is_chat_room', False))
         expansion_mode = self._resolve_expansion_mode_from_payload(payload, default_mode='all')
         enable_initial_green_card = bool(payload.get('enable_initial_green_card', False))
@@ -1499,6 +1557,8 @@ class RoomManager:
             trip_min_games=trip_min_games,
             manager_trip=manager_trip,
             manager_trip_encrypted=manager_trip_encrypted,
+            gm_trip=gm_trip,
+            gm_trip_encrypted=gm_trip_encrypted,
             is_chat_room=is_chat_room,
             expansion_mode=expansion_mode,
             enable_initial_green_card=enable_initial_green_card,
@@ -1523,7 +1583,9 @@ class RoomManager:
         account = str(player_info.get('account') or '').strip()
         if not account:
             return self._error('join_room', 'ACCOUNT_REQUIRED', '帳號必填', 400)
-        if len(game_room.players) >= max(1, int(getattr(game_room, 'max_players', 8) or 8)):
+        is_gm_joiner = self.is_gm_trip(game_room, trip_display)
+        # GM 是旁觀主持的額外位置，不佔用一般玩家的人數上限；只有非 GM 的登記才受 max_players 限制。
+        if not is_gm_joiner and len(self._non_gm_players(game_room)) >= max(1, int(getattr(game_room, 'max_players', 8) or 8)):
             return self._error('join_room', 'ROOM_FULL', '房間人數已滿，無法住民登記，請直接登入既有帳號', 400)
         # --- Trip 驗證：若此村子開啟了 require_trip，需確認 trip 已登記在資料庫 ---
         if game_room.require_trip:
@@ -1553,7 +1615,9 @@ class RoomManager:
         normalized_player_info = dict(player_info)
         normalized_player_info['trip'] = trip_display
         normalized_player_info['is_village_manager'] = self.is_manager_trip(game_room, trip_display)
-        normalized_player_info['is_ready'] = False
+        normalized_player_info['is_gm'] = is_gm_joiner
+        # GM 不下場，不需要準備；直接視為已準備，避免卡在「全員準備」的判斷裡。
+        normalized_player_info['is_ready'] = bool(is_gm_joiner)
         ret = self.join_room(room_id, normalized_player_info)
         if not ret:
             return self._error('join_room', 'JOIN_FAILED', '住民登記失敗', 400)
@@ -1567,10 +1631,13 @@ class RoomManager:
             account,
         )
         # Assign first available color to newly joined player
-        taken_colors = {p.color for p_acc, p in joined_room.players.items() if p_acc != joined_account}
-        available_color = next((c for c in PLAYER_COLORS if c not in taken_colors), '')
-        if available_color and joined_account in joined_room.players:
-            joined_room.players[joined_account].choose_color(available_color)
+        # GM 旁觀主持、不下場，不佔用這 9 色（聊天室/系統訊息改用保留的 GM_COLOR_HEX），
+        # 所以 GM 加入時跳過自動選色，避免白白佔掉一個顏色名額。
+        if not is_gm_joiner:
+            taken_colors = {p.color for p_acc, p in joined_room.players.items() if p_acc != joined_account}
+            available_color = next((c for c in PLAYER_COLORS if c not in taken_colors), '')
+            if available_color and joined_account in joined_room.players:
+                joined_room.players[joined_account].choose_color(available_color)
         return self._success('join_room', {
             **self._serialize_room_state(joined_room, viewer_account=joined_account),
             'join_account': joined_account,
@@ -1618,9 +1685,10 @@ class RoomManager:
             return self._error('start_game', 'ROOM_NOT_FOUND', '房間不存在', 404)
         if bool(getattr(game_room, 'is_chat_room', False)):
             return self._error('start_game', 'CHAT_ROOM_NO_GAME', '聊天村不可開始遊戲', 400)
+        # 2026-10-09 修正：「遊戲開始」「本場配置」這兩則系統訊息改成在 game_start()
+        # 裡面統一發送（見 game/room.py），這裡不用再補發，避免跟自動開局路徑各自
+        # 維護一份、訊息順序又跑到初始綠卡流程後面的問題。
         game_room = self.start_game(room_id, seed=seed)
-        game_room.add_system_message('遊戲開始，發放角色並進入回合流程')
-        game_room.add_system_message(f'本場配置：{self._format_start_camp_summary(game_room)}')
         viewer_account = str(payload.get('account') or payload.get('viewer_account') or '').strip() or None
         return self._success('start_game', self._serialize_room_state(game_room, viewer_account=viewer_account))
 
@@ -1697,11 +1765,16 @@ class RoomManager:
         game_room.add_system_message(f"[{target_player.name or account}] {ready_text}")
         game_room.touch_activity()
 
-        player_count = len(game_room.players)
-        all_ready = (not bool(getattr(game_room, 'is_chat_room', False))) and player_count >= 4 and all(bool(p.profile.get('is_ready', False)) for p in game_room.players.values())
+        # GM 旁觀主持、不下場，不計入開局人數、也不需要「準備」。
+        playing_players = self._non_gm_players(game_room)
+        player_count = len(playing_players)
+        all_ready = (not bool(getattr(game_room, 'is_chat_room', False))) and player_count >= 4 and all(bool(p.profile.get('is_ready', False)) for p in playing_players.values())
         if all_ready:
             game_room.add_system_message('全員準備完成，遊戲開始')
             self.start_game(room_id)
+            # 「遊戲開始，發放角色並進入回合流程」「本場配置：...」這兩則訊息改成在
+            # game_start() 裡面統一發送（見 game/room.py），這裡不用再補發；手動開始
+            # （api_start_game）跟這裡的自動開局，都會收到同樣順序正確的開局訊息。
 
         return self._success('toggle_ready', self._serialize_room_state(game_room, viewer_account=account))
 
@@ -1818,6 +1891,7 @@ class RoomManager:
             return self._error('update_room_settings', 'PLAYER_NOT_FOUND', '玩家不存在', 404)
 
         is_village_manager = bool(requester.profile.get('is_village_manager', False))
+        is_gm = bool(requester.profile.get('is_gm', False))
 
         room_setting_keys = {
             'expansion_mode',
@@ -1849,17 +1923,19 @@ class RoomManager:
         if debug_forced_key is not None:
             try:
                 debug_forced_roles = self._normalize_forced_role_payload(game_room, payload.get(debug_forced_key))
+                if not debug_forced_roles:
+                    return self._error('update_room_settings', 'INVALID_FORCED_CHARACTER_CONFIG', '需提供至少一筆指定角色設定', 400)
+                if not is_gm:
+                    # 指定角色只保留給 GM；村長跟一般玩家一樣，連自己的角色都不能指定
+                    # （這個功能原本是後端除錯用，不是給玩家自選角色的正式機制，Mike 明確要求村長
+                    # 連自己的角色都不能指定，所以這裡不分自己／別人，非 GM 一律擋下）。
+                    return self._error('update_room_settings', 'ONLY_GM_CAN_FORCE_CHARACTER', '只有 GM 可以指定角色，且不能指定自己', 403)
+                # GM 旁觀主持、不下場，只能指定「場上其他玩家」的角色，不能指定自己（GM 沒有角色）。
+                if account in debug_forced_roles:
+                    return self._error('update_room_settings', 'GM_CANNOT_FORCE_OWN_CHARACTER', 'GM 不下場，不能指定自己的角色', 403)
                 current_debug_forced_roles = dict(getattr(game_room, 'debug_forced_characters', {}) or {})
-                if is_village_manager:
-                    candidate_forced_roles = dict(debug_forced_roles)
-                else:
-                    if not debug_forced_roles:
-                        return self._error('update_room_settings', 'INVALID_FORCED_CHARACTER_CONFIG', '需提供至少一筆指定角色設定', 400)
-                    non_self_accounts = [acc for acc in debug_forced_roles.keys() if acc != account]
-                    if non_self_accounts:
-                        return self._error('update_room_settings', 'FORCED_CHARACTER_SCOPE_DENIED', '非村長僅可指定自己的角色', 403)
-                    candidate_forced_roles = dict(current_debug_forced_roles)
-                    candidate_forced_roles[account] = debug_forced_roles[account]
+                candidate_forced_roles = dict(current_debug_forced_roles)
+                candidate_forced_roles.update(debug_forced_roles)
 
                 self._validate_forced_character_config(game_room, candidate_forced_roles, expansion_mode)
             except ValueError as exc:
