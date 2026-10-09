@@ -5,7 +5,6 @@ export function createAppState() {
     account: '',
     roomAccounts: {},
     transportMode: 'auto',
-    autoRefreshSeconds: 0,
     skipTargetConfirm: false,
     autoEndTurn: true,
     eventSeq: 0,

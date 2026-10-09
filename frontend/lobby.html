@@ -92,6 +92,17 @@
                 </label>
               </div>
 
+              <!-- 2026-10-09 新增：GM（旁觀主持）Trip，跟村長 Trip 互斥，後端已支援、這次補上前端欄位 -->
+              <label class="option-title" for="gmTrip" data-i18n="lobby.create.gm_trip_label">GM Trip</label>
+              <div class="stacked-fields">
+                <input id="gmTrip" class="txt" type="text" placeholder="留空代表不設定" data-i18n-placeholder="lobby.create.gm_trip_placeholder" />
+                <label class="checkbox-row checkbox-row-inline">
+                  <input type="checkbox" id="gmTripEncryptedCheck" />
+                  <span data-i18n="lobby.create.gm_trip_encrypted_label">輸入的是加密後 Trip</span>
+                </label>
+                <span class="field-hint" data-i18n="lobby.create.gm_trip_hint">（GM 旁觀主持、不計入 4~8 人門檻，跟村長最多只能設定其中一種）</span>
+              </div>
+
               <label class="option-title" for="requireTripCheck" data-i18n="lobby.create.require_trip_label">Trip 驗證</label>
               <div class="stacked-fields">
                 <label class="checkbox-row">

@@ -50,6 +50,8 @@ export function getDomElements() {
     tripMinGames: document.getElementById('tripMinGames'),
     managerTrip: document.getElementById('managerTrip'),
     managerTripEncryptedCheck: document.getElementById('managerTripEncryptedCheck'),
+    gmTrip: document.getElementById('gmTrip'),
+    gmTripEncryptedCheck: document.getElementById('gmTripEncryptedCheck'),
     requireTripCheck: document.getElementById('requireTripCheck'),
     hideTripCheck: document.getElementById('hideTripCheck'),
     chatVillageCheck: document.getElementById('chatVillageCheck'),

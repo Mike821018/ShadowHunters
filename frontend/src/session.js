@@ -6,7 +6,6 @@ export function persistSession(state) {
       account: state.account,
       roomAccounts: state.roomAccounts ?? {},
       transportMode: state.transportMode,
-      autoRefreshSeconds: state.autoRefreshSeconds,
       skipTargetConfirm: state.skipTargetConfirm,
       autoEndTurn: state.autoEndTurn,
     })
@@ -25,7 +24,6 @@ export function restoreSession(state) {
       state.account = parsed.account ?? state.account;
       const restoredMode = String((parsed.transportMode ?? state.transportMode) || '').trim().toLowerCase();
       state.transportMode = restoredMode === 'demo' ? 'auto' : (restoredMode || state.transportMode);
-      state.autoRefreshSeconds = parsed.autoRefreshSeconds ?? state.autoRefreshSeconds;
       state.skipTargetConfirm = parsed.skipTargetConfirm ?? state.skipTargetConfirm;
       state.autoEndTurn = parsed.autoEndTurn ?? state.autoEndTurn;
       // Restore roomAccounts; if absent, migrate legacy account+roomId pair

@@ -1,4 +1,4 @@
-import { AUTO_REFRESH_OPTIONS, PLAYER_COLOR_HEX } from '../constants.js';
+import { PLAYER_COLOR_HEX } from '../constants.js';
 import { getCharacterLocalizedName, getCurrentUiLang } from '../characterInfo.js';
 import { t } from '../i18n.js';
 import { clearRoomAccount } from '../session.js';
@@ -44,7 +44,6 @@ import {
   getDrawablePileColors as getDrawablePileColorsModule,
 } from './room/roomStateHelpers.js';
 
-let roomAutoRefreshTimer = null;
 let activeFieldSlot = null;
 let activeFieldNumber = null;
 let fieldDetailOutsideHandlerBound = false;
@@ -380,12 +379,11 @@ function updateStageNextStepButtonState(state, dataSnapshot) {
   maybeHandleAutoEndTurn(state, dataSnapshot || latestRoomSnapshot);
 }
 
+// 2026-10-09 修正：倒數秒數的「自動更新」設定已經拿掉（主畫面改成完全依賴
+// room_state_changed 的 SSE 即時推播，跟浮動聊天室用同一套機制，不需要這組
+// 輪詢秒數當主要更新手段），這個函式現在只負責清掉「自動結束回合」的延遲
+// 計時器；函式名稱先保留（呼叫端還有好幾處用這個名字），避免多動其他檔案。
 function clearRoomAutoRefreshTimer() {
-  if (roomAutoRefreshTimer) {
-    window.clearTimeout(roomAutoRefreshTimer);
-    roomAutoRefreshTimer = null;
-  }
-  // 離開/更新房間時一併清掉自動結束回合的延遲計時器，避免離開後仍觸發。
   if (autoEndTurnTimer) {
     window.clearTimeout(autoEndTurnTimer);
     autoEndTurnTimer = null;
@@ -450,24 +448,14 @@ function maybeHandleAutoEndTurn(state, snapshot) {
   }, delayMs);
 }
 
-function formatAutoRefreshLabel(seconds, selected) {
-  return selected ? `${seconds}s` : String(seconds);
-}
-
-function renderAutoRefreshControls({ el, state, onSelect, onToggleSkipTargetConfirm, onToggleAutoEndTurn }) {
+// 2026-10-09 修正：拿掉倒數秒數「自動更新」的按鈕群組（0/5/10/20/30秒），
+// 房間頁已經靠 room_state_changed 的 SSE 即時推播更新，不需要這組額外的輪詢
+// 設定；這裡保留原本就在同一個容器內的「二次確認」「自動結束回合」兩個開關。
+function renderAutoRefreshControls({ el, state, onToggleSkipTargetConfirm, onToggleAutoEndTurn }) {
   if (!el.autoRefreshOptions) return;
   const requireTargetConfirmChecked = !Boolean(state.skipTargetConfirm);
   const autoEndTurnChecked = state.autoEndTurn !== false;
   el.autoRefreshOptions.innerHTML = `
-    <span class="auto-refresh-label">[${t('room.auto_refresh.label')}]</span>
-    <span class="auto-refresh-group" role="group" aria-label="${t('room.auto_refresh.aria_label')}">
-      (
-      ${AUTO_REFRESH_OPTIONS.map((seconds) => {
-        const selected = Number(state.autoRefreshSeconds || 0) === seconds;
-        return `<button class="auto-refresh-option${selected ? ' current' : ''}" type="button" data-auto-refresh-seconds="${seconds}" aria-pressed="${selected}">${formatAutoRefreshLabel(seconds, selected)}</button>`;
-      }).join(' ')}
-      )
-    </span>
     <label class="auto-refresh-skip-confirm">
       <input type="checkbox" data-skip-target-confirm ${requireTargetConfirmChecked ? 'checked' : ''}>
       ${t('room.auto_refresh.skip_target_confirm')}
@@ -477,9 +465,6 @@ function renderAutoRefreshControls({ el, state, onSelect, onToggleSkipTargetConf
       ${t('room.auto_refresh.auto_end_turn')}
     </label>
   `;
-  el.autoRefreshOptions.querySelectorAll('[data-auto-refresh-seconds]').forEach((button) => {
-    button.addEventListener('click', () => onSelect(Number(button.getAttribute('data-auto-refresh-seconds'))));
-  });
   const skipToggle = el.autoRefreshOptions.querySelector('[data-skip-target-confirm]');
   if (skipToggle instanceof HTMLInputElement) {
     skipToggle.addEventListener('change', () => {
@@ -1731,6 +1716,15 @@ export function bindRoomEvents({
       });
       renderState(data);
       toast(t('toast.green_confirmed'));
+      // 2026-10-09 修正：綠卡（例如 Greed）結算後，若效果是「裝備轉移」（ret=2），
+      // confirm_green_card 這次呼叫回傳的資料就已經包含新建立的 pending_steal，
+      // 而且這裡（確認綠卡的那個玩家，也就是被奪取裝備的那一方 chooser）正是
+      // 唯一會自動跳出裝備選擇視窗的時機點——跟 useErstwhileAltarOnTarget／
+      // useActiveCard 現有的用法一致。原本這裡漏了這一行，導致確認綠卡後畫面
+      // 什麼都不會再發生、裝備選擇視窗不會跳出來，_pending_steal 就一直留在
+      // 後端沒有結算，直到之後玩家做了其他會呼叫 maybeResolvePendingSteal 的
+      // 操作（例如自己下一回合使用場地）才會意外把這次遺留的轉移一起結算掉。
+      await maybeResolvePendingSteal(data);
     } catch (error) {
       if (error?.code === 'ROOM_NOT_FOUND') {
         goToLobbyPage();
@@ -1997,7 +1991,6 @@ export function bindRoomEvents({
   bindRoomControls({
     el, state, dispatch, renderState, toast, t, goToLobbyPage, persistSession,
     clearRoomAutoRefreshTimer,
-    setRoomAutoRefreshTimer: (timer) => { roomAutoRefreshTimer = timer; },
     renderAutoRefreshControls,
   });
 

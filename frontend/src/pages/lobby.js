@@ -92,6 +92,8 @@ export function bindLobbyEvents({
     const trip_min_games = Math.max(0, Number.parseInt(el.tripMinGames?.value || '0', 10) || 0);
     const manager_trip = (el.managerTrip?.value || '').trim();
     const manager_trip_encrypted = el.managerTripEncryptedCheck?.checked ?? true;
+    const gm_trip = (el.gmTrip?.value || '').trim();
+    const gm_trip_encrypted = el.gmTripEncryptedCheck?.checked ?? true;
     const is_chat_room = el.chatVillageCheck?.checked ?? false;
     const expansion_mode = resolveExpansionMode();
     const enable_initial_green_card = el.enableInitialGreenCardCheck?.checked ?? false;
@@ -129,6 +131,8 @@ export function bindLobbyEvents({
       trip_min_games,
       manager_trip,
       manager_trip_encrypted,
+      gm_trip,
+      gm_trip_encrypted,
       is_chat_room,
       expansion_mode,
       enable_initial_green_card,
@@ -144,6 +148,8 @@ export function bindLobbyEvents({
     if (el.tripMinGames) el.tripMinGames.value = '0';
     if (el.managerTrip) el.managerTrip.value = '';
     if (el.managerTripEncryptedCheck) el.managerTripEncryptedCheck.checked = false;
+    if (el.gmTrip) el.gmTrip.value = '';
+    if (el.gmTripEncryptedCheck) el.gmTripEncryptedCheck.checked = false;
     if (el.requireTripCheck) el.requireTripCheck.checked = false;
     if (el.hideTripCheck) el.hideTripCheck.checked = true;
     if (el.chatVillageCheck) el.chatVillageCheck.checked = false;

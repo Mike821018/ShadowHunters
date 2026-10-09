@@ -176,32 +176,6 @@ a:hover {
   white-space: nowrap;
 }
 
-.auto-refresh-label,
-.auto-refresh-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.auto-refresh-option {
-  border: 0;
-  background: transparent;
-  padding: 0;
-  margin: 0;
-  color: #333;
-  cursor: pointer;
-  text-decoration: none;
-}
-
-.auto-refresh-option:hover {
-  text-decoration: underline;
-}
-
-.auto-refresh-option.current {
-  font-weight: 700;
-  color: var(--primary);
-}
-
 .tab {
   border: 1px solid var(--line);
   background: #fff;
@@ -1993,8 +1967,7 @@ label[for="roomDescription"] {
   overflow-wrap: normal;
 }
 
-.auto-refresh-controls,
-.auto-refresh-group {
+.auto-refresh-controls {
   white-space: nowrap;
   overflow-wrap: normal;
 }
@@ -3575,8 +3548,7 @@ legend {
   }
 
   #umenu .lighttxt,
-  legend,
-  .auto-refresh-group {
+  legend {
     white-space: normal;
   }
 

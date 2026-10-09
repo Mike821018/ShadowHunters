@@ -40,8 +40,6 @@ export const AREA_NAMES = [
   'Erstwhile Altar',
 ];
 
-export const AUTO_REFRESH_OPTIONS = [0, 5, 10, 20, 30];
-
 export const DAMAGE_TRACK_VALUES = Array.from({ length: 15 }, (_, index) => index);
 
 export const DAMAGE_ROLE_MARKERS = [
