@@ -90,6 +90,7 @@
                   <input type="checkbox" id="managerTripEncryptedCheck" />
                   <span data-i18n="lobby.create.manager_trip_encrypted_label">輸入的是加密後 Trip</span>
                 </label>
+                <span class="field-hint" data-i18n="lobby.create.manager_trip_hint">（需累積 Trip 遊戲場次達 10 場以上才能設定為村長）</span>
               </div>
 
               <!-- 2026-10-09 新增：GM（旁觀主持）Trip，跟村長 Trip 互斥，後端已支援、這次補上前端欄位 -->
@@ -100,7 +101,7 @@
                   <input type="checkbox" id="gmTripEncryptedCheck" />
                   <span data-i18n="lobby.create.gm_trip_encrypted_label">輸入的是加密後 Trip</span>
                 </label>
-                <span class="field-hint" data-i18n="lobby.create.gm_trip_hint">（GM 旁觀主持、不計入 4~8 人門檻，跟村長最多只能設定其中一種）</span>
+                <span class="field-hint" data-i18n="lobby.create.gm_trip_hint">（需累積 Trip 遊戲場次達 30 場以上；GM 旁觀主持、不計入 4~8 人門檻，跟村長最多只能設定其中一種）</span>
               </div>
 
               <label class="option-title" for="requireTripCheck" data-i18n="lobby.create.require_trip_label">Trip 驗證</label>

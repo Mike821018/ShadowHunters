@@ -3,6 +3,16 @@ import { renderVillageSettingsBadges, bindVillageSettingsBadgePopover } from './
 
 export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage, state, t, isRoomLayoutPage, isReplayViewState }, data) {
   if (!el.villageInfoList) return;
+
+  // 2026-10-12: pin the village info panel while the manager/GM has the room
+  // settings dialog open, so a background refresh (SSE push or the fallback
+  // poll) doesn't rebuild the panel underneath them mid-edit -- that used to
+  // wipe out unsaved field changes and could force-close the dialog.
+  const openSettingsDialog = el.villageInfoList.querySelector('#btnEditRoomSettingsDialog');
+  if (openSettingsDialog instanceof HTMLDialogElement && openSettingsDialog.open) {
+    return;
+  }
+
   const isRoomLayout = isRoomLayoutPage(state, data);
   const isReplayView = isReplayViewState(state, data);
 

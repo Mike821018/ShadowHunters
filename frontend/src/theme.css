@@ -1090,9 +1090,12 @@ legend {
   text-align: center;
 }
 
+/* 2026-10-10 修正：牌庫可抽牌提示原本動畫週期 1.1s、光暈透明度只有 0.18~0.28，
+   跟攻擊/區域目標提示（0.65s、透明度 0.6 以上）比起來太不明顯；調整成一樣的
+   節奏跟強度，光暈顏色維持原本的琥珀色（跟其他「可操作」提示一致）。 */
 .stage-card-pile.is-draw-prompt {
   cursor: pointer;
-  animation: draw-pile-prompt 1.1s ease-in-out infinite;
+  animation: draw-pile-prompt 0.65s ease-in-out infinite;
 }
 
 .stage-card-pile.is-draw-prompt .stage-pile-count {
@@ -1108,9 +1111,9 @@ legend {
     filter: brightness(1);
   }
   50% {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 14px rgba(30, 70, 100, 0.18), 0 0 0 3px rgba(255, 214, 120, 0.18);
-    filter: brightness(1.06);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 16px rgba(217, 119, 6, 0.16), 0 0 0 5px rgba(245, 158, 11, 0.42);
+    filter: brightness(1.04);
   }
 }
 
@@ -1206,19 +1209,46 @@ legend {
   filter: brightness(1.08) saturate(1.08);
 }
 
+/* 2026-10-10 修正：骰子可擲骰提示原本只有縮放跟亮度變化、完全沒有顏色光暈，
+   週期也是 1.1s，比攻擊/區域目標提示慢又不明顯；補上跟其他提示一致的琥珀色
+   光暈，週期加快到 0.65s。 */
 .stage-center-badges.is-roll-prompt .stage-badge {
-  animation: dice-roll-prompt 1.1s ease-in-out infinite;
+  animation: dice-roll-prompt 0.65s ease-in-out infinite;
 }
 
 @keyframes dice-roll-prompt {
   0%,
   100% {
     transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
     filter: brightness(1);
   }
   50% {
-    transform: scale(1.06);
-    filter: brightness(1.1);
+    transform: scale(1.1);
+    box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.42), 0 8px 16px rgba(217, 119, 6, 0.16);
+    filter: brightness(1.05);
+  }
+}
+
+/* 2026-10-12 修正：四面骰（.stage-badge-triangle）有 clip-path 把元素裁成三角形，
+   box-shadow 會被 clip-path 一起裁掉，導致可擲骰提示亮起來時，只有六面骰（方形，
+   沒有 clip-path）看得到琥珀色光暈，三角形的四面骰只有縮放/亮度變化、完全看不到
+   顏色，兩顆骰子亮起來的樣子不一致。改用 filter: drop-shadow(...)，drop-shadow
+   是依照裁切後的實際形狀畫陰影、不會被 clip-path 擋掉，讓四面骰也能一起亮起琥珀
+   色光暈。用更高優先度的選擇器覆蓋掉三角形的 animation-name。 */
+.stage-center-badges.is-roll-prompt .stage-badge-triangle {
+  animation: dice-roll-prompt-triangle 0.65s ease-in-out infinite;
+}
+
+@keyframes dice-roll-prompt-triangle {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: brightness(1) drop-shadow(0 0 0 rgba(245, 158, 11, 0));
+  }
+  50% {
+    transform: scale(1.1);
+    filter: brightness(1.05) drop-shadow(0 0 5px rgba(245, 158, 11, 0.55)) drop-shadow(0 3px 6px rgba(217, 119, 6, 0.3));
   }
 }
 
@@ -1749,13 +1779,22 @@ legend {
 }
 
 .stage-next-step-button[data-phase='turn-start'],
-.stage-next-step-button[data-phase='skip-area'] {
-  animation: turn-start-pulse 1.1s ease-in-out infinite;
+.stage-next-step-button[data-phase='skip-area'],
+.stage-next-step-button[data-phase='use-card'] {
+  /* 2026-10-09 修正：原本的脈動速度（1.1s）跟顏色（淡紫色、透明度只有 0.32）
+     太不明顯，玩家反映這顆按鈕看起來完全沒有閃爍提示；改成跟攻擊／區域目標
+     提示（attack-target-pulse／area-target-pulse）一樣的 0.65s 節奏，並換成
+     更醒目的琥珀色、提高透明度跟陰影範圍，讓這顆按鈕真正看得出在閃爍。
+     2026-10-12 補上 data-phase='use-card'：這是一般需要自行為一張手上卡牌按
+     「使用」的按鈕（包含初始綠卡流程要求自己為自己執行一張綠卡時的按鈕），
+     之前完全沒有閃爍樣式，跟 turn-start/skip-area 共用同一套。 */
+  animation: turn-start-pulse 0.65s ease-in-out infinite;
 }
 
 .stage-next-step-button[data-phase='turn-start']:hover:not(:disabled),
-.stage-next-step-button[data-phase='skip-area']:hover:not(:disabled) {
-  filter: brightness(1.03);
+.stage-next-step-button[data-phase='skip-area']:hover:not(:disabled),
+.stage-next-step-button[data-phase='use-card']:hover:not(:disabled) {
+  filter: brightness(1.05);
 }
 
 @keyframes turn-start-pulse {
@@ -1765,8 +1804,8 @@ legend {
     filter: brightness(1);
   }
   50% {
-    box-shadow: 0 0 0 3px rgba(184, 147, 214, 0.32), 0 6px 12px rgba(37, 76, 102, 0.2);
-    filter: brightness(1.06);
+    box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.42), 0 8px 16px rgba(217, 119, 6, 0.16);
+    filter: brightness(1.04);
   }
 }
 
@@ -1898,8 +1937,10 @@ legend {
 @media (prefers-reduced-motion: reduce) {
   .stage-card-pile.is-draw-prompt,
   .stage-center-badges.is-roll-prompt .stage-badge,
+  .stage-center-badges.is-roll-prompt .stage-badge-triangle,
   .stage-next-step-button[data-phase='turn-start'],
   .stage-next-step-button[data-phase='skip-area'],
+  .stage-next-step-button[data-phase='use-card'],
   .stage-card-field.move-target-prompt,
   .player-card.area-target-prompt {
     animation: none;

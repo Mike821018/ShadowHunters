@@ -14,7 +14,9 @@ import { t } from '../i18n.js';
 import { esc, apiFetch, countDisplayWidth } from '../utils.js';
 import { registerFloatingPanel, notifyFloatingPanelOpened, notifyFloatingPanelClosed } from './floatingPanelGroup.js';
 
-const POLL_MS = 8000;
+// 2026-10-10 修正：Mike 要求更新頻率再快一點，從 8 秒加快到 3 秒，跟房間主畫面
+// 的背景保底輪詢（roomEventStream.js 的 ROOM_FALLBACK_POLL_MS）保持一致。
+const POLL_MS = 3000;
 const LS_KEY = 'sh.floatingChat.collapsed';
 
 // ─── helpers ────────────────────────────────────────────────────────────────

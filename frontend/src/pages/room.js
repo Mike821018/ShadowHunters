@@ -1845,7 +1845,10 @@ export function bindRoomEvents({
       const discardChoice = await showEquipmentChoiceDialog({
         el,
         title: t('ui.role_ability'),
-        message: t('room.equipment_choice.message', { name: t('room.active_card.type_equipment') }),
+        // 2026-10-12 修正：這裡是角色能力從棄牌堆選裝備的對話框（例如大衛），
+        // 原本誤用 type_equipment（'裝備卡'）當作 {name}，顯示成「請選擇要從 裝備卡
+        // 奪取的裝備」語意不通；改用新增的 type_discard_pile（'棄牌堆'）。
+        message: t('room.equipment_choice.message', { name: t('room.active_card.type_discard_pile') }),
         options: discardOptions,
         cancelLabel: t('room.area_choice.cancel'),
       });

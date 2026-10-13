@@ -1249,10 +1249,17 @@ class room(Thread):
             # 改成「玩家按下行動骰」那一刻才算數。移動能力（timing=2）則完全
             # 交給下面 STATUS 2 的既有邏輯判定（見下方 if p.status == 2 不再是
             # elif，讓本次呼叫在沒有開場能力可用時可以直接落入該區塊）。
+            # 2026-10-12 修正：ability_timing=8（不限特定階段、開始或結束都能發動，
+            # 例如大衛 David）原本這裡漏掉，只比對了 ==1，導致玩家在回合開始階段
+            # 點「發動能力」選了棄牌堆裡的裝備，前端照常送出請求，但後端完全沒有
+            # 呼叫 _use_ability_with_resolution()、直接跳過進入擲骰流程，能力形同
+            # 沒發動、裝備也沒拿到，而且沒有任何錯誤提示。STATUS 6（回合結束）那邊
+            # 本來就沒有限制 timing，所以大衛在回合結束階段發動是正常的，只有回合
+            # 開始階段會踩到這個問題。
             if (
                 action
                 and self._can_activate_ability(p)
-                and int(getattr(p.character, 'ability_timing', 0) or 0) == 1
+                and int(getattr(p.character, 'ability_timing', 0) or 0) in (1, 8)
             ):
                 self._use_ability_with_resolution(p, target)
                 if int(getattr(self, 'room_status', 0) or 0) == 3:

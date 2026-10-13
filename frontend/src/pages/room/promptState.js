@@ -115,12 +115,21 @@ export function selectCardPromptState(state, dataSnapshot) {
   const selfStatus = Number(dataSnapshot?.players?.[selfAccount]?.status || 0);
   const cardPrompt = dataSnapshot?.card_prompt || null;
   const activeCard = dataSnapshot?.active_card || null;
+  // 2026-10-12 修正：綠卡選完目標後，後端會把 card_prompt 清成 null、改成用
+  // green_confirm_prompt 等待目標玩家確認，但這裡原本在 card_prompt 是 null
+  // 時會退回用 active_card（還沒被清掉、target 還是 'other'/'one'）重新算出
+  // 一整批可點的玩家，導致選完目標後其他玩家卡片看起來還是能再點一次「使用
+  // 綠卡」。後端 card_effect() 這時會因為 _pending_green_card 已存在而直接
+  // no-op，所以不會真的造成重複效果，但畫面上不該再顯示成可以點選。只要已經
+  // 有 green_confirm_prompt（代表目標已選定、正在等確認），這裡就不該再回報
+  // 「可以選目標」。
+  const hasPendingGreenConfirm = Boolean(dataSnapshot?.green_confirm_prompt);
   const target = String(cardPrompt?.target || activeCard?.target || '');
   let targetAccounts = Array.isArray(cardPrompt?.target_accounts)
     ? cardPrompt.target_accounts.map((value) => String(value || '').trim()).filter(Boolean)
     : [];
 
-  if (targetAccounts.length === 0 && (target === 'other' || target === 'one')) {
+  if (!hasPendingGreenConfirm && targetAccounts.length === 0 && (target === 'other' || target === 'one')) {
     targetAccounts = Object.entries(dataSnapshot?.players || {})
       .filter(([account, p]) => Boolean(p?.alive) && (target !== 'other' || account !== selfAccount))
       .map(([account]) => String(account || '').trim())
@@ -130,7 +139,7 @@ export function selectCardPromptState(state, dataSnapshot) {
   const name = String(cardPrompt?.name || activeCard?.name || '');
 
   return {
-    active: Boolean(selfAccount && roomStatus === 2 && selfAccount === currentAccount && selfStatus === 3 && (name || activeCard)),
+    active: Boolean(selfAccount && roomStatus === 2 && selfAccount === currentAccount && selfStatus === 3 && !hasPendingGreenConfirm && (name || activeCard)),
     name,
     target,
     targetAccounts,

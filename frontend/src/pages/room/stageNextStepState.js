@@ -154,11 +154,16 @@ export function createStageNextStepStateHandlers({
       else button.removeAttribute('data-phase');
     }
 
+    // 2026-10-12 修正：擊殺後掠奪裝備（pendingKillLoot）發生時，玩家的 status
+    // 仍然停留在 5（跟攻擊擲骰同一個階段），導致原本的骰子閃爍判斷誤判成「可以
+    // 擲骰」，骰子跟著閃爍；但這個時間點玩家應該做的是選擇要拿哪件裝備，不是
+    // 擲骰，所以要排除 pendingKillLoot.active 的情況。
     const shouldPromptRoll = Boolean(
       hasRoom
       && selfAccount
       && roomStatus === 2
       && selfAccount === currentAccount
+      && !pendingKillLoot.active
       && (
         Boolean(pendingDiceAction)
         || selfStatus === 5

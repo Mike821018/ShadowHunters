@@ -739,7 +739,13 @@ export function buildChatStageLines({
       || (viewerName && timeoutCurrent === viewerName)
     );
     const timeoutClass = isViewerTimeout ? 'system-timeout system-timeout-self' : 'system-timeout';
-    pushSystemLine(esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-', n: Math.max(0, timeoutRemain) })), timeoutClass);
+    // 2026-10-10 修正：Mike 回報回合暴斃倒數（尤其是輪到自己時顯示的紅色提示）只會
+    // 出現在房間頁主畫面的「系統訊息」面板，右下角浮動聊天室完全看不到；因為浮動
+    // 聊天室（floatingChat.js）只取用 buildChatStageLines() 回傳的 chatLines，原本
+    // 這則倒數訊息只放進 systemLines、沒有 mirrorToChat，所以浮動聊天室看不到。
+    // 補上 mirrorToChat=true，讓它跟其他系統訊息一樣同時鏡像一份進聊天室；
+    // chat-line-system 搭配 system-timeout-self 本來就有對應的紅色樣式可以直接套用。
+    pushSystemLine(esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-', n: Math.max(0, timeoutRemain) })), timeoutClass, nowTs, true);
   }
 
   return { chatLines, systemLines };
