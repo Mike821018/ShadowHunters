@@ -8,6 +8,7 @@ export function bindStageInteractions({
   selectAbilityAreaTarget,
   drawCardFromPile,
   openActiveCardDialog,
+  openDiscardPileDialog,
 }) {
   const tableStage = document.querySelector('.table-stage');
   if (!(tableStage instanceof HTMLElement)) return;
@@ -35,6 +36,20 @@ export function bindStageInteractions({
         event.preventDefault();
         event.stopPropagation();
         drawCardFromPile(color);
+        return;
+      }
+    }
+
+    // 2026-10-13：點白卡／黑卡的棄牌堆可以列出目前棄掉的卡片（大衛用來判斷何時公開角色）；
+    // 綠卡是非公開資訊，維持不能點（colorKey 對不到 White/Black 就直接不處理）。
+    const discardPileCard = event.target instanceof Element ? event.target.closest('[data-pile-type="discard"][data-card-color]') : null;
+    if (discardPileCard instanceof HTMLElement) {
+      const discardColorKey = String(discardPileCard.getAttribute('data-card-color') || '').toLowerCase();
+      const discardColor = discardColorKey === 'white' ? 'White' : discardColorKey === 'black' ? 'Black' : '';
+      if (discardColor && typeof openDiscardPileDialog === 'function') {
+        event.preventDefault();
+        event.stopPropagation();
+        openDiscardPileDialog(discardColor, discardPileCard);
         return;
       }
     }

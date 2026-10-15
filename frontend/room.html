@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>暗影獵人｜村莊</title>
-    <link rel="stylesheet" href="./src/theme.css?v=20261003-issue70-mutualexclusion1" />
+    <link rel="stylesheet" href="./src/theme.css?v=20261013-issue126-stageglowfix1" />
   </head>
   <body data-page="room" class="room-page">
     <div id="header">
@@ -19,6 +19,7 @@
             </select>
           </div>
           <button type="button" class="btn sound-toggle-btn" data-sound-toggle aria-pressed="true">&#128266;</button>
+          <a id="bugReportQuickLink" class="btn" href="./report.html" target="_blank" rel="noopener" data-i18n="common.nav.report">問題回報</a>
         </div>
         <div id="menu" class="room-menu-bar">
           <button id="btnRoomBackLobby" class="btn room-back-lobby-btn" type="button" data-i18n="common.nav.back_lobby">返回大廳</button>
@@ -185,6 +186,13 @@
                       </div>
                       <div id="stageFieldDetailNumbers" class="stage-field-detail-numbers"></div>
                       <p id="stageFieldDetailDescription" class="stage-field-detail-description">點選場地卡上的數字即可查看場地名稱與效果說明。</p>
+                    </div>
+                    <div id="stageDiscardDetail" class="stage-field-detail-panel stage-discard-detail-panel" hidden>
+                      <div class="stage-field-detail-header">
+                        <strong id="stageDiscardDetailName">棄牌堆</strong>
+                        <button id="stageDiscardDetailClose" class="stage-field-detail-close" type="button" aria-label="關閉棄牌堆清單">×</button>
+                      </div>
+                      <div id="stageDiscardDetailList" class="stage-discard-detail-list"></div>
                     </div>
                     <dialog id="areaChoiceDialog" class="area-choice-dialog" aria-labelledby="areaChoiceTitle">
                       <form method="dialog" class="area-choice-form">

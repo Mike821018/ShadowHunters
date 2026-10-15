@@ -7,6 +7,7 @@ import { initGuideAndOperationPages } from './pages/guidePage.js';
 import { initRegisterPage } from './pages/register.js';
 import { initRecordsPage } from './pages/records.js';
 import { initRecordViewPage } from './pages/recordView.js';
+import { initReportPage } from './pages/report.js';
 import { initVersionPage } from './pages/version.js';
 import { goToLobbyPage as navigateToLobbyPage, goToRegisterPage as navigateToRegisterPage, goToRoomPage as navigateToRoomPage } from './navigation.js';
 import { bindLobbyEvents, initLobbyPage, refreshRooms as refreshLobbyRooms, renderRooms as renderLobbyRooms } from './pages/lobby.js';
@@ -122,6 +123,7 @@ function setLocalizedPageTitle() {
     'avatar-gallery': t('common.nav.avatars'),
     register: t('common.nav.identity'),
     'version-notes': t('common.nav.versions'),
+    'bug-report': t('common.nav.report'),
   };
   const pageTitle = titleMap[state.page] || '';
   document.title = pageTitle ? `${brand}｜${pageTitle}` : brand;
@@ -146,6 +148,12 @@ async function boot() {
   bindSoundToggle();
 
   restoreSession(state);
+
+  // 2026-10-13：房間頁右上角的「問題回報」快速連結，帶上目前房號方便回報時自動附上房間快照。
+  if (el.bugReportQuickLink && state.roomId) {
+    el.bugReportQuickLink.href = `./report.html?roomId=${state.roomId}`;
+  }
+
   bindTransportModeEvents({ el, setTransportMode, persistCurrentSession });
   setTransportMode('auto');
 
@@ -215,6 +223,10 @@ async function boot() {
 
   if (state.page === 'version-notes') {
     await initVersionPage({ state, toast });
+  }
+
+  if (state.page === 'bug-report') {
+    await initReportPage({ el, state, dispatch, esc, toast });
   }
 
   // Non-blocking: initialise floating chat overlay on pages without a chat room

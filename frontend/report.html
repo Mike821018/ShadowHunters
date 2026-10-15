@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>暗影獵人｜問題回報</title>
+    <link rel="stylesheet" href="./src/theme.css?v=20261013-issue126-stageglowfix1" />
+  </head>
+  <body data-page="bug-report">
+    <div id="header">
+      <div class="wrap s_clear">
+        <h2>暗影獵人</h2>
+        <div id="umenu" aria-live="polite">
+          <div class="lang-switcher">
+            <select class="lang-select" data-lang-select aria-label="Language selector">
+              <option value="zh">ZH</option>
+              <option value="en">EN</option>
+              <option value="jp">JP</option>
+            </select>
+          </div>
+        </div>
+        <div id="menu">
+          <ul class="menu-tabs" role="navigation" aria-label="主功能">
+            <li><a class="tab" href="./lobby.html" data-i18n="common.nav.lobby">遊戲大廳</a></li>
+            <li><a class="tab" href="./guide.html" data-i18n="common.nav.rules">遊戲規則</a></li>
+            <li><a class="tab" href="./operation.html" data-i18n="common.nav.operation">操作說明</a></li>
+            <li><a class="tab" href="./records.html" data-i18n="common.nav.records">紀錄閱覽</a></li>
+            <li><a class="tab" href="./avatar.html" data-i18n="common.nav.avatars">頭像一覽</a></li>
+            <li><a class="tab" href="./resident_register.html" data-i18n="common.nav.identity">身分登錄</a></li>
+            <li><a class="tab" href="./version.html" data-i18n="common.nav.versions">版本紀錄</a></li>
+            <li><a class="tab current" href="./report.html" aria-current="page" data-i18n="common.nav.report">問題回報</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="wrap s_clear" id="wrap">
+      <main class="main">
+        <section class="panel" tabindex="0">
+          <fieldset>
+            <legend><strong data-i18n="report.submit.title">問題回報</strong></legend>
+            <div class="card-body">
+              <p class="lighttxt" data-i18n="report.submit.intro">遇到遊戲異常、有想法或建議都可以在這裡回報，不需要先登記 TRIP，打個暱稱就能送出。</p>
+              <p id="bugReportRoomHint" class="field-hint" hidden></p>
+              <form id="bugReportSubmitForm" class="form-grid">
+                <label for="bugReportNickname" data-i18n="report.submit.nickname_label">暱稱</label>
+                <input id="bugReportNickname" class="txt" type="text" placeholder="最多20字" data-i18n-placeholder="report.submit.nickname_placeholder" />
+
+                <label for="bugReportCategory" data-i18n="report.submit.category_label">類別</label>
+                <select id="bugReportCategory" class="txt">
+                  <option value="bug" data-i18n="report.submit.category_bug">Bug（遊戲異常）</option>
+                  <option value="suggestion" data-i18n="report.submit.category_suggestion">建議</option>
+                  <option value="other" selected data-i18n="report.submit.category_other">其他</option>
+                </select>
+
+                <label class="option-title" for="bugReportDescription" data-i18n="report.submit.description_label">問題描述</label>
+                <textarea id="bugReportDescription" class="txt" rows="6" placeholder="請盡量描述發生的狀況、操作步驟，方便我們排查" data-i18n-placeholder="report.submit.description_placeholder"></textarea>
+
+                <label for="bugReportTrip" data-i18n="report.submit.trip_label">TRIP（選填）</label>
+                <input id="bugReportTrip" class="txt" type="text" maxlength="20" placeholder="TRIP" data-i18n-placeholder="identity.col_trip" />
+
+                <div></div>
+                <p class="field-hint" data-i18n="report.submit.trip_hint">填寫已在「身分登錄」頁面登記過的 TRIP，之後可以直接用同一組 TRIP 查詢自己回報過的所有問題，不用記回報編號；沒有登記過 TRIP 的話，留空即可，不影響正常回報。</p>
+
+                <div></div>
+                <button class="btn" type="submit" data-i18n="report.submit.button">送出回報</button>
+              </form>
+              <div id="bugReportSubmitResult" class="card-body" hidden>
+                <p data-i18n="report.submit.success_intro">已收到你的回報，請記下以下編號，之後可以用它查詢處理進度（編號之後不會再顯示）：</p>
+                <p><strong id="bugReportTokenDisplay"></strong></p>
+              </div>
+            </div>
+          </fieldset>
+        </section>
+
+        <section class="panel" tabindex="0">
+          <fieldset>
+            <legend><strong data-i18n="report.lookup.title">查詢回報進度</strong></legend>
+            <div class="card-body">
+              <p class="lighttxt" data-i18n="report.lookup.intro">輸入送出回報時拿到的編號，查詢目前的處理狀態。</p>
+              <form id="bugReportLookupForm" class="form-grid">
+                <label for="bugReportLookupToken" data-i18n="report.lookup.token_label">回報編號</label>
+                <input id="bugReportLookupToken" class="txt" type="text" placeholder="例如：A1B2C3D4" data-i18n-placeholder="report.lookup.token_placeholder" />
+
+                <div></div>
+                <button class="btn" type="submit" data-i18n="report.lookup.button">查詢</button>
+              </form>
+              <div id="bugReportLookupResult" class="card-body"></div>
+            </div>
+          </fieldset>
+        </section>
+
+        <section class="panel" tabindex="0">
+          <fieldset>
+            <legend><strong data-i18n="report.lookup_by_trip.title">用 TRIP 查詢我的回報</strong></legend>
+            <div class="card-body">
+              <p class="lighttxt" data-i18n="report.lookup_by_trip.intro">如果送出回報時有附上 TRIP，可以直接用同一組 TRIP 查詢自己回報過的所有問題，不用記每一筆的回報編號（需要先在「身分登錄」頁面登記過 TRIP）。</p>
+              <form id="bugReportTripLookupForm" class="form-grid">
+                <label for="bugReportTripLookupTrip" data-i18n="identity.col_trip">TRIP</label>
+                <input id="bugReportTripLookupTrip" class="txt" type="text" maxlength="20" placeholder="TRIP" data-i18n-placeholder="identity.col_trip" />
+
+                <div></div>
+                <button class="btn" type="submit" data-i18n="report.lookup_by_trip.button">查詢</button>
+              </form>
+              <div id="bugReportTripLookupResult" class="card-body"></div>
+            </div>
+          </fieldset>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./src/app.js?v=20261013-issue121-bugreport1"></script>
+  </body>
+</html>

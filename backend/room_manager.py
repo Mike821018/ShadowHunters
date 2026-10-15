@@ -1,5 +1,6 @@
 import random
 import base64
+import secrets
 import hashlib
 import json
 import os
@@ -286,10 +287,17 @@ class RoomManager:
 
     _ROOM_NAME_MAX_DISPLAY_WIDTH = 40
     _ROOM_COMMENT_MAX_DISPLAY_WIDTH = 100
-    _MANAGER_TRIP_MIN_GAMES = 10  # 擔任村長所需的 Trip 最低累積場次
-    _GM_TRIP_MIN_GAMES = 30  # 擔任 GM 所需的 Trip 最低累積場次（高於村長）
+    _MANAGER_TRIP_MIN_GAMES = 5  # 擔任村長所需的 Trip 最低累積場次
+    _GM_TRIP_MIN_GAMES = 20  # 擔任 GM 所需的 Trip 最低累積場次（高於村長）
     _NICKNAME_MAX_DISPLAY_WIDTH = 20
     _CHAT_MESSAGE_MAX_DISPLAY_WIDTH = 200
+    _BUG_REPORT_CATEGORIES = {'bug', 'suggestion', 'other'}  # 問題回報分類：Bug／建議／其他
+    _BUG_REPORT_NICKNAME_MAX_DISPLAY_WIDTH = 20
+    _BUG_REPORT_DESCRIPTION_MAX_DISPLAY_WIDTH = 500
+    # 2026-10-13：問題回報後台頁面的密碼存在這個檔案裡（不進 git），第一次用到時如果
+    # 檔案不存在會自動產生一個隨機密碼寫進去；Mike 可以直接打開這個檔案看目前密碼，
+    # 或是把內容改成自己想要的密碼，不需要重啟伺服器（每次驗證都會重新讀檔案）。
+    _BUG_REPORT_ADMIN_TOKEN_PATH = os.path.join(os.path.dirname(__file__), 'data', 'bug_report_admin_token.txt')
 
     def get_api_schemas(self) -> Dict[str, Any]:
         return API_SCHEMAS
@@ -319,8 +327,7 @@ class RoomManager:
         trip_min_games: int = 0,
         manager_trip: str = '',
         manager_trip_encrypted: bool = True,
-        gm_trip: str = '',
-        gm_trip_encrypted: bool = True,
+        gm_enabled: bool = False,
         is_chat_room: bool = False,
         expansion_mode: str = 'all',
         enable_initial_green_card: bool = False,
@@ -337,8 +344,7 @@ class RoomManager:
         game_room.trip_min_games = max(0, int(trip_min_games or 0))
         game_room.manager_trip = str(manager_trip or '').strip()
         game_room.manager_trip_encrypted = manager_trip_encrypted is not False
-        game_room.gm_trip = str(gm_trip or '').strip()
-        game_room.gm_trip_encrypted = gm_trip_encrypted is not False
+        game_room.gm_enabled = bool(gm_enabled)
         game_room.is_chat_room = bool(is_chat_room)
         game_room.expansion_mode = self._normalize_expansion_mode(expansion_mode)
         game_room.enable_initial_green_card = bool(enable_initial_green_card)
@@ -760,12 +766,14 @@ class RoomManager:
         enable_neutral_chaos_mode = bool(getattr(game_room, 'enable_neutral_chaos_mode', False))
         enable_badge_unique_character_select = bool(getattr(game_room, 'enable_badge_unique_character_select', False))
         timeout_minutes = int(getattr(game_room, 'turn_timeout_seconds', 180) or 180) // 60
+        max_players = int(getattr(game_room, 'max_players', 8) or 8)
         return (
             f"{self._format_card_set_summary(expansion_mode)}"
             f" / 初始綠卡={'On' if enable_initial_green_card else 'Off'}"
             f" / 中立大亂鬥={'On' if enable_neutral_chaos_mode else 'Off'}"
             f" / 徽章唯一={'On' if enable_badge_unique_character_select else 'Off'}"
             f" / 暴斃時間={timeout_minutes}分"
+            f" / 人數上限={max_players}人"
         )
 
     def _format_start_camp_summary(self, game_room: room.room) -> str:
@@ -1272,15 +1280,12 @@ class RoomManager:
         return manager_trip == trip or self.encrypt_trip_like_higu(manager_trip) == trip
 
     def is_gm_trip(self, game_room: room.room, trip: str) -> bool:
-        gm_trip = str(getattr(game_room, 'gm_trip', '') or '').strip()
-        if not gm_trip or not trip:
+        # 2026-10-13：GM 不再是另外指定的一個人——房間只開一個「是否開啟 GM 功能」
+        # 開關，開啟之後，比對到 manager_trip（村長本人）的那個人加入時就同時視為
+        # GM（村長的管理權限不會因此消失，is_village_manager 仍然為 True）。
+        if not bool(getattr(game_room, 'gm_enabled', False)):
             return False
-
-        if getattr(game_room, 'gm_trip_encrypted', True):
-            return gm_trip == trip
-
-        # 若輸入的是未加密 Trip，允許同時比對明文與 higu 加密值，方便過渡。
-        return gm_trip == trip or self.encrypt_trip_like_higu(gm_trip) == trip
+        return self.is_manager_trip(game_room, trip)
 
     def _resolve_target(self, game_room: room.room, target_ref: Optional[Dict[str, Any]]):
         if not target_ref:
@@ -1485,6 +1490,16 @@ class RoomManager:
                 result = self.api_submit_trip_rating(payload)
             elif action == 'upload_avatar':
                 result = self.api_upload_avatar(payload)
+            elif action == 'submit_bug_report':
+                result = self.api_submit_bug_report(payload)
+            elif action == 'get_bug_report_status':
+                result = self.api_get_bug_report_status(payload)
+            elif action == 'get_bug_reports_by_trip':
+                result = self.api_get_bug_reports_by_trip(payload)
+            elif action == 'admin_list_bug_reports':
+                result = self.api_admin_list_bug_reports(payload)
+            elif action == 'admin_update_bug_report':
+                result = self.api_admin_update_bug_report(payload)
             else:
                 result = self._error(action, 'ACTION_NOT_SUPPORTED', 'action is not supported', 404)
             self._post_dispatch_emit(action, payload, result)
@@ -1505,36 +1520,28 @@ class RoomManager:
         if manager_trip and not manager_trip_encrypted:
             manager_trip = self.encrypt_trip_like_higu(manager_trip)
             manager_trip_encrypted = True
-        gm_trip = str(payload.get('gm_trip', '') or '').strip()
-        gm_trip_encrypted = payload.get('gm_trip_encrypted', True) is not False
-        if gm_trip and not gm_trip_encrypted:
-            gm_trip = self.encrypt_trip_like_higu(gm_trip)
-            gm_trip_encrypted = True
-        # 村長跟 GM 互斥，一個村子最多只能設定其中一種身分的 Trip。
-        if manager_trip and gm_trip:
-            return self._error('create_room', 'MANAGER_GM_MUTUALLY_EXCLUSIVE', '村長與 GM 最多只能設定一種', 400)
+        # 2026-10-13：拿掉原本獨立的「GM Trip」欄位——GM 不再是另外指定的一個人，
+        # 而是村長本人在開啟 GM 功能時升級成的身分，所以這裡只收一個布林開關；
+        # 開啟時要求村長 Trip 本身要符合 GM 的場次門檻（30 場，比村長原本的 10 場高）。
+        gm_enabled = bool(payload.get('gm_enabled', False))
         if manager_trip:
             if not self.is_trip_registered_in_db(manager_trip):
                 return self._error('create_room', 'MANAGER_TRIP_NOT_REGISTERED', '村長 Trip 未登記，無法設定', 403)
             manager_games = self.get_trip_games_count_from_db(manager_trip)
-            if manager_games < self._MANAGER_TRIP_MIN_GAMES:
+            required_games = self._GM_TRIP_MIN_GAMES if gm_enabled else self._MANAGER_TRIP_MIN_GAMES
+            if manager_games < required_games:
                 return self._error(
                     'create_room',
-                    'MANAGER_TRIP_GAME_COUNT_NOT_ENOUGH',
-                    f'村長 Trip 遊戲場次不足，至少需要 {self._MANAGER_TRIP_MIN_GAMES} 場',
+                    'GM_TRIP_GAME_COUNT_NOT_ENOUGH' if gm_enabled else 'MANAGER_TRIP_GAME_COUNT_NOT_ENOUGH',
+                    (
+                        f'村長 Trip 開啟 GM 功能需要的場次不足，至少需要 {required_games} 場'
+                        if gm_enabled
+                        else f'村長 Trip 遊戲場次不足，至少需要 {required_games} 場'
+                    ),
                     403,
                 )
-        if gm_trip:
-            if not self.is_trip_registered_in_db(gm_trip):
-                return self._error('create_room', 'GM_TRIP_NOT_REGISTERED', 'GM Trip 未登記，無法設定', 403)
-            gm_games = self.get_trip_games_count_from_db(gm_trip)
-            if gm_games < self._GM_TRIP_MIN_GAMES:
-                return self._error(
-                    'create_room',
-                    'GM_TRIP_GAME_COUNT_NOT_ENOUGH',
-                    f'GM Trip 遊戲場次不足，至少需要 {self._GM_TRIP_MIN_GAMES} 場',
-                    403,
-                )
+        elif gm_enabled:
+            return self._error('create_room', 'GM_REQUIRES_MANAGER_TRIP', '需要先設定村長 Trip 才能開啟 GM 功能', 400)
         is_chat_room = bool(payload.get('is_chat_room', False))
         expansion_mode = self._resolve_expansion_mode_from_payload(payload, default_mode='all')
         enable_initial_green_card = bool(payload.get('enable_initial_green_card', False))
@@ -1557,8 +1564,7 @@ class RoomManager:
             trip_min_games=trip_min_games,
             manager_trip=manager_trip,
             manager_trip_encrypted=manager_trip_encrypted,
-            gm_trip=gm_trip,
-            gm_trip_encrypted=gm_trip_encrypted,
+            gm_enabled=gm_enabled,
             is_chat_room=is_chat_room,
             expansion_mode=expansion_mode,
             enable_initial_green_card=enable_initial_green_card,
@@ -1905,6 +1911,7 @@ class RoomManager:
             'use_extend_card_set',
             'card_set_extend',
             'use_extend',
+            'max_players',
         }
         has_room_setting_patch = any(key in payload for key in room_setting_keys)
         if has_room_setting_patch and not is_village_manager:
@@ -1960,11 +1967,35 @@ class RoomManager:
             nearest = min(allowed_timeouts, key=lambda value: abs(value - timeout_minutes))
             timeout_minutes = int(nearest)
 
+        # 2026-10-13：村長可以調低房間人數上限（例如 4~8 之間），等於把多出來的
+        # 空位關掉，不用開到滿 8 人也能玩；聊天室 (is_chat_room) 不受這個 4~8
+        # 限制，上限固定維持 50，不開放調整。
+        is_chat_room = bool(getattr(game_room, 'is_chat_room', False))
+        if is_chat_room:
+            max_players = int(getattr(game_room, 'max_players', 50) or 50)
+        else:
+            max_players_raw = payload.get('max_players', getattr(game_room, 'max_players', 8))
+            try:
+                max_players = int(max_players_raw)
+            except (TypeError, ValueError):
+                return self._error('update_room_settings', 'INVALID_MAX_PLAYERS', '房間人數上限格式錯誤', 400)
+            if max_players < 4 or max_players > 8:
+                return self._error('update_room_settings', 'INVALID_MAX_PLAYERS', '房間人數上限必須在 4~8 人之間', 400)
+            current_non_gm_count = len(self._non_gm_players(game_room))
+            if max_players < current_non_gm_count:
+                return self._error(
+                    'update_room_settings',
+                    'MAX_PLAYERS_BELOW_CURRENT_COUNT',
+                    f'房間人數上限不能低於目前已加入人數（{current_non_gm_count} 人）',
+                    400,
+                )
+
         game_room.expansion_mode = expansion_mode
         game_room.enable_initial_green_card = enable_initial_green_card
         game_room.enable_neutral_chaos_mode = enable_neutral_chaos_mode
         game_room.enable_badge_unique_character_select = enable_badge_unique_character_select
         game_room.turn_timeout_seconds = int(timeout_minutes * 60)
+        game_room.max_players = max_players
         game_room.touch_activity()
         game_room.add_system_message(
             "村長更新房間設定："
@@ -2249,17 +2280,165 @@ class RoomManager:
         }
 
     def api_upload_avatar(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        trip = str(payload.get('trip', '') or '').strip()
-        password = str(payload.get('password', '') or '')
+        # 2026-10-15：跟問題回報的 TRIP 查詢一樣拿掉密碼，只檢查「這組密語確實對應
+        # 到一個已登記的 TRIP」（get_registered_trip_display() 一律把輸入當成原始
+        # 密語重新加密後比對，不接受已經加密過的字串，避免有人拿別人公開顯示的
+        # TRIP 標籤直接冒用）。存進頭像資料時也存加密後的 trip_display，不存原始
+        # 密語，避免密語本身以明文留在資料庫裡。
+        trip_raw = str(payload.get('trip', '') or '').strip()
         name = str(payload.get('name', '') or '').strip()
         color = str(payload.get('color', '') or '').strip() or '#9aa4ad'
         image_data_url = str(payload.get('image_data_url', '') or '').strip()
-        if not trip or not password or not name or not image_data_url:
-            return self._error('upload_avatar', 'INVALID_PAYLOAD', 'trip/password/name/image_data_url are required', 400)
-        if not self.record_store.verify_trip_password(trip, password):
-            return self._error('upload_avatar', 'LOGIN_FAILED', 'TRIP 或密碼錯誤', 401)
+        if not trip_raw or not name or not image_data_url:
+            return self._error('upload_avatar', 'INVALID_PAYLOAD', 'trip/name/image_data_url are required', 400)
+        trip_display = self.record_store.get_registered_trip_display(trip_raw)
+        if not trip_display:
+            return self._error('upload_avatar', 'TRIP_NOT_REGISTERED', '這個 TRIP 還沒有登記過，請先在「身分登錄」頁面登記', 400)
         try:
-            avatar = self.avatar_store.upload_avatar(trip, name, color, image_data_url)
+            avatar = self.avatar_store.upload_avatar(trip_display, name, color, image_data_url)
         except ValueError as exc:
             return self._error('upload_avatar', 'BAD_REQUEST', str(exc), 400)
         return self._success('upload_avatar', avatar)
+
+    def api_submit_bug_report(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        # 2026-10-13：問題回報不需要有登記 Trip 才能用——玩家自己打一個暱稱就能回報，
+        # 包括還沒登記身分、卡在登入流程本身出問題的人也能回報。
+        nickname = str(payload.get('nickname', '') or '').strip()
+        category = str(payload.get('category', '') or '').strip().lower()
+        description = str(payload.get('description', '') or '').strip()
+        room_id = payload.get('room_id')
+        if not nickname:
+            return self._error('submit_bug_report', 'NICKNAME_REQUIRED', '請填寫暱稱', 400)
+        if self._count_display_width(nickname) > self._BUG_REPORT_NICKNAME_MAX_DISPLAY_WIDTH:
+            return self._error(
+                'submit_bug_report',
+                'NICKNAME_TOO_LONG',
+                f'暱稱超過長度限制（最多 {self._BUG_REPORT_NICKNAME_MAX_DISPLAY_WIDTH}）',
+                400,
+            )
+        if category not in self._BUG_REPORT_CATEGORIES:
+            category = 'other'
+        if not description:
+            return self._error('submit_bug_report', 'DESCRIPTION_REQUIRED', '請填寫問題描述', 400)
+        if self._count_display_width(description) > self._BUG_REPORT_DESCRIPTION_MAX_DISPLAY_WIDTH:
+            return self._error(
+                'submit_bug_report',
+                'DESCRIPTION_TOO_LONG',
+                f'描述超過長度限制（最多 {self._BUG_REPORT_DESCRIPTION_MAX_DISPLAY_WIDTH}）',
+                400,
+            )
+
+        # 如果是在房間裡面點回報，順手把當下那個房間的完整狀態快照存下來，方便之後
+        # 重現問題；拿不到房間或序列化失敗都不應該擋住回報本身，安靜地略過快照就好。
+        normalized_room_id: Optional[int] = None
+        room_state_snapshot_json = ''
+        if room_id is not None and str(room_id).strip() != '':
+            try:
+                normalized_room_id = int(room_id)
+            except (TypeError, ValueError):
+                normalized_room_id = None
+            if normalized_room_id is not None:
+                game_room = self.rooms.get(normalized_room_id)
+                if game_room is not None:
+                    try:
+                        snapshot = self._serialize_room_state(game_room)
+                        room_state_snapshot_json = json.dumps(snapshot, ensure_ascii=False)
+                    except Exception:
+                        room_state_snapshot_json = ''
+
+        # 2026-10-15：可以選填已經在「身分登錄」頁面登記過的 TRIP，之後可以直接用
+        # 同一組 TRIP 查詢自己回報過的所有問題，不用記回報編號。這裡不檢查密碼——
+        # Mike 確認這個情境不需要密碼等級的保護，只要確認「這組密語確實對應到一個
+        # 已登記的 TRIP」即可（用 get_registered_trip_display() 直接加密原始密語後
+        # 比對，不接受已經加密過的字串當輸入，避免有人拿別人公開顯示的 TRIP 標籤
+        # 直接冒用）。
+        trip_raw = str(payload.get('trip', '') or '').strip()
+        trip_display = ''
+        if trip_raw:
+            trip_display = self.record_store.get_registered_trip_display(trip_raw)
+            if not trip_display:
+                return self._error('submit_bug_report', 'TRIP_NOT_REGISTERED', '這個 TRIP 還沒有登記過，請先在「身分登錄」頁面登記', 400)
+
+        token = self.record_store.add_bug_report(
+            nickname=nickname,
+            category=category,
+            description=description,
+            room_id=normalized_room_id,
+            room_state_snapshot_json=room_state_snapshot_json,
+            trip=trip_display,
+        )
+        return self._success('submit_bug_report', {'report_token': token})
+
+    def api_get_bug_report_status(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        report_token = str(payload.get('report_token', '') or '').strip()
+        if not report_token:
+            return self._error('get_bug_report_status', 'REPORT_TOKEN_REQUIRED', '請輸入回報編號', 400)
+        report = self.record_store.get_bug_report(report_token)
+        if not report:
+            return self._error('get_bug_report_status', 'REPORT_NOT_FOUND', '找不到這個回報編號', 404)
+        return self._success('get_bug_report_status', report)
+
+    def api_get_bug_reports_by_trip(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        trip_raw = str(payload.get('trip', '') or '').strip()
+        if not trip_raw:
+            return self._error('get_bug_reports_by_trip', 'INVALID_PAYLOAD', '請輸入 TRIP', 400)
+        trip_display = self.record_store.get_registered_trip_display(trip_raw)
+        if not trip_display:
+            return self._error('get_bug_reports_by_trip', 'TRIP_NOT_REGISTERED', '這個 TRIP 還沒有登記過', 400)
+        reports = self.record_store.list_bug_reports_by_trip(trip_display)
+        return self._success('get_bug_reports_by_trip', {'reports': reports})
+
+    def _get_bug_report_admin_token(self) -> str:
+        """讀取問題回報後台頁面的密碼；檔案不存在就自動產生一個隨機密碼並寫進去，
+        之後 Mike 可以直接打開這個檔案看密碼，或是自己改成想要的內容。"""
+        path = self._BUG_REPORT_ADMIN_TOKEN_PATH
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                token = f.read().strip()
+            if token:
+                return token
+        except FileNotFoundError:
+            pass
+        except OSError:
+            return ''
+        generated = secrets.token_urlsafe(9)
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(generated + '\n')
+        except OSError:
+            pass
+        return generated
+
+    def _check_bug_report_admin_token(self, payload: Dict[str, Any]) -> bool:
+        submitted = str(payload.get('admin_token', '') or '').strip()
+        expected = self._get_bug_report_admin_token()
+        if not submitted or not expected:
+            return False
+        return secrets.compare_digest(submitted, expected)
+
+    def api_admin_list_bug_reports(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if not self._check_bug_report_admin_token(payload):
+            return self._error('admin_list_bug_reports', 'ADMIN_AUTH_FAILED', '密碼錯誤', 401)
+        status_filter = str(payload.get('status_filter', '') or '').strip() or None
+        reports = self.record_store.list_bug_reports(status_filter=status_filter)
+        return self._success('admin_list_bug_reports', {'reports': reports})
+
+    def api_admin_update_bug_report(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if not self._check_bug_report_admin_token(payload):
+            return self._error('admin_update_bug_report', 'ADMIN_AUTH_FAILED', '密碼錯誤', 401)
+        report_token = str(payload.get('report_token', '') or '').strip()
+        if not report_token:
+            return self._error('admin_update_bug_report', 'REPORT_TOKEN_REQUIRED', '缺少回報編號', 400)
+        status = payload.get('status')
+        if status is not None and str(status).strip() not in ('open', 'in_progress', 'resolved'):
+            return self._error('admin_update_bug_report', 'BAD_STATUS', '不合法的狀態', 400)
+        resolution_note = payload.get('resolution_note')
+        updated = self.record_store.update_bug_report(
+            report_token=report_token,
+            status=status,
+            resolution_note=resolution_note,
+        )
+        if not updated:
+            return self._error('admin_update_bug_report', 'REPORT_NOT_FOUND', '找不到這個回報編號', 404)
+        return self._success('admin_update_bug_report', {'report_token': report_token})

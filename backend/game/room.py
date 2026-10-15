@@ -44,8 +44,10 @@ class room(Thread):
         self.trip_min_games: int = 0  # 加入村子所需的 Trip 最低遊戲場數
         self.manager_trip: str = ''  # 村長 Trip（匹配者視為村長身分）
         self.manager_trip_encrypted: bool = True  # 村長 Trip 是否為加密後值
-        self.gm_trip: str = ''  # GM Trip（匹配者視為 GM 身分：旁觀主持，不下場、不佔 4~8 人名額，跟村長互斥）
-        self.gm_trip_encrypted: bool = True  # GM Trip 是否為加密後值
+        # 2026-10-13：拿掉原本獨立的「GM Trip」欄位——GM 不再是另外指定的一個人，
+        # 而是村長本人在開啟 GM 功能時升級成的身分（仍保留村長的管理權限，額外多了
+        # GM 的旁觀主持、不下場、不佔 4~8 人名額等待遇），所以這裡只留一個開關。
+        self.gm_enabled: bool = False  # 是否開啟 GM 功能（開啟後，比對到 manager_trip 的那個人加入時會同時視為 GM）
         self.is_chat_room: bool = False  # 聊天村：不開局、較高人數上限
         self.expansion_mode: str = 'all'  # all | no_extend
         self.enable_initial_green_card: bool = False  # 遊戲開始時執行初始綠卡
@@ -774,10 +776,13 @@ class room(Thread):
         pending_choice = pending.get('choice')
         normalized_choice = str(pending_choice or '').strip().lower()
         force_effect = self._get_green_card_force_effect(to_player, card, pending_choice)
-        if normalized_choice in ('normal', 'no_activate') and force_effect not in (0, 1, 2):
+        # 2026-10-13：3 代表謎明確選擇強制不生效，跟 0（交給原始規則判定）是不同語意，
+        # 下面幾個「補救成預設值」的分支都要把 3 一起算進「已經是合法值」，不然會被
+        # 誤判成還沒決定，又被改寫回 0（原始規則判定），等於白做了這次修正。
+        if normalized_choice in ('normal', 'no_activate') and force_effect not in (0, 1, 2, 3):
             # Respect explicit "normal" as default card resolution.
             force_effect = 0
-        if self._green_card_requires_choice(to_player, card) and force_effect not in (0, 1, 2):
+        if self._green_card_requires_choice(to_player, card) and force_effect not in (0, 1, 2, 3):
             # Compatibility fallback: older frontend flows may not submit "normal"
             # for Unknown's green-card intercept choice, causing confirm to dead-end.
             target_character_name = str(getattr(getattr(to_player, 'character', None), 'name', '') or '').strip()
@@ -794,6 +799,8 @@ class room(Thread):
                 choice_label = '發動'
             elif force_effect == 2:
                 choice_label = '不發動'
+            elif force_effect == 3:
+                choice_label = '不發動（強制無效果）'
             elif force_effect == 0:
                 choice_label = '不發動能力'
             else:
@@ -1058,7 +1065,9 @@ class room(Thread):
         interceptor = self._get_green_card_interceptor(target, card)
         if interceptor:
             intercepted = interceptor.get_green_card_force_effect(target, card, self.current_player, self, choice=choice)
-            if intercepted in (1, 2):
+            # 3 代表攔截者（謎）明確選擇強制不生效；這裡要直接採用，不能往下掉到
+            # 卡片自己的 get_force_effect()，否則會變成又回去看卡片的陣營猜測邏輯。
+            if intercepted in (1, 2, 3):
                 return intercepted
 
         card_get_force_effect = getattr(card, 'get_force_effect', None)

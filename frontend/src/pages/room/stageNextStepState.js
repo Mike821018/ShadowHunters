@@ -137,6 +137,12 @@ export function createStageNextStepStateHandlers({
       label = t('room.table_next_step.skip_attack');
       if (attackPrompt.force && attackPrompt.targetAccounts.length > 0) {
         disabled = true;
+      } else {
+        // 2026-10-13 修正：這裡原本只設定了按鈕文字，沒有設定 data-phase，
+        // 導致這個「跳過攻擊」按鈕（跟下面 selfStatus === 5 + counterAttackPrompt
+        // 那個變體不同）即使可以點，也完全沒有閃爍提示。只在按鈕真的可以按
+        // （沒有被強制攻擊鎖住）的情況下才設定 phase，跟 disabled 判斷邏輯一致。
+        phase = 'skip-attack';
       }
     } else if (selfStatus === 6) {
       label = t('room.table_next_step.end_turn');

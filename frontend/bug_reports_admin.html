@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>暗影獵人｜問題回報後台</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="stylesheet" href="./src/theme.css?v=20261013-issue126-stageglowfix1" />
+    <style>
+      .bra-report-card { border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
+      .bra-report-meta { color: inherit; opacity: 0.72; font-size: 0.92em; margin: 0 0 6px; }
+      .bra-report-desc { white-space: pre-wrap; margin: 8px 0; }
+      .bra-report-snapshot pre { white-space: pre-wrap; max-height: 320px; overflow: auto; font-size: 0.82em; }
+      .bra-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+      .bra-save-msg { font-size: 0.9em; margin-left: 10px; }
+    </style>
+  </head>
+  <body data-page="bug-report-admin">
+    <div class="wrap s_clear" id="wrap">
+      <main class="main">
+        <section class="panel" tabindex="0">
+          <fieldset>
+            <legend><strong>問題回報後台</strong></legend>
+            <div class="card-body">
+              <p class="lighttxt">這個頁面不開放一般玩家使用，只有知道密碼才能看到回報內容；這裡看到的暱稱、描述都是玩家自己填寫的原始文字，送出問題回報不需要先登記 TRIP。</p>
+              <form id="braAuthForm" class="form-grid">
+                <label for="braAdminToken">密碼</label>
+                <input id="braAdminToken" class="txt" type="password" autocomplete="off" />
+                <div></div>
+                <button class="btn" type="submit">登入</button>
+              </form>
+              <p id="braAuthError" class="lighttxt" hidden style="color: #b42318;"></p>
+            </div>
+          </fieldset>
+        </section>
+
+        <section id="braContentSection" class="panel" tabindex="0" hidden>
+          <fieldset>
+            <legend><strong>回報清單</strong></legend>
+            <div class="card-body">
+              <div class="bra-toolbar">
+                <label for="braStatusFilter" style="margin: 0;">篩選狀態：</label>
+                <select id="braStatusFilter" class="txt" style="width: auto;">
+                  <option value="">全部</option>
+                  <option value="open">已收到，尚未處理</option>
+                  <option value="in_progress">處理中</option>
+                  <option value="resolved">已處理</option>
+                </select>
+                <button id="braRefreshButton" class="btn" type="button">重新整理</button>
+                <button id="braLogoutButton" class="btn" type="button">登出</button>
+              </div>
+              <div id="braList"></div>
+              <p id="braEmptyMessage" class="lighttxt" hidden>目前沒有符合條件的回報。</p>
+            </div>
+          </fieldset>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script type="module">
+      const STORAGE_KEY = 'shadowhunters_bug_report_admin_token';
+      const STATUS_LABELS = {
+        open: '已收到，尚未處理',
+        in_progress: '處理中',
+        resolved: '已處理',
+      };
+      const CATEGORY_LABELS = {
+        bug: 'Bug（遊戲異常）',
+        suggestion: '建議',
+        other: '其他',
+      };
+
+      const el = {
+        authForm: document.getElementById('braAuthForm'),
+        adminTokenInput: document.getElementById('braAdminToken'),
+        authError: document.getElementById('braAuthError'),
+        contentSection: document.getElementById('braContentSection'),
+        statusFilter: document.getElementById('braStatusFilter'),
+        refreshButton: document.getElementById('braRefreshButton'),
+        logoutButton: document.getElementById('braLogoutButton'),
+        list: document.getElementById('braList'),
+        emptyMessage: document.getElementById('braEmptyMessage'),
+        toast: document.getElementById('toast'),
+      };
+
+      let adminToken = '';
+
+      function esc(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function toast(message, type = 'success') {
+        if (!el.toast) return;
+        el.toast.textContent = message;
+        el.toast.className = `toast show ${type}`;
+        setTimeout(() => {
+          if (el.toast) el.toast.className = 'toast';
+        }, 2200);
+      }
+
+      function formatDate(value) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return String(value || '');
+        return date.toLocaleString('zh-TW', { hour12: false });
+      }
+
+      async function callApi(action, payload) {
+        const resp = await fetch('/api/dispatch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, payload }),
+        });
+        let body = null;
+        try {
+          body = await resp.json();
+        } catch {
+          body = null;
+        }
+        if (!body || typeof body !== 'object') {
+          throw new Error(`連線失敗（HTTP ${resp.status}）`);
+        }
+        if (!body.ok) {
+          const err = new Error(body.error?.detail || '要求失敗');
+          err.code = body.error?.code;
+          throw err;
+        }
+        return body.data;
+      }
+
+      function renderReportCard(report) {
+        const card = document.createElement('div');
+        card.className = 'bra-report-card';
+        card.dataset.reportToken = report.report_token;
+
+        const roomLine = report.room_id
+          ? ` ・ 房間：<a href="./room.html?roomId=${encodeURIComponent(report.room_id)}" target="_blank" rel="noopener">#${esc(report.room_id)}</a>`
+          : '';
+        const resolvedLine = report.resolved_date
+          ? `<p class="bra-report-meta">處理完成時間：${esc(formatDate(report.resolved_date))}</p>`
+          : '';
+        const snapshotBlock = report.room_state_snapshot_json
+          ? `<details class="bra-report-snapshot"><summary>房間快照（除錯用）</summary><pre>${esc(report.room_state_snapshot_json)}</pre></details>`
+          : '';
+
+        card.innerHTML = `
+          <p class="bra-report-meta"><strong>#${esc(report.report_token)}</strong> ・ ${esc(formatDate(report.created_date))} ・ ${esc(CATEGORY_LABELS[report.category] || report.category)}</p>
+          <p class="bra-report-meta">暱稱：${esc(report.nickname)}${roomLine}${report.trip ? ` ・ TRIP：${esc(report.trip)}` : ''}</p>
+          <p class="bra-report-desc">${esc(report.description)}</p>
+          ${snapshotBlock}
+          <div class="form-grid">
+            <label>狀態</label>
+            <select class="txt bra-status-select" style="width: auto;">
+              <option value="open">${STATUS_LABELS.open}</option>
+              <option value="in_progress">${STATUS_LABELS.in_progress}</option>
+              <option value="resolved">${STATUS_LABELS.resolved}</option>
+            </select>
+            <label>處理備註</label>
+            <textarea class="txt bra-note-input" rows="2">${esc(report.resolution_note)}</textarea>
+            <div></div>
+            <div>
+              <button class="btn bra-save-button" type="button">儲存</button>
+              <span class="bra-save-msg"></span>
+            </div>
+          </div>
+          ${resolvedLine}
+        `;
+
+        const statusSelect = card.querySelector('.bra-status-select');
+        statusSelect.value = report.status || 'open';
+        const noteInput = card.querySelector('.bra-note-input');
+        const saveMsg = card.querySelector('.bra-save-msg');
+        const saveButton = card.querySelector('.bra-save-button');
+
+        saveButton.addEventListener('click', async () => {
+          saveButton.disabled = true;
+          saveMsg.textContent = '儲存中…';
+          try {
+            await callApi('admin_update_bug_report', {
+              admin_token: adminToken,
+              report_token: report.report_token,
+              status: statusSelect.value,
+              resolution_note: noteInput.value,
+            });
+            saveMsg.textContent = '已儲存';
+            toast('已更新這筆回報');
+            await loadReports();
+          } catch (error) {
+            saveMsg.textContent = `儲存失敗：${error.message}`;
+            toast(error.message, 'error');
+          } finally {
+            saveButton.disabled = false;
+          }
+        });
+
+        return card;
+      }
+
+      async function loadReports() {
+        try {
+          const data = await callApi('admin_list_bug_reports', {
+            admin_token: adminToken,
+            status_filter: el.statusFilter.value || null,
+          });
+          const reports = Array.isArray(data?.reports) ? data.reports : [];
+          el.list.innerHTML = '';
+          el.emptyMessage.hidden = reports.length > 0;
+          reports.forEach((report) => {
+            el.list.appendChild(renderReportCard(report));
+          });
+        } catch (error) {
+          if (error.code === 'ADMIN_AUTH_FAILED') {
+            logout();
+            el.authError.hidden = false;
+            el.authError.textContent = '密碼錯誤，請重新輸入。';
+            return;
+          }
+          toast(error.message, 'error');
+        }
+      }
+
+      function unlock(token) {
+        adminToken = token;
+        el.contentSection.hidden = false;
+        el.authError.hidden = true;
+        loadReports();
+      }
+
+      function logout() {
+        adminToken = '';
+        el.contentSection.hidden = true;
+        try {
+          window.localStorage.removeItem(STORAGE_KEY);
+        } catch {
+        }
+      }
+
+      el.authForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const token = el.adminTokenInput.value.trim();
+        if (!token) return;
+        try {
+          window.localStorage.setItem(STORAGE_KEY, token);
+        } catch {
+        }
+        unlock(token);
+      });
+
+      el.refreshButton.addEventListener('click', () => loadReports());
+      el.statusFilter.addEventListener('change', () => loadReports());
+      el.logoutButton.addEventListener('click', () => logout());
+
+      (function boot() {
+        let savedToken = '';
+        try {
+          savedToken = window.localStorage.getItem(STORAGE_KEY) || '';
+        } catch {
+        }
+        if (savedToken) {
+          el.adminTokenInput.value = savedToken;
+          unlock(savedToken);
+        }
+      })();
+    </script>
+  </body>
+</html>

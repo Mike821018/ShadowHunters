@@ -247,6 +247,35 @@ class GameRecordStore:
                 )
                 """
             )
+            # 2026-10-13：玩家問題回報。report_token 是給回報者本人記錄查詢用的
+            # 亂碼編號（不是循序編號，避免被人把編號改一改就能偷看到別人的回報），
+            # room_state_snapshot_json 是從房間裡回報時順手存下來的當下房間快照，
+            # 方便之後重現問題，只給開發者看，不會回給回報者本人。
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bug_reports (
+                    report_token TEXT PRIMARY KEY,
+                    created_date TEXT NOT NULL,
+                    nickname TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    room_id INTEGER,
+                    room_state_snapshot_json TEXT,
+                    status TEXT NOT NULL DEFAULT 'open',
+                    resolution_note TEXT,
+                    resolved_date TEXT
+                )
+                """
+            )
+            # 2026-10-14：回報時可以選填 Trip（存加密後的公開 Trip 標籤，不存使用者
+            # 輸入的原始密語，跟遊戲裡其他地方比對 Trip 的規則一致），填了之後之後可以
+            # 直接用 Trip 查詢自己回報過的所有內容，不用記回報編號。舊資料庫可能還沒有
+            # 這個欄位，用 PRAGMA table_info 檢查，沒有就補一個 ALTER TABLE。
+            bug_report_columns = [str(row[1]) for row in conn.execute('PRAGMA table_info(bug_reports)')]
+            if 'trip' not in bug_report_columns:
+                conn.execute("ALTER TABLE bug_reports ADD COLUMN trip TEXT NOT NULL DEFAULT ''")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_bug_reports_trip ON bug_reports(trip)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_bug_reports_created_date ON bug_reports(created_date)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_game_records_room_id ON game_records(room_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_game_records_game_date ON game_records(game_date)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_rating_records_room_id ON rating_records(room_id)")
@@ -632,6 +661,25 @@ class GameRecordStore:
             return False
         return trip_key in self.trip_registrations
 
+    def get_registered_trip_display(self, raw_trip: str) -> str:
+        """把「原始、未加密」的 TRIP 密語加密後，如果這個加密值已經登記過，回傳
+        這個加密後的公開 TRIP 標籤；沒登記過（或輸入是空字串）回傳空字串。
+
+        故意只接受原始密語，用 encrypt_trip_like_higu() 直接加密後比對，不走
+        to_trip_display() 那種「輸入本身可能已經是加密值」的雙模式正規化——否則
+        只要有人看過別人公開顯示的 TRIP 標籤（例如在 TRIP 一覽、玩家卡上），直接
+        拿那個標籤當輸入，也會被誤判成「這是我的 TRIP」，沒有真正驗證到密語本身。
+        這裡刻意不檢查密碼，只確認「這組密語確實對應到一個已登記的 TRIP」，給那些
+        不需要密碼等級保護、只需要證明「知道這組密語」的情境使用（例如問題回報、
+        上傳頭像）。
+        """
+        trip_key = self.encrypt_trip_like_higu(raw_trip)
+        if not trip_key:
+            return ''
+        if trip_key not in self.trip_registrations:
+            return ''
+        return trip_key
+
     def verify_trip_password(self, trip: str, password: str) -> bool:
         trip_key = self.to_trip_display(trip)
         registration = self.trip_registrations.get(trip_key)
@@ -767,6 +815,191 @@ class GameRecordStore:
         self.rating_records.append(row)
         self._persist_rating_record(row)
         return row.record_id
+
+    def add_bug_report(
+        self,
+        nickname: str,
+        category: str,
+        description: str,
+        room_id: Optional[int] = None,
+        room_state_snapshot_json: str = '',
+        trip: str = '',
+    ) -> str:
+        """新增一筆玩家問題回報，回傳給回報者本人記錄查詢用的回報編號。
+
+        回報編號是隨機產生的亂碼（不是從 1 開始數的循序編號），避免別人把編號改一改
+        就能看到別人回報的內容；理論上幾乎不會撞號，但還是在撞號時重試幾次。
+
+        trip 這裡收到的應該已經是加密後的公開 Trip 標籤（跟遊戲裡其他地方一樣，由
+        呼叫端在上層把使用者輸入的原始密語加密過），這個方法本身不做加密，只負責存。
+        不填就是空字串，代表這筆回報沒有關聯任何 Trip。
+        """
+        created_date = datetime.now().isoformat()
+        last_error: Optional[Exception] = None
+        for _ in range(5):
+            token = uuid.uuid4().hex[:8].upper()
+            try:
+                with self._connect() as conn:
+                    conn.execute(
+                        """
+                        INSERT INTO bug_reports
+                        (report_token, created_date, nickname, category, description, room_id, room_state_snapshot_json, status, resolution_note, resolved_date, trip)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 'open', NULL, NULL, ?)
+                        """,
+                        (
+                            token,
+                            created_date,
+                            str(nickname or ''),
+                            str(category or ''),
+                            str(description or ''),
+                            int(room_id) if room_id is not None else None,
+                            str(room_state_snapshot_json or ''),
+                            str(trip or ''),
+                        ),
+                    )
+                return token
+            except sqlite3.IntegrityError as exc:
+                last_error = exc
+                continue
+        raise RuntimeError('failed to allocate a unique bug report token') from last_error
+
+    def list_bug_reports(self, status_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+        """撈出所有問題回報，給 Mike 在後台頁面查看用，按時間新到舊排序。這裡故意
+        連 room_state_snapshot_json 都一起回傳——跟 get_bug_report() 給回報者本人用
+        的那份不同，後台頁面是開發者在用，需要看得到除錯用的房間快照。"""
+        query = (
+            'SELECT report_token, created_date, nickname, category, description, '
+            'room_id, room_state_snapshot_json, status, resolution_note, resolved_date, trip '
+            'FROM bug_reports'
+        )
+        params: tuple = ()
+        normalized_status = str(status_filter or '').strip()
+        if normalized_status:
+            query += ' WHERE status = ?'
+            params = (normalized_status,)
+        query += ' ORDER BY created_date DESC'
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(query, params).fetchall()
+        return [
+            {
+                'report_token': row['report_token'],
+                'created_date': row['created_date'],
+                'nickname': row['nickname'],
+                'category': row['category'],
+                'description': row['description'],
+                'room_id': row['room_id'],
+                'room_state_snapshot_json': row['room_state_snapshot_json'] or '',
+                'status': row['status'],
+                'resolution_note': row['resolution_note'] or '',
+                'resolved_date': row['resolved_date'] or '',
+                'trip': row['trip'] or '',
+            }
+            for row in rows
+        ]
+
+    def list_bug_reports_by_trip(self, trip_display: str) -> List[Dict[str, Any]]:
+        """依加密後的公開 Trip 標籤，撈出這個 Trip 回報過的所有問題（按時間新到舊），
+        給回報者本人在查詢頁面用——不需要記住每一筆的回報編號。跟 get_bug_report()
+        一樣故意不回傳 room_state_snapshot_json（那是給開發者看的除錯資料）。
+        trip_display 是空字串就直接回傳空清單，不去查全部掛空 Trip 的回報（那些是
+        沒有填 Trip 的回報，不屬於任何人）。"""
+        normalized_trip = str(trip_display or '').strip()
+        if not normalized_trip:
+            return []
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT report_token, created_date, nickname, category, description,
+                       room_id, status, resolution_note, resolved_date
+                FROM bug_reports WHERE trip = ? ORDER BY created_date DESC
+                """,
+                (normalized_trip,),
+            ).fetchall()
+        return [
+            {
+                'report_token': row['report_token'],
+                'created_date': row['created_date'],
+                'nickname': row['nickname'],
+                'category': row['category'],
+                'description': row['description'],
+                'room_id': row['room_id'],
+                'status': row['status'],
+                'resolution_note': row['resolution_note'] or '',
+                'resolved_date': row['resolved_date'] or '',
+            }
+            for row in rows
+        ]
+
+    def update_bug_report(
+        self,
+        report_token: str,
+        status: Optional[str] = None,
+        resolution_note: Optional[str] = None,
+    ) -> bool:
+        """Mike 在後台頁面更新一筆問題回報的處理狀態／備註。status 給 None 代表這次
+        不改狀態，resolution_note 給 None 代表這次不改備註（給空字串則是清空備註）。
+        狀態改成 resolved 時順手記一次 resolved_date；改回其他狀態就把 resolved_date
+        清掉，避免卡著一個跟目前狀態不符的舊處理時間。找不到這個回報編號回傳 False。"""
+        token = str(report_token or '').strip().upper()
+        if not token:
+            return False
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                'SELECT report_token FROM bug_reports WHERE report_token = ?', (token,)
+            ).fetchone()
+            if not row:
+                return False
+            fields: List[str] = []
+            params: List[Any] = []
+            if status is not None:
+                normalized_status = str(status).strip()
+                fields.append('status = ?')
+                params.append(normalized_status)
+                if normalized_status == 'resolved':
+                    fields.append('resolved_date = ?')
+                    params.append(datetime.now().isoformat())
+                else:
+                    fields.append('resolved_date = NULL')
+            if resolution_note is not None:
+                fields.append('resolution_note = ?')
+                params.append(str(resolution_note))
+            if fields:
+                params.append(token)
+                conn.execute(f"UPDATE bug_reports SET {', '.join(fields)} WHERE report_token = ?", params)
+        return True
+
+    def get_bug_report(self, report_token: str) -> Optional[Dict[str, Any]]:
+        """依回報編號查詢一筆問題回報；故意不回傳 room_state_snapshot_json 給呼叫端
+        （那是給開發者看的除錯用資料，不是回報者本人需要看到的東西）。"""
+        token = str(report_token or '').strip().upper()
+        if not token:
+            return None
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """
+                SELECT report_token, created_date, nickname, category, description,
+                       room_id, status, resolution_note, resolved_date
+                FROM bug_reports WHERE report_token = ?
+                """,
+                (token,),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            'report_token': row['report_token'],
+            'created_date': row['created_date'],
+            'nickname': row['nickname'],
+            'category': row['category'],
+            'description': row['description'],
+            'room_id': row['room_id'],
+            'status': row['status'],
+            'resolution_note': row['resolution_note'] or '',
+            'resolved_date': row['resolved_date'] or '',
+        }
 
     def reassign_trip_by_account(self, target_trip: str, account: str, account_password: str, room_id: Optional[int] = None, *, only_unassigned: bool) -> int:
         trip_key = self.to_trip_display(target_trip)

@@ -209,14 +209,17 @@ class Unknown(Character):
             card_requires_choice = bool(requires_choice_fn(source, user, rooms))
 
         # 憤怒/勒索/貪婪這類卡片：Unknown 可先決定是否發動能力。
-        # 若不發動能力，回傳 0 代表走原始規則判定，不強制改寫卡片效果。
         if card_requires_choice:
             if normalized_choice in ('activate', 'effect1', 'activate_give'):
                 return 1
             if normalized_choice in ('skip', 'effect2', 'activate_damage'):
                 return 2
             if normalized_choice in ('normal', 'no_activate', 'none', '0', 'false'):
-                return 0
+                # 2026-10-13：原本回 0 代表「交給原始規則判定」，但謎的真實陣營固定就是暗影，
+                # 遇到會猜暗影的綠卡（憤怒／貪婪）時，原始規則一定會判定成功，等於選了
+                # 「不發動」也沒用，效果照樣發生。謎的能力應該是完全由自己決定要不要讓
+                # 這張卡生效，不是「不發動就照原始規則」，所以改成回傳 3，代表強制不生效。
+                return 3
             return None
 
         if normalized_choice == 'activate':

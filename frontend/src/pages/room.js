@@ -8,6 +8,7 @@ import { renderVillageInfo as renderVillageInfoModule } from './room/villageInfo
 import { buildReplayRoomState as buildReplayRoomStateModule } from './room/replayAdapter.js';
 import { buildChatStageLines } from './room/chatFormatter.js';
 import { createCardInfoHelpers } from './room/cardInfoDialog.js';
+import { createDiscardPileDetailHelpers } from './room/discardPileDialog.js';
 import { createDamageMeterHandlers } from './room/damageMeter.js';
 import { renderStageFieldCards } from './room/fieldCards.js';
 import { handlePlayerCardClick } from './room/playerCardActions.js';
@@ -50,6 +51,9 @@ let fieldDetailOutsideHandlerBound = false;
 let activeCardDetailOutsideHandlerBound = false;
 let chatCardTokenHandlerBound = false;
 let activeCardDialogAnchor = null;
+let discardPileDialogAnchor = null;
+let discardDetailOutsideHandlerBound = false;
+let turnTimeoutTickerBound = false;
 let latestRoomSnapshot = null;
 let latestRoomRenderSeq = 0;
 let diceRollAnimating = false;
@@ -78,6 +82,15 @@ const {
   getAnchor: () => activeCardDialogAnchor,
   setAnchor: (anchor) => {
     activeCardDialogAnchor = anchor;
+  },
+});
+
+const { positionDiscardPileDetail, closeDiscardPileDetail, openDiscardPileDetail } = createDiscardPileDetailHelpers({
+  t,
+  getLocalizedCardName,
+  getAnchor: () => discardPileDialogAnchor,
+  setAnchor: (anchor) => {
+    discardPileDialogAnchor = anchor;
   },
 });
 
@@ -933,6 +946,45 @@ export function renderState({
         playActionNeededSound();
       }
     }
+
+    // 2026-10-13：移動到森林／古代祭壇這種有場地效果可選的地方時，玩家卡片會亮
+    // 起來可以點，但點下去之前完全看不出來點了會發生什麼事，Mike 反映容易讓人
+    // 搞不清楚要做什麼。這裡不改「跳過場地」按鈕本身（那個按鈕本來就是給玩家
+    // 選擇放棄場地效果用的，意思沒有錯，不能亂動），而是在剛好移動進來、場地
+    // 效果真的可以選的那一刻，額外跳一次說明用的 toast，講清楚「可以點誰、
+    // 跳過場地按鈕還是可以按」這兩個選項都存在。只在剛好從沒有變成有的那一刻
+    // 跳一次，之後玩家在這塊地上繼續互動（例如重新整理頁面、背景更新）不會
+    // 重複跳出來吵人。
+    if (selfAccount) {
+      const previousAreaPrompt = getAreaPromptState(state, previousRoomSnapshot);
+      const nextAreaPrompt = getAreaPromptState(state, data);
+      if (nextAreaPrompt.active && !previousAreaPrompt.active) {
+        const skipLabel = t('room.table_next_step.skip_area');
+        if (nextAreaPrompt.kind === 'weird-woods') {
+          toast(t('toast.area_action_weird_woods', { area: t('room.active_card.names.Weird Woods'), skip: skipLabel }));
+        } else if (nextAreaPrompt.kind === 'altar') {
+          toast(t('toast.area_action_altar', { area: t('room.active_card.names.Erstwhile Altar'), skip: skipLabel }));
+        }
+      }
+    }
+
+    // 2026-10-13：殺死玩家後要掠奪裝備（pendingKillLoot）這一步，跟上面的場地效果一樣，
+    // 玩家卡片會亮起來可以點，但點下去之前完全看不出來點了會發生什麼事，所以也補一次
+    // 說明用的 toast：講清楚「點誰的卡片」才能拿到他們的裝備。這一步目前沒有「跳過」選項
+    // （擊殺後掠奪裝備是強制要選的），所以提示文字裡不提跳過按鈕。同樣只在剛好從沒有變成
+    // 有的那一刻跳一次，避免背景更新時重複吵人。
+    if (selfAccount) {
+      const previousKillLoot = getPendingKillLootState(state, previousRoomSnapshot);
+      const nextKillLoot = getPendingKillLootState(state, data);
+      if (nextKillLoot.active && !previousKillLoot.active) {
+        const deadNames = nextKillLoot.deathAccounts
+          .map((account) => String(data?.players?.[account]?.name || account).trim())
+          .filter(Boolean);
+        if (deadNames.length > 0) {
+          toast(t('toast.area_action_kill_loot', { name: deadNames.join('、') }));
+        }
+      }
+    }
   }
 
   const isChatRoom = Boolean(data?.room?.is_chat_room);
@@ -1090,6 +1142,53 @@ export function bindRoomEvents({
       }
     });
     activeCardDetailOutsideHandlerBound = true;
+  }
+
+  const openDiscardPileDialog = (color, anchorEl) => {
+    const colorPiles = latestRoomSnapshot?.card_piles?.[color] || {};
+    const discardCards = Array.isArray(colorPiles.discard_cards) ? colorPiles.discard_cards : [];
+    openDiscardPileDetail({ color, discardCards, anchorEl });
+  };
+
+  if (!discardDetailOutsideHandlerBound) {
+    document.addEventListener('pointerdown', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('#stageDiscardDetail') || target.closest('[data-pile-type="discard"]')) return;
+      closeDiscardPileDetail();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeDiscardPileDetail();
+    });
+    window.addEventListener('resize', () => {
+      const panelEl = document.getElementById('stageDiscardDetail');
+      if (!(panelEl instanceof HTMLElement) || panelEl.hidden) return;
+      if (discardPileDialogAnchor instanceof HTMLElement) {
+        positionDiscardPileDetail(panelEl, discardPileDialogAnchor);
+      }
+    });
+    discardDetailOutsideHandlerBound = true;
+  }
+
+  // 2026-10-13：暴斃倒數秒數改成每秒用本機時鐘自己算，不用等下一次房間快照推播
+  // 才跳數字；`#roomTurnTimeoutRemainSeconds` 這個 <span> 每次房間快照更新
+  // （renderVillageInfo）都會整個重新渲染、帶上最新的 data-remain-base／
+  // data-remain-synced-at，這裡只是單純每秒讀一次這兩個屬性、用本機時鐘換算出
+  // 目前該顯示的秒數，不需要跟 render 流程互相協調，也不會因為反覆重算而累積誤差。
+  if (!turnTimeoutTickerBound) {
+    window.setInterval(() => {
+      const remainEl = document.getElementById('roomTurnTimeoutRemainSeconds');
+      if (!(remainEl instanceof HTMLElement)) return;
+      const baseRemain = Number(remainEl.getAttribute('data-remain-base'));
+      const syncedAt = Number(remainEl.getAttribute('data-remain-synced-at'));
+      if (!Number.isFinite(baseRemain) || !Number.isFinite(syncedAt)) return;
+      const elapsedSeconds = Math.floor((Date.now() - syncedAt) / 1000);
+      const nextRemain = Math.max(0, baseRemain - elapsedSeconds);
+      if (remainEl.textContent !== String(nextRemain)) {
+        remainEl.textContent = String(nextRemain);
+      }
+    }, 1000);
+    turnTimeoutTickerBound = true;
   }
 
   if (!chatCardTokenHandlerBound) {
@@ -2069,6 +2168,7 @@ export function bindRoomEvents({
         enable_initial_green_card: patch.enable_initial_green_card ?? Boolean(roomInfo.enable_initial_green_card),
         enable_neutral_chaos_mode: patch.enable_neutral_chaos_mode ?? Boolean(roomInfo.enable_neutral_chaos_mode),
         enable_badge_unique_character_select: patch.enable_badge_unique_character_select ?? Boolean(roomInfo.enable_badge_unique_character_select),
+        max_players: patch.max_players ?? Number(roomInfo.max_players || 8),
       });
       renderState(data);
       toast(t('room.settings.updated'));
@@ -2169,6 +2269,7 @@ export function bindRoomEvents({
     const initialGreenCheck = dialog.querySelector('[data-setting-initial-green-check]');
     const neutralChaosCheck = dialog.querySelector('[data-setting-neutral-chaos-check]');
     const badgeUniqueCheck = dialog.querySelector('[data-setting-badge-unique-check]');
+    const maxPlayersSelect = dialog.querySelector('[data-setting-max-players-select]');
 
     const turnTimeoutMinutes = Number.parseInt(String(timeoutSelect?.value || ''), 10);
     const useBasic = Boolean(basicCheck?.checked);
@@ -2184,12 +2285,25 @@ export function bindRoomEvents({
       return;
     }
 
+    // maxPlayersSelect 在聊天室不會渲染（dialog 裡整段跳過），這裡拿不到值
+    // 就直接沿用房間目前的上限，不送出這個欄位的變更。
+    let maxPlayersPatch;
+    if (maxPlayersSelect) {
+      const maxPlayers = Number.parseInt(String(maxPlayersSelect.value || ''), 10);
+      if (!Number.isInteger(maxPlayers) || maxPlayers < 4 || maxPlayers > 8) {
+        toast(t('room.settings.invalid_max_players'), 'error');
+        return;
+      }
+      maxPlayersPatch = maxPlayers;
+    }
+
     await updateVillageSettings({
       expansion_mode: expansionMode,
       turn_timeout_minutes: turnTimeoutMinutes,
       enable_initial_green_card: Boolean(initialGreenCheck?.checked),
       enable_neutral_chaos_mode: Boolean(neutralChaosCheck?.checked),
       enable_badge_unique_character_select: Boolean(badgeUniqueCheck?.checked),
+      max_players: maxPlayersPatch,
     });
 
     if (dialog.open) {
@@ -2344,6 +2458,7 @@ export function bindRoomEvents({
     selectAbilityAreaTarget,
     drawCardFromPile,
     openActiveCardDialog,
+    openDiscardPileDialog,
   });
 
   bindChatControls({

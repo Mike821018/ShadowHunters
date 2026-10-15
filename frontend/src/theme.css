@@ -953,6 +953,47 @@ legend {
   line-height: 1.55;
 }
 
+.stage-discard-detail-panel {
+  max-height: min(320px, calc(100vh - 48px));
+  overflow-y: auto;
+}
+
+.stage-discard-detail-list {
+  margin-top: 10px;
+}
+
+.stage-discard-detail-empty {
+  margin: 0;
+  color: #5c6b78;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.stage-discard-detail-list-inner {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stage-discard-detail-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: #111111;
+  line-height: 1.4;
+}
+
+.stage-discard-detail-item-count {
+  color: #5c6b78;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .area-name-hermit {
   color: #2e8b57;
 }
@@ -1053,6 +1094,25 @@ legend {
   border: 1px dashed #8fb4cc;
   box-shadow: none;
   background: transparent;
+}
+
+/* 2026-10-13：白卡／黑卡棄牌堆可以隨時點開查看目前棄了哪些卡（大衛判斷何時公開
+   角色用），所以這兩個棄牌堆一律顯示可點擊游標；綠卡是非公開資訊，維持原樣不可點。 */
+.stage-card-discard.stage-card-white,
+.stage-card-discard.stage-card-black {
+  cursor: pointer;
+}
+
+.stage-card-discard.stage-card-white:hover,
+.stage-card-discard.stage-card-black:hover {
+  border-color: #2f89c9;
+  box-shadow: 0 0 0 2px rgba(47, 137, 201, 0.14);
+}
+
+.stage-card-discard.is-active {
+  border-color: #e49d26;
+  border-style: solid;
+  box-shadow: 0 0 0 2px rgba(228, 157, 38, 0.18);
 }
 
 .stage-pile-title {
@@ -1780,20 +1840,27 @@ legend {
 
 .stage-next-step-button[data-phase='turn-start'],
 .stage-next-step-button[data-phase='skip-area'],
-.stage-next-step-button[data-phase='use-card'] {
+.stage-next-step-button[data-phase='use-card'],
+.stage-next-step-button[data-phase='equip'],
+.stage-next-step-button[data-phase='skip-attack'] {
   /* 2026-10-09 修正：原本的脈動速度（1.1s）跟顏色（淡紫色、透明度只有 0.32）
      太不明顯，玩家反映這顆按鈕看起來完全沒有閃爍提示；改成跟攻擊／區域目標
      提示（attack-target-pulse／area-target-pulse）一樣的 0.65s 節奏，並換成
      更醒目的琥珀色、提高透明度跟陰影範圍，讓這顆按鈕真正看得出在閃爍。
      2026-10-12 補上 data-phase='use-card'：這是一般需要自行為一張手上卡牌按
      「使用」的按鈕（包含初始綠卡流程要求自己為自己執行一張綠卡時的按鈕），
-     之前完全沒有閃爍樣式，跟 turn-start/skip-area 共用同一套。 */
+     之前完全沒有閃爍樣式，跟 turn-start/skip-area 共用同一套。
+     2026-10-13 補上 data-phase='equip'（確認裝備白卡）跟 data-phase='skip-attack'
+     （輪到自己可以選擇跳過攻擊）：這兩個按鈕的 JS 早就有在設定對應的 data-phase，
+     但這裡的選擇器清單一直沒有同步加進來，所以這兩種情況按鈕完全沒有閃爍提示。 */
   animation: turn-start-pulse 0.65s ease-in-out infinite;
 }
 
 .stage-next-step-button[data-phase='turn-start']:hover:not(:disabled),
 .stage-next-step-button[data-phase='skip-area']:hover:not(:disabled),
-.stage-next-step-button[data-phase='use-card']:hover:not(:disabled) {
+.stage-next-step-button[data-phase='use-card']:hover:not(:disabled),
+.stage-next-step-button[data-phase='equip']:hover:not(:disabled),
+.stage-next-step-button[data-phase='skip-attack']:hover:not(:disabled) {
   filter: brightness(1.05);
 }
 
@@ -1941,6 +2008,8 @@ legend {
   .stage-next-step-button[data-phase='turn-start'],
   .stage-next-step-button[data-phase='skip-area'],
   .stage-next-step-button[data-phase='use-card'],
+  .stage-next-step-button[data-phase='equip'],
+  .stage-next-step-button[data-phase='skip-attack'],
   .stage-card-field.move-target-prompt,
   .player-card.area-target-prompt {
     animation: none;
@@ -2822,6 +2891,17 @@ legend {
   left: 0;
   right: auto;
   transform: none;
+}
+
+/* 2026-10-14：手機版玩家卡排版欄數變少，選色小面板往下彈出時常常會超出自己
+   那張卡的範圍，蓋到下一排的玩家卡上；但 .player-card 本身是獨立的 stacking
+   context（position: relative + z-index: 1），裡面的 .color-picker-row 就算
+   設 z-index: 80 也只在自己卡片內部有效，比不過「DOM 順序在後面、z-index 同樣
+   是 1」的下一張玩家卡——下一張卡還是會畫在上面，結果選色面板看起來被擋住。
+   這裡跟上面 .player-role-info 彈出視窗用一樣的手法：面板打開時，把自己這張
+   玩家卡整張的 z-index 拉高，面板才能真的蓋在其他玩家卡上面。 */
+.player-card:has(.color-picker-row:not([hidden])) {
+  z-index: 50;
 }
 
 .color-swatch {

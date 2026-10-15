@@ -69,7 +69,12 @@ class Anger(Card):
         # 我猜你是獵人或暗影。如果是的話請給你的上家一張裝備卡、
         # 如果你沒有裝備卡的話則受到1點傷害。
         effect = False
-        if force_effect in (1, 2):
+        # 2026-10-13：3 代表謎（Unknown）明確選擇強制不生效（他們的能力是完全自己
+        # 決定要不要讓這張卡生效），不能再往下看真實陣營是否符合猜測——謎的真實
+        # 陣營剛好包含在這張卡的猜測範圍內，若不特別排除，選了也沒用，效果照樣發生。
+        if force_effect == 3:
+            effect = False
+        elif force_effect in (1, 2):
             effect = True
         elif target.character.camp in ["Hunter", "Shadow"]:
             effect = True
@@ -114,7 +119,12 @@ class Blackmail(Card):
         # 我猜你是中立或獵人。如果是的話請給你的上家一張裝備卡、
         # 如果你沒有裝備卡的話則受到1點傷害。
         effect = False
-        if force_effect in (1, 2):
+        # 2026-10-13：3 代表謎（Unknown）明確選擇強制不生效（他們的能力是完全自己
+        # 決定要不要讓這張卡生效），不能再往下看真實陣營是否符合猜測——謎的真實
+        # 陣營剛好包含在這張卡的猜測範圍內，若不特別排除，選了也沒用，效果照樣發生。
+        if force_effect == 3:
+            effect = False
+        elif force_effect in (1, 2):
             effect = True
         elif target.character.camp in ["Civilian", "Hunter"]:
             effect = True
@@ -213,7 +223,12 @@ class Greed(Card):
         # 我猜你是中立或暗影。如果是的話請給你的上家一張裝備卡、
         # 如果你沒有裝備卡的話則受到1點傷害。
         effect = False
-        if force_effect in (1, 2):
+        # 2026-10-13：3 代表謎（Unknown）明確選擇強制不生效（他們的能力是完全自己
+        # 決定要不要讓這張卡生效），不能再往下看真實陣營是否符合猜測——謎的真實
+        # 陣營剛好包含在這張卡的猜測範圍內，若不特別排除，選了也沒用，效果照樣發生。
+        if force_effect == 3:
+            effect = False
+        elif force_effect in (1, 2):
             effect = True
         elif target.character.camp in ["Civilian", "Shadow"]:
             effect = True

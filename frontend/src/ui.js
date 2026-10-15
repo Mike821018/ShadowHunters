@@ -266,6 +266,16 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       `;
     };
 
+  // 2026-10-13：別人的任何動作（加入房間、改顏色、狀態切換等）觸發 SSE 推播時，
+  // renderState() 都會重新呼叫這裡，把所有玩家卡的 innerHTML 整個重新生成一次；這時如果自己
+  // 卡上那個選色小面板剛好還開著，會在毫無預警的情況下被一起蓋掉關閉——玩家感覺就是選顏色被
+  // 自動更新打斷。所以重建 HTML 之前先記下目前是哪個玩家的選色小面板是打開的，重建後再把它重新
+  // 打開（前提是那個玩家在這次快照裡還有資格顯示選色器）。
+  const openColorPickerPanel = container.querySelector('[data-color-picker] .color-picker-row:not([hidden])');
+  const openColorPickerAccount = openColorPickerPanel
+    ? openColorPickerPanel.closest('[data-player-account]')?.getAttribute('data-player-account') || null
+    : null;
+
   if (view === 'room') {
     const minVisibleSlots = 8;
     const seatCards = entries.map(renderCard);
@@ -285,6 +295,14 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
     } else {
       container.innerHTML = entries.map(renderCard).join('');
     }
+  }
+
+  if (openColorPickerAccount) {
+    const reopenCard = container.querySelector(`[data-player-account="${CSS.escape(openColorPickerAccount)}"] [data-color-picker]`);
+    const reopenPanel = reopenCard?.querySelector('.color-picker-row');
+    const reopenToggle = reopenCard?.querySelector('.color-chip-trigger');
+    if (reopenPanel instanceof HTMLElement) reopenPanel.removeAttribute('hidden');
+    if (reopenToggle instanceof HTMLElement) reopenToggle.setAttribute('aria-expanded', 'true');
   }
 
   const closeAllColorPickers = () => {
@@ -353,6 +371,12 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
   if (typeof onPlayerCardClick === 'function') {
     container.querySelectorAll('[data-player-account]').forEach((card) => {
       card.addEventListener('click', (event) => {
+        // 2026-10-13：玩家想拖選或雙擊/三擊卡片上的文字（最常見的是暱稱）來複製時，
+        // mouseup 那一刻依然會觸發這裡的 click，結果變成誤觸發選取玩家（投票踢人等）；
+        // 所以先檢查這次 click 發生時畫面上有沒有非空的選取內容，有的話表示這是選字動作而不是真正的點擊，直接忽略。
+        const activeSelection = typeof window.getSelection === 'function' ? window.getSelection() : null;
+        if (activeSelection && activeSelection.toString().length > 0) return;
+
         const target = event.target;
         if (target instanceof Element && target.closest('[data-pick-color], .color-picker, .player-role-trigger, .player-role-popover, .player-role-info, .equip-chip, .player-shield-chip, .player-ability-chip')) return;
         const account = card.getAttribute('data-player-account');

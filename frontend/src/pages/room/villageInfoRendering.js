@@ -77,6 +77,18 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
           </label>
           <span class="field-hint room-settings-hint">${esc(t('lobby.create.badge_unique_hint'))}</span>
         </span>
+        ${isChatRoom ? '' : `
+        <span class="village-settings-group village-settings-group-max-players">
+          <strong>${esc(t('room.settings.max_players_label'))}</strong>
+          <select class="txt room-settings-select" data-setting-max-players-select>
+            <option value="4" ${maxPlayers === 4 ? 'selected' : ''}>4</option>
+            <option value="5" ${maxPlayers === 5 ? 'selected' : ''}>5</option>
+            <option value="6" ${maxPlayers === 6 ? 'selected' : ''}>6</option>
+            <option value="7" ${maxPlayers === 7 ? 'selected' : ''}>7</option>
+            <option value="8" ${maxPlayers === 8 ? 'selected' : ''}>8</option>
+          </select>
+          <span class="field-hint room-settings-hint">${esc(t('room.settings.max_players_hint'))}</span>
+        </span>`}
         <span class="village-settings-group village-settings-group-timeout">
           <strong>${esc(t('lobby.create.turn_timeout_label'))}</strong>
           <select class="txt room-settings-select" data-setting-timeout-select>
@@ -122,8 +134,22 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
   const timeoutWarningClass = timeoutCurrentAccount && selfAccount && timeoutCurrentAccount === selfAccount
     ? 'room-timeout-warning'
     : 'room-timeout-info';
+  // 2026-10-13：倒數秒數原本只有每次房間快照更新（SSE 推播）時才會換一次數字，
+  // 看起來像是「每幾秒跳一次」而不是正常的每秒讀秒。這裡改成：畫面上只放一個固定的
+  // <span>，記下「這次同步到的剩餘秒數」跟「同步到的那個時間點（本機時鐘）」兩個
+  // data 屬性，實際顯示的數字交給 room.js 裡一個每秒跑一次的本機倒數計時器
+  // （turnTimeoutTicker）自己用本機時鐘算出目前該顯示多少秒，不用等下一次房間快照
+  // 推播才更新；每次真的有新快照進來，這個 <li> 會整個重新渲染，data 屬性也會換成
+  // 新的基準值跟新的同步時間點，本機倒數計時器下一次 tick 就會自動用新的基準值校正，
+  // 不會愈走愈不準。
+  const timeoutRemainDisplay = Math.max(0, Number.isFinite(timeoutRemain) ? timeoutRemain : 0);
+  const timeoutTextTemplate = esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-' }));
+  const timeoutTextHtml = timeoutTextTemplate.replace(
+    '{n}',
+    `<span id="roomTurnTimeoutRemainSeconds" data-remain-base="${timeoutRemainDisplay}" data-remain-synced-at="${Date.now()}">${timeoutRemainDisplay}</span>`,
+  );
   const timeoutWarnRow = (status === 2 && Number.isFinite(timeoutRemain))
-    ? `<li class="${isRoomLayout ? 'village-info-row ' : ''}${timeoutWarningClass}"><strong>${esc(t('room.info.turn_timeout'))}</strong>${esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-', n: Math.max(0, timeoutRemain) }))}</li>`
+    ? `<li class="${isRoomLayout ? 'village-info-row ' : ''}${timeoutWarningClass}"><strong>${esc(t('room.info.turn_timeout'))}</strong>${timeoutTextHtml}</li>`
     : '';
   const boomedNotice = data?.boomed_notice || null;
   const boomedName = String(boomedNotice?.name || boomedNotice?.trip_display || '').trim();

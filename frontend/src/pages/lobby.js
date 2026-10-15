@@ -83,6 +83,17 @@ export function bindLobbyEvents({
     ensureExpansionSelection(el.expansionExtendCheck);
   });
 
+  // 2026-10-13：「開啟 GM 功能」是讓村長本人升級成 GM 的開關，所以村長 Trip
+  // 還空著的時候不能勾；村長 Trip 被清空時，這個開關要自動取消勾選並停用。
+  const syncGmEnabledAvailability = () => {
+    if (!el.gmEnabledCheck) return;
+    const hasManagerTrip = Boolean((el.managerTrip?.value || '').trim());
+    el.gmEnabledCheck.disabled = !hasManagerTrip;
+    if (!hasManagerTrip) el.gmEnabledCheck.checked = false;
+  };
+  el.managerTrip?.addEventListener('input', syncGmEnabledAvailability);
+  syncGmEnabledAvailability();
+
   el.createRoomForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const baseName = normalizeVillageName(el.roomName.value);
@@ -92,8 +103,8 @@ export function bindLobbyEvents({
     const trip_min_games = Math.max(0, Number.parseInt(el.tripMinGames?.value || '0', 10) || 0);
     const manager_trip = (el.managerTrip?.value || '').trim();
     const manager_trip_encrypted = el.managerTripEncryptedCheck?.checked ?? true;
-    const gm_trip = (el.gmTrip?.value || '').trim();
-    const gm_trip_encrypted = el.gmTripEncryptedCheck?.checked ?? true;
+    // 2026-10-13：GM 不再是另外指定的一個人，改成讓村長本人升級成 GM 的開關。
+    const gm_enabled = Boolean(manager_trip) && (el.gmEnabledCheck?.checked ?? false);
     const is_chat_room = el.chatVillageCheck?.checked ?? false;
     const expansion_mode = resolveExpansionMode();
     const enable_initial_green_card = el.enableInitialGreenCardCheck?.checked ?? false;
@@ -131,8 +142,7 @@ export function bindLobbyEvents({
       trip_min_games,
       manager_trip,
       manager_trip_encrypted,
-      gm_trip,
-      gm_trip_encrypted,
+      gm_enabled,
       is_chat_room,
       expansion_mode,
       enable_initial_green_card,
@@ -148,8 +158,10 @@ export function bindLobbyEvents({
     if (el.tripMinGames) el.tripMinGames.value = '0';
     if (el.managerTrip) el.managerTrip.value = '';
     if (el.managerTripEncryptedCheck) el.managerTripEncryptedCheck.checked = false;
-    if (el.gmTrip) el.gmTrip.value = '';
-    if (el.gmTripEncryptedCheck) el.gmTripEncryptedCheck.checked = false;
+    if (el.gmEnabledCheck) {
+      el.gmEnabledCheck.checked = false;
+      el.gmEnabledCheck.disabled = true;
+    }
     if (el.requireTripCheck) el.requireTripCheck.checked = false;
     if (el.hideTripCheck) el.hideTripCheck.checked = true;
     if (el.chatVillageCheck) el.chatVillageCheck.checked = false;

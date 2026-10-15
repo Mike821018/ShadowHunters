@@ -360,11 +360,10 @@ export async function initAvatarGalleryPage({ toast, dispatch }) {
     uploadForm.addEventListener('submit', (event) => {
       event.preventDefault();
       const trip = document.getElementById('avatarUploadTrip')?.value.trim() || '';
-      const password = document.getElementById('avatarUploadPassword')?.value || '';
       const name = document.getElementById('avatarUploadName')?.value.trim() || '';
       const color = normalizeHexColor(document.getElementById('avatarUploadColor')?.value) || '#9aa4ad';
       const file = document.getElementById('avatarUploadFile')?.files?.[0];
-      if (!trip || !password || !name || !file) {
+      if (!trip || !name || !file) {
         toast(t('avatar.upload_required'), 'error');
         return;
       }
@@ -373,7 +372,6 @@ export async function initAvatarGalleryPage({ toast, dispatch }) {
           const compressedDataUrl = await compressImageFileToDataUrl(file, { canvasSize: 56, mimeType: 'image/png', quality: 0.9 });
           const uploaded = await dispatch('upload_avatar', {
             trip,
-            password,
             name,
             color,
             image_data_url: compressedDataUrl,

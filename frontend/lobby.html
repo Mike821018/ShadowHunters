@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>暗影獵人｜遊戲大廳</title>
-    <link rel="stylesheet" href="./src/theme.css" />
+    <link rel="stylesheet" href="./src/theme.css?v=20261013-issue126-stageglowfix1" />
   </head>
   <body data-page="lobby">
     <div id="header">
@@ -28,6 +28,7 @@
             <li><a class="tab" href="./avatar.html" data-i18n="common.nav.avatars">頭像一覽</a></li>
             <li><a class="tab" href="./resident_register.html" data-i18n="common.nav.identity">身分登錄</a></li>
             <li><a class="tab" href="./version.html" data-i18n="common.nav.versions">版本紀錄</a></li>
+            <li><a class="tab" href="./report.html" data-i18n="common.nav.report">問題回報</a></li>
           </ul>
         </div>
       </div>
@@ -91,17 +92,13 @@
                   <span data-i18n="lobby.create.manager_trip_encrypted_label">輸入的是加密後 Trip</span>
                 </label>
                 <span class="field-hint" data-i18n="lobby.create.manager_trip_hint">（需累積 Trip 遊戲場次達 10 場以上才能設定為村長）</span>
-              </div>
-
-              <!-- 2026-10-09 新增：GM（旁觀主持）Trip，跟村長 Trip 互斥，後端已支援、這次補上前端欄位 -->
-              <label class="option-title" for="gmTrip" data-i18n="lobby.create.gm_trip_label">GM Trip</label>
-              <div class="stacked-fields">
-                <input id="gmTrip" class="txt" type="text" placeholder="留空代表不設定" data-i18n-placeholder="lobby.create.gm_trip_placeholder" />
+                <!-- 2026-10-13：拿掉原本獨立的「GM Trip」欄位——GM 改成讓村長本人
+                     升級成的身分，不需要另外指定一個人；村長 Trip 空著時這個開關不能勾。 -->
                 <label class="checkbox-row checkbox-row-inline">
-                  <input type="checkbox" id="gmTripEncryptedCheck" />
-                  <span data-i18n="lobby.create.gm_trip_encrypted_label">輸入的是加密後 Trip</span>
+                  <input type="checkbox" id="gmEnabledCheck" disabled />
+                  <span data-i18n="lobby.create.gm_enabled_label">開啟 GM 功能</span>
                 </label>
-                <span class="field-hint" data-i18n="lobby.create.gm_trip_hint">（需累積 Trip 遊戲場次達 30 場以上；GM 旁觀主持、不計入 4~8 人門檻，跟村長最多只能設定其中一種）</span>
+                <span class="field-hint" data-i18n="lobby.create.gm_enabled_hint">（村長 Trip 的累積場次需達到 30 場以上才能開啟；開啟後，加入時比對到村長 Trip 的那個人會升級成 GM——旁觀主持、不下場、不計入 4~8 人門檻，但仍保留村長的設定/踢人等管理權限）</span>
               </div>
 
               <label class="option-title" for="requireTripCheck" data-i18n="lobby.create.require_trip_label">Trip 驗證</label>
