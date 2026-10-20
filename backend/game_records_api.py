@@ -133,6 +133,19 @@ class GameRecordsAPI:
                     room_state.get('enable_badge_unique_character_select', False),
                 )
             ),
+            # 2026-10-19 修正：gm_enabled／enable_random_initial_position 這兩個設定
+            # 是 2026-10-15 才加的，當時只記得同步房間頁村子資訊徽章列（見
+            # villageSettingsBadges.js），忘了這裡的 defaults 清單也要補上，導致
+            # 這兩個設定從來沒有被正規化／回填過——較舊的紀錄直接讀不到值，對戰
+            # 紀錄列表（records.js）因此永遠少了 GM／R 這兩個徽章。補上跟其他欄位
+            # 一樣的 settings／room_state 雙重回退寫法。
+            'gm_enabled': parse_bool(settings.get('gm_enabled', room_state.get('gm_enabled', False))),
+            'enable_random_initial_position': parse_bool(
+                settings.get(
+                    'enable_random_initial_position',
+                    room_state.get('enable_random_initial_position', False),
+                )
+            ),
             'turn_timeout_minutes': max(
                 1,
                 parse_int(settings.get('turn_timeout_minutes', room_state.get('turn_timeout_minutes')), 3),
@@ -156,6 +169,8 @@ class GameRecordsAPI:
                 'enable_initial_green_card',
                 'enable_neutral_chaos_mode',
                 'enable_badge_unique_character_select',
+                'gm_enabled',
+                'enable_random_initial_position',
                 'turn_timeout_minutes',
             ):
                 if merged_room_state.get(key) != settings[key]:
@@ -572,6 +587,16 @@ class GameRecordsAPI:
                 options.append('Badge Unique')
             if settings.get('require_trip'):
                 options.append('TRIP Verification')
+            # 2026-10-19 修正：這份 options 清單原本沒有 gm_enabled／
+            # enable_random_initial_position，跟上面 _get_normalized_game_settings
+            # 少了這兩個欄位的 defaults 是同一個根因——這裡補上，讓純文字版的
+            # options 字串也完整（雖然前端列表已經改成直接讀下面新加的
+            # game_settings 結構化欄位，不再解析這段文字，但這個字串可能還有
+            # 其他用途，例如 validation.py 的既有測試，保持內容完整比較保險）。
+            if settings.get('gm_enabled'):
+                options.append('GM Mode')
+            if settings.get('enable_random_initial_position'):
+                options.append('Random Initial Position')
             if str(settings.get('expansion_mode') or ''):
                 options.append(str(settings.get('expansion_mode')))
 
@@ -586,6 +611,12 @@ class GameRecordsAPI:
                 'player_count': len(record.players or []),
                 'winner_code': _winner_code(record),
                 'options': ' / '.join(options) if options else '-',
+                # 2026-10-19 新增：結構化版本的設定旗標，跟 api_get_game_record
+                # （單筆紀錄詳情）回傳的 game_settings 同一套欄位——前端改成直接讀
+                # 這個算徽章，不用再去解析上面那個拼接成人類可讀句子的 options
+                # 字串。之後再新增設定只要 _get_normalized_game_settings 的
+                # defaults 清單裡有定義，這裡就會自動帶出來，不用額外改這段。
+                'game_settings': settings,
             })
 
         total = len(all_entries)

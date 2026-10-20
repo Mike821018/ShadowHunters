@@ -31,6 +31,8 @@ export function createDamageMeterHandlers({ t, esc }) {
 
     const playerMarkersByDamage = new Map();
     Object.entries(data?.players || {}).forEach(([account, player]) => {
+      // 2026-10-15：GM 旁觀主持、不下場，也不會受傷，不應該出現在傷害計量表上；之前沒排除，所以 GM 會像一般玩家一樣出現在 0 傷害格，顏色因為沒分配顏色而退回預設灰色。
+      if (player?.is_gm) return;
       if (!player?.alive) return;
       const damage = clampDamageValue(player?.damage);
       const existing = playerMarkersByDamage.get(damage) || [];

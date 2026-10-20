@@ -94,6 +94,16 @@ export function bindLobbyEvents({
   el.managerTrip?.addEventListener('input', syncGmEnabledAvailability);
   syncGmEnabledAvailability();
 
+  // 2026-10-15：聊天村人數上限固定 50 人，不受「房間人數上限」這個 4~8 的選單
+  // 影響，勾選聊天村的時候把這個選單停用，避免讓人誤以為選了就有效。
+  const syncMaxPlayersAvailability = () => {
+    if (!el.roomMaxPlayersSelect) return;
+    const isChatRoom = Boolean(el.chatVillageCheck?.checked);
+    el.roomMaxPlayersSelect.disabled = isChatRoom;
+  };
+  el.chatVillageCheck?.addEventListener('change', syncMaxPlayersAvailability);
+  syncMaxPlayersAvailability();
+
   el.createRoomForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const baseName = normalizeVillageName(el.roomName.value);
@@ -110,7 +120,9 @@ export function bindLobbyEvents({
     const enable_initial_green_card = el.enableInitialGreenCardCheck?.checked ?? false;
     const enable_neutral_chaos_mode = el.enableNeutralChaosModeCheck?.checked ?? false;
     const enable_badge_unique_character_select = el.badgeUniqueCheck?.checked ?? false;
+    const enable_random_initial_position = el.enableRandomInitialPositionCheck?.checked ?? false;
     const turn_timeout_minutes = Math.max(1, Number.parseInt(el.turnTimeoutSelect?.value || '3', 10) || 3);
+    const max_players = Math.min(8, Math.max(4, Number.parseInt(el.roomMaxPlayersSelect?.value || '8', 10) || 8));
     if (!baseName) {
       toast(t('toast.room_name_required'), 'error');
       return;
@@ -148,7 +160,9 @@ export function bindLobbyEvents({
       enable_initial_green_card,
       enable_neutral_chaos_mode,
       enable_badge_unique_character_select,
+      enable_random_initial_position,
       turn_timeout_minutes,
+      max_players,
     });
     state.roomId = data.room_id;
     persistSession(state);
@@ -171,6 +185,9 @@ export function bindLobbyEvents({
     if (el.enableInitialGreenCardCheck) el.enableInitialGreenCardCheck.checked = false;
     if (el.enableNeutralChaosModeCheck) el.enableNeutralChaosModeCheck.checked = false;
     if (el.badgeUniqueCheck) el.badgeUniqueCheck.checked = false;
+    if (el.enableRandomInitialPositionCheck) el.enableRandomInitialPositionCheck.checked = false;
+    if (el.roomMaxPlayersSelect) el.roomMaxPlayersSelect.value = '8';
+    syncMaxPlayersAvailability();
     await refreshRooms();
     goToRoomPage(data.room_id);
   });

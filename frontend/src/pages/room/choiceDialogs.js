@@ -128,17 +128,25 @@ export function showGreenChoiceDialog({
   message,
   activateLabel,
   skipLabel,
+  // 2026-10-19 新增：謎（Unknown）收到搶裝備類綠卡時需要「交出裝備／扣血／不發動
+  // （照原本判定走）」三個互斥的實際決定，外加一個真正的「取消、先不決定」——原本
+  // 只有 activate/skip/cancel 三顆按鈕，把「不發動」硬塞進 cancel 的位置，導致玩家
+  // 沒辦法單純關掉視窗、之後再重新確認（見 room.js 呼叫端的修正註解）。這裡新增一顆
+  // 獨立的 noActivate 按鈕，cancel 則恢復成單純的「先不決定」語意（回傳空字串）。
+  noActivateLabel,
   cancelLabel,
   currentChoice = '',
   showActivate = true,
   showSkip = true,
+  showNoActivate = false,
   cancelReturnsValue = '',
 }) {
   return new Promise((resolve) => {
     const dialog = el.greenChoiceDialog;
     const allowActivate = Boolean(showActivate);
     const allowSkip = Boolean(showSkip);
-    if (!allowActivate && !allowSkip) {
+    const allowNoActivate = Boolean(showNoActivate);
+    if (!allowActivate && !allowSkip && !allowNoActivate) {
       resolve('');
       return;
     }
@@ -166,6 +174,11 @@ export function showGreenChoiceDialog({
       el.greenChoiceSkipButton.hidden = !allowSkip;
       el.greenChoiceSkipButton.disabled = !allowSkip;
     }
+    if (el.greenChoiceNoActivateButton) {
+      el.greenChoiceNoActivateButton.textContent = noActivateLabel || '';
+      el.greenChoiceNoActivateButton.hidden = !allowNoActivate;
+      el.greenChoiceNoActivateButton.disabled = !allowNoActivate;
+    }
     if (el.greenChoiceCancelButton) el.greenChoiceCancelButton.textContent = cancelLabel;
 
     let settled = false;
@@ -174,6 +187,7 @@ export function showGreenChoiceDialog({
       dialog.removeEventListener('close', onClose);
       el.greenChoiceActivateButton?.removeEventListener('click', onActivate);
       el.greenChoiceSkipButton?.removeEventListener('click', onSkip);
+      el.greenChoiceNoActivateButton?.removeEventListener('click', onNoActivate);
       el.greenChoiceCancelButton?.removeEventListener('click', onCancelClick);
     };
     const finish = (value) => {
@@ -189,12 +203,14 @@ export function showGreenChoiceDialog({
     const onClose = () => finish(dialog.returnValue || '');
     const onActivate = () => dialog.close('activate');
     const onSkip = () => dialog.close('skip');
+    const onNoActivate = () => dialog.close('no_activate');
     const onCancelClick = () => dialog.close(cancelReturnsValue);
 
     dialog.addEventListener('cancel', onCancel);
     dialog.addEventListener('close', onClose);
     el.greenChoiceActivateButton?.addEventListener('click', onActivate);
     el.greenChoiceSkipButton?.addEventListener('click', onSkip);
+    el.greenChoiceNoActivateButton?.addEventListener('click', onNoActivate);
     el.greenChoiceCancelButton?.addEventListener('click', onCancelClick);
     dialog.showModal();
   });

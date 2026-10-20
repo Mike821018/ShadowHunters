@@ -203,7 +203,15 @@ export function selectGreenConfirmPromptState(state, dataSnapshot) {
   const canSetChoice = Boolean(isTarget && prompt?.can_set_choice);
   const needsChoice = Boolean(canSetChoice && prompt?.needs_choice);
   return {
+    // 2026-10-17 修正：active 原本只看 roomStatus/sourceAccount/targetAccount，完全沒有
+    // 排除「自己其實不是這次綠卡確認的目標」這種情況——這個 active 之前被房間畫面拿去
+    // 判斷玩家列表卡片要不要閃爍（見 room.js 的 playerPromptTargets／playerPromptClass），
+    // 導致不管是不是輪到自己、甚至自己根本不是這次效果的目標，只要房間裡任何人正在等待
+    // 綠卡目標確認，所有人畫面上都會看到那張目標玩家卡片在閃爍。這裡額外把 isTarget 往外
+    // 暴露出去，讓呼叫端可以自行判斷「這次閃爍跟我有沒有關係」，藉此只讓真正需要操作的
+    // 目標玩家自己看到閃爍，其他人（包含出綠卡的人跟純粹旁觀的其他玩家）改成靜態高亮。
     active: Boolean(roomStatus === 2 && sourceAccount && targetAccount),
+    isTarget,
     sourceAccount,
     targetAccount,
     cardName: String(prompt?.card_name || ''),

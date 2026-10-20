@@ -1,5 +1,6 @@
 import { expansionModeToCardFlags } from './roomSettingsBadges.js';
 import { renderVillageSettingsBadges, bindVillageSettingsBadgePopover } from './villageSettingsBadges.js';
+import { getRenderSyncedAtMs } from './renderClock.js';
 
 export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage, state, t, isRoomLayoutPage, isReplayViewState }, data) {
   if (!el.villageInfoList) return;
@@ -41,15 +42,30 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
   const canEditSettings = isVillageManager && status === 1;
   const isSelfReady = Boolean(selfPlayer?.is_ready);
   const canToggleReady = Boolean(selfPlayer) && status === 1 && !isChatRoom;
-  const canAbolish = isVillageManager && status === 1;
+  // 2026-10-19 修正：原本只有招募中（status 1）才會顯示廢村按鈕，遊戲開始後
+  // （status 2）村長/GM 就完全沒有辦法廢村了。Mike 要求遊戲進行中也要看得到這顆
+  // 按鈕（搭配 room.js 裡新補上的二次確認，避免誤觸），遊戲結束（status 3）後
+  // 房間本身已經沒有在運作，維持不顯示。
+  const canAbolish = isVillageManager && (status === 1 || status === 2);
   const canRollCall = isVillageManager && status === 1 && !isChatRoom;
   const canExtendTurnTimeout = isVillageManager && status === 2 && !isChatRoom;
+  // 2026-10-20 修正：原本這裡還會算「GM 可以按開始遊戲」（canGmStartGame），跟非 GM
+  // 玩家一樣用一個額外按鈕手動觸發開局。Mike 要求改回全員（含 GM）準備完成就自動
+  // 開局，GM 現在跟其他玩家一樣用 canToggleReady 那顆「準備」按鈕控制，不再需要
+  // 別的開始遊戲按鈕，所以 canGmStartGame、nonGmPlayerEntries、allNonGmReady 三個一起拿掉。
+  // 發完角色後會暫停等 GM 按「開始遊戲流程」這一重關卡是別的機制，這次沒改，
+  // canGmReleaseStart 維持原樣不動。
+  const gmEnabledRoom = Boolean(room.gm_enabled);
+  const isGm = Boolean(selfPlayer?.is_gm);
+  const awaitingGmRelease = Boolean(room.awaiting_gm_release);
+  const canGmReleaseStart = isGm && gmEnabledRoom && status === 2 && awaitingGmRelease;
   const villageName = withVillageSuffix(room.room_name || '');
   const villageDescription = room.room_comment || room.village_description || room.description || '-';
   const boomTimeoutMinutes = Number(room.turn_timeout_minutes || 3);
   const expansionMode = String(room.expansion_mode || 'all');
   const neutralChaosMode = Boolean(room.enable_neutral_chaos_mode);
   const badgeUniqueMode = Boolean(room.enable_badge_unique_character_select);
+  const randomInitialPosition = Boolean(room.enable_random_initial_position);
   const { useBasic, useExtend } = expansionModeToCardFlags(expansionMode);
   const settingsDialog = canEditSettings
     ? `
@@ -116,6 +132,14 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
           </label>
           <span class="field-hint room-settings-hint">${esc(t('lobby.create.neutral_chaos_mode_hint'))}</span>
         </span>
+        <span class="village-settings-group village-settings-group-random-position">
+          <strong>${esc(t('lobby.create.random_initial_position_label'))}</strong>
+          <label class="checkbox-row checkbox-row-inline room-settings-checkbox">
+            <input type="checkbox" data-setting-random-position-check ${randomInitialPosition ? 'checked' : ''} />
+            <span>${esc(t('room.info.setting_on'))}</span>
+          </label>
+          <span class="field-hint room-settings-hint">${esc(t('lobby.create.random_initial_position_hint'))}</span>
+        </span>
           </div>
           <div class="inline-actions village-settings-dialog-actions">
             <button class="btn" type="button" data-save-village-settings>${esc(t('room.ops.save_settings'))}</button>
@@ -146,7 +170,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
   const timeoutTextTemplate = esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-' }));
   const timeoutTextHtml = timeoutTextTemplate.replace(
     '{n}',
-    `<span id="roomTurnTimeoutRemainSeconds" data-remain-base="${timeoutRemainDisplay}" data-remain-synced-at="${Date.now()}">${timeoutRemainDisplay}</span>`,
+    `<span id="roomTurnTimeoutRemainSeconds" data-remain-base="${timeoutRemainDisplay}" data-remain-synced-at="${getRenderSyncedAtMs()}">${timeoutRemainDisplay}</span>`,
   );
   const timeoutWarnRow = (status === 2 && Number.isFinite(timeoutRemain))
     ? `<li class="${isRoomLayout ? 'village-info-row ' : ''}${timeoutWarningClass}"><strong>${esc(t('room.info.turn_timeout'))}</strong>${timeoutTextHtml}</li>`
@@ -155,6 +179,11 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
   const boomedName = String(boomedNotice?.name || boomedNotice?.trip_display || '').trim();
   const boomedNoticeRow = (status === 2 && boomedName)
     ? `<li class="${isRoomLayout ? 'village-info-row ' : ''}room-timeout-warning"><strong>${esc(t('room.info.boomed_notice'))}</strong>${esc(t('room.info.boomed_notice_fmt', { name: boomedName }))}</li>`
+    : '';
+  // 2026-10-15：開局後暫停等 GM 開始遊戲流程時，給所有人（不只 GM）看到這則提示，
+  // 不然其他玩家會搞不清楚為什麼角色都發好了卻什麼事都沒發生。
+  const awaitingGmReleaseNoticeRow = awaitingGmRelease
+    ? `<li class="${isRoomLayout ? 'village-info-row ' : ''}room-timeout-warning"><strong>${esc(t('room.info.awaiting_gm_release'))}</strong>${esc(t('room.info.awaiting_gm_release_desc'))}</li>`
     : '';
 
   if (!isRoomLayout) {
@@ -173,6 +202,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
         ${canToggleReady ? `<button id="btnToggleReadyInline" class="btn btn-inline" type="button">${esc(isSelfReady ? t('room.ops.unready') : t('room.ops.ready'))}</button>` : ''}
         ${canRollCall ? `<button id="btnRollCallInline" class="btn btn-inline" type="button">${esc(t('room.ops.roll_call'))}</button>` : ''}
         ${canExtendTurnTimeout ? `<button id="btnExtendTurnTimeoutInline" class="btn btn-inline" type="button">${esc(t('room.ops.extend_turn_timeout'))}</button>` : ''}
+        ${canGmReleaseStart ? `<button id="btnGmReleaseStartInline" class="btn btn-inline" type="button">${esc(t('room.ops.gm_release_start'))}</button>` : ''}
       </li>
       <li><strong>${esc(t('room.info.name'))}</strong>${esc(villageName || '-')}</li>
       <li><strong>${esc(t('room.info.desc'))}</strong>${esc(villageDescription)}</li>
@@ -180,6 +210,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
       ${replayNotice ? `<li><strong>${esc(t('room.info.replay_notice'))}</strong>${esc(replayNotice)}</li>` : ''}
       ${timeoutWarnRow}
       ${boomedNoticeRow}
+      ${awaitingGmReleaseNoticeRow}
     `;
 
     if (canRegister) {
@@ -210,11 +241,13 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
       ${canToggleReady ? `<button id="btnToggleReadyInline" class="btn btn-inline" type="button">${esc(isSelfReady ? t('room.ops.unready') : t('room.ops.ready'))}</button>` : ''}
       ${canRollCall ? `<button id="btnRollCallInline" class="btn btn-inline" type="button">${esc(t('room.ops.roll_call'))}</button>` : ''}
       ${canExtendTurnTimeout ? `<button id="btnExtendTurnTimeoutInline" class="btn btn-inline" type="button">${esc(t('room.ops.extend_turn_timeout'))}</button>` : ''}
+      ${canGmReleaseStart ? `<button id="btnGmReleaseStartInline" class="btn btn-inline" type="button">${esc(t('room.ops.gm_release_start'))}</button>` : ''}
       ${canAbolish ? `<button id="btnAbolishVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.abolish'))}</button>` : ''}
     </li>
     ${settingsDialog}
     ${timeoutWarnRow}
     ${boomedNoticeRow}
+    ${awaitingGmReleaseNoticeRow}
   `;
 
   bindVillageSettingsBadgePopover(el.villageInfoList);

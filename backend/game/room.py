@@ -53,6 +53,11 @@ class room(Thread):
         self.enable_initial_green_card: bool = False  # 遊戲開始時執行初始綠卡
         self.enable_neutral_chaos_mode: bool = False  # 中立大亂鬥（全中立角色）
         self.enable_badge_unique_character_select: bool = False  # 徽章唯一：避免合併卡組時同一徽章字母的角色同場出現
+        self.enable_random_initial_position: bool = False  # 遊戲開始時先把玩家骰到隨機場地（不觸發效果），決定初始站位
+        # 2026-10-15：開啟 GM 功能時，開局（發放角色/站位/判定首位玩家）後先暫停，等待
+        # GM 手動開始遊戲流程（進入初始綠卡或第一位玩家的回合），這段暫停期間沒有任何玩家的
+        # 回合是「進行中」狀態，回合暴斃倒數也不會計算，不會有人在 GM 還沒開始流程前就被判定暴斃。
+        self.awaiting_gm_release: bool = False  # 開局後是否正暫停等待 GM 手動釋放進入遊戲流程
         # 開發除錯用：可在開局前指定帳號對應角色（不對一般 UI 顯示）
         self.debug_forced_characters: dict = {}
         self.max_players: int = 8
@@ -440,6 +445,15 @@ class room(Thread):
         self.action_order = list(playing_players.keys())
         random.shuffle(self.action_order)
         self.board.game_set(playing_players)
+        # 2026-10-15：隨機初始位置——啟用時，遊戲一開始就把每位玩家骰到隨機的場地上，
+        # 純粹決定站位，不呼叫 execute_action()，所以不會觸發該場地原本的效果（例如
+        # 森林的治療/傷害、古代祭壇的偷竊）；GM 不下場，不在 playing_players 裡，
+        # 不會被分配位置。
+        if self.enable_random_initial_position:
+            for p in playing_players.values():
+                random_area = random.choice(self.board.field)
+                if random_area:
+                    p.move(random_area)
         self.room_status = 2
         # 2026-10-09 修正：「遊戲開始」「本場配置」這兩則系統訊息，原本分別由
         # api_start_game()（手動開始）跟 api_toggle_ready()（全員準備自動開局）各自
@@ -459,6 +473,19 @@ class room(Thread):
         if self.current_player:
             self.add_system_message(f"首位行動玩家：[{self.current_player.name or self.current_player.account}]")
 
+        # 2026-10-15：開啟 GM 功能時，發完角色、判定完首位玩家後先暫停，不馬上進入
+        # 初始綠卡或常規回合流程，等 GM 按「開始遊戲流程」才繼續（見 gm_release_game_start()）；
+        # 這段暫停期間所有玩家的 status 都還是 0（不是「進行中」），回合暴斃倒數
+        # （_current_turn_timeout_remaining()）看到 status 不在 (1,2,3,4,5,6) 裡就不會計算，
+        # 不會有人在 GM 還沒開始流程前就被判定暴斃。非 GM 房間不受影響，直接照舊往下走。
+        if self.gm_enabled:
+            self.awaiting_gm_release = True
+            self.add_system_message('遊戲開局完成，等待 GM 開始遊戲')
+            return
+
+        self._begin_turn_flow()
+
+    def _begin_turn_flow(self):
         # 初始綠卡流程：若啟用，所有玩家先執行一張綠卡，再開始常規回合
         if self.enable_initial_green_card:
             self._initial_green_card_executed = True
@@ -488,6 +515,12 @@ class room(Thread):
         self._pending_counter_attack = None
         self.winner_accounts = []
         # update
+
+    def gm_release_game_start(self):
+        # GM 按下「開始遊戲流程」，解除開局後的暫停，正式進入初始綠卡／常規回合流程。
+        self.awaiting_gm_release = False
+        self.add_system_message('GM 開始遊戲')
+        self._begin_turn_flow()
 
     def _set_next_alive_player_after_trip(self, trip):
         if not self.action_order:

@@ -129,6 +129,7 @@ class RoomManager:
         'join_room',
         'leave_room',
         'start_game',
+        'gm_release_game_start',
         'next_step',
         'card_effect',
         'loot_from_kill',
@@ -333,7 +334,9 @@ class RoomManager:
         enable_initial_green_card: bool = False,
         enable_neutral_chaos_mode: bool = False,
         enable_badge_unique_character_select: bool = False,
+        enable_random_initial_position: bool = False,
         turn_timeout_minutes: int = 3,
+        max_players: Optional[int] = None,
     ) -> room.room:
         game_room = room.room()
         game_room.room_id = int(self.record_store.allocate_room_id())
@@ -349,13 +352,29 @@ class RoomManager:
         game_room.expansion_mode = self._normalize_expansion_mode(expansion_mode)
         game_room.enable_initial_green_card = bool(enable_initial_green_card)
         game_room.enable_neutral_chaos_mode = bool(enable_neutral_chaos_mode)
-        game_room.enable_badge_unique_character_select = bool(enable_badge_unique_character_select)
+        # 2026-10-19 修正：中立大亂鬥（全中立角色，只從中立角色池抽）跟徽章唯一
+        # （合併卡組時避免同徽章字母角色同場）設計上互斥——Mike 認為中立大亂鬥
+        # 不該套用徽章唯一這個選項，兩者同時開啟時徽章唯一直接失效（強制關閉），
+        # 不是讓本來就比較窄的中立角色池被徽章限制縮得更小。
+        game_room.enable_badge_unique_character_select = bool(enable_badge_unique_character_select) and not game_room.enable_neutral_chaos_mode
+        # 2026-10-15：遊戲開始時先把所有玩家骰到隨機場地上（不觸發場地效果），
+        # 純粹決定初始站位；預設不啟用。
+        game_room.enable_random_initial_position = bool(enable_random_initial_position)
         valid_timeout_minutes = [2, 3, 5, 10, 20, 30]
         chosen = int(turn_timeout_minutes or 3)
         if chosen not in valid_timeout_minutes:
             chosen = min(valid_timeout_minutes, key=lambda v: abs(v - chosen))
         game_room.turn_timeout_seconds = chosen * 60
-        game_room.max_players = 50 if game_room.is_chat_room else 8
+        if game_room.is_chat_room:
+            game_room.max_players = 50
+        else:
+            # 2026-10-15：建房當下就能選人數上限（4~8 人），不用等建完村再進去改設定；
+            # 沒填或格式不對的話沿用原本預設的 8 人。
+            try:
+                chosen_max_players = int(max_players) if max_players is not None else 8
+            except (TypeError, ValueError):
+                chosen_max_players = 8
+            game_room.max_players = min(8, max(4, chosen_max_players))
         setattr(game_room, 'manager_ref', self)
         game_room.room_status = 1
         game_room.create()
@@ -765,6 +784,7 @@ class RoomManager:
         enable_initial_green_card = bool(getattr(game_room, 'enable_initial_green_card', False))
         enable_neutral_chaos_mode = bool(getattr(game_room, 'enable_neutral_chaos_mode', False))
         enable_badge_unique_character_select = bool(getattr(game_room, 'enable_badge_unique_character_select', False))
+        enable_random_initial_position = bool(getattr(game_room, 'enable_random_initial_position', False))
         timeout_minutes = int(getattr(game_room, 'turn_timeout_seconds', 180) or 180) // 60
         max_players = int(getattr(game_room, 'max_players', 8) or 8)
         return (
@@ -772,6 +792,7 @@ class RoomManager:
             f" / 初始綠卡={'On' if enable_initial_green_card else 'Off'}"
             f" / 中立大亂鬥={'On' if enable_neutral_chaos_mode else 'Off'}"
             f" / 徽章唯一={'On' if enable_badge_unique_character_select else 'Off'}"
+            f" / 隨機初始位置={'On' if enable_random_initial_position else 'Off'}"
             f" / 暴斃時間={timeout_minutes}分"
             f" / 人數上限={max_players}人"
         )
@@ -865,9 +886,16 @@ class RoomManager:
             'enable_initial_green_card': bool(getattr(game_room, 'enable_initial_green_card', False)),
             'enable_neutral_chaos_mode': bool(getattr(game_room, 'enable_neutral_chaos_mode', False)),
             'enable_badge_unique_character_select': bool(getattr(game_room, 'enable_badge_unique_character_select', False)),
+            # 2026-10-15：房間徽章列需要顯示這兩項有沒開，之前沒有放進序列化，前端拿不到。
+            'gm_enabled': bool(getattr(game_room, 'gm_enabled', False)),
+            'enable_random_initial_position': bool(getattr(game_room, 'enable_random_initial_position', False)),
+            # 2026-10-15：GM 開局後暫停、等待 GM 手動開始遊戲流程時，前端要能判斷目前
+            # 是不是這個狀態，才能顯示「等待 GM」的提示跟 GM 專用的「開始遊戲流程」按鈕。
+            'awaiting_gm_release': bool(getattr(game_room, 'awaiting_gm_release', False)),
             'turn_timeout_minutes': int(getattr(game_room, 'turn_timeout_seconds', 180) or 180) // 60,
             'max_players': max(1, int(getattr(game_room, 'max_players', 8) or 8)),
-            'player_count': len(game_room.players),
+            # 2026-10-15：GM 旁觀主持、不下場，房間玩家人數不計入 GM。
+            'player_count': len(self._non_gm_players(game_room)),
             'players': list(game_room.players.keys()),
             'require_trip': getattr(game_room, 'require_trip', False),
             'hide_trip': getattr(game_room, 'hide_trip', True),
@@ -876,7 +904,10 @@ class RoomManager:
             'manager_trip_encrypted': getattr(game_room, 'manager_trip_encrypted', True),
         }
 
-    def _trip_display_for_state(self, game_room: room.room, trip_display: str) -> str:
+    def _trip_display_for_state(self, game_room: room.room, trip_display: str, viewer_is_gm: bool = False) -> str:
+        # 2026-10-15：GM 旁觀主持，一開始就要看得到所有人的 TRIP，不受房間「隱藏 Trip」設定限制。
+        if viewer_is_gm:
+            return trip_display
         hide_trip = bool(getattr(game_room, 'hide_trip', True))
         if hide_trip and int(getattr(game_room, 'room_status', 0) or 0) != 3:
             return '-'
@@ -884,6 +915,9 @@ class RoomManager:
 
     def _serialize_room_state(self, game_room: room.room, viewer_account: Optional[str] = None) -> Dict[str, Any]:
         current_player = game_room.current_player
+        # 2026-10-15：GM 旁觀主持，一開始就看得到所有人的 TRIP，這裡先把這個觀看者是不是 GM 查好，下面每個玩家的 trip_display 都照這個来決定要不要遮罩。
+        viewer_player_for_gm_check = game_room.players.get(viewer_account) if viewer_account else None
+        viewer_is_gm = bool(viewer_player_for_gm_check and viewer_player_for_gm_check.profile.get('is_gm', False))
         pending_loot = game_room._pending_kill_loot
         board_deck = getattr(getattr(game_room, 'board', None), 'card_deck', {}) or {}
         board_fields = list(getattr(getattr(game_room, 'board', None), 'field', []) or [])
@@ -1111,7 +1145,7 @@ class RoomManager:
         return {
             'room': self._serialize_room(game_room),
             'turn': {
-                'current_trip_display': self._trip_display_for_state(game_room, current_player.trip_display) if current_player else None,
+                'current_trip_display': self._trip_display_for_state(game_room, current_player.trip_display, viewer_is_gm) if current_player else None,
                 'current_account': current_player.account if current_player else None,
                 'status': current_player.status if current_player else None,
             },
@@ -1150,7 +1184,7 @@ class RoomManager:
             'players': {
                 account: {
                     'account': p.account,
-                    'trip_display': p.trip_display if (viewer_account and account == viewer_account) else self._trip_display_for_state(game_room, p.trip_display),
+                    'trip_display': p.trip_display if (viewer_account and (account == viewer_account or viewer_is_gm)) else self._trip_display_for_state(game_room, p.trip_display, viewer_is_gm),
                     'name': p.profile.get('name', '') or p.name,
                     'join_order': int(p.profile.get('join_order', 0) or 0),
                     'avatar_no': int(p.profile.get('avatar_no', 1) or 1),
@@ -1440,6 +1474,8 @@ class RoomManager:
                 result = self.api_login_room(payload)
             elif action == 'start_game':
                 result = self.api_start_game(payload)
+            elif action == 'gm_release_game_start':
+                result = self.api_gm_release_game_start(payload)
             elif action == 'next_step':
                 result = self.api_next_step(payload)
             elif action == 'card_effect':
@@ -1496,6 +1532,8 @@ class RoomManager:
                 result = self.api_get_bug_report_status(payload)
             elif action == 'get_bug_reports_by_trip':
                 result = self.api_get_bug_reports_by_trip(payload)
+            elif action == 'filter_avatars_by_trip':
+                result = self.api_filter_avatars_by_trip(payload)
             elif action == 'admin_list_bug_reports':
                 result = self.api_admin_list_bug_reports(payload)
             elif action == 'admin_update_bug_report':
@@ -1524,22 +1562,26 @@ class RoomManager:
         # 而是村長本人在開啟 GM 功能時升級成的身分，所以這裡只收一個布林開關；
         # 開啟時要求村長 Trip 本身要符合 GM 的場次門檻（30 場，比村長原本的 10 場高）。
         gm_enabled = bool(payload.get('gm_enabled', False))
+        # 2026-10-15：Mike 要求暫時拿掉村長／GM Trip 的場次門檻，先不擋，方便目前測試；
+        # 但 TRIP 是否登記過的檢查、跟「開 GM 要先設定村長 Trip」這個結構性檢查都還是要留著
+        # （GM 沒有搭配村長 Trip 的話這個選項本身就沒有意義）。場次門檻檢查先註解掉，保留原始
+        # 程式碼，之後要恢復的話把註解拿掉就好。
         if manager_trip:
             if not self.is_trip_registered_in_db(manager_trip):
                 return self._error('create_room', 'MANAGER_TRIP_NOT_REGISTERED', '村長 Trip 未登記，無法設定', 403)
-            manager_games = self.get_trip_games_count_from_db(manager_trip)
-            required_games = self._GM_TRIP_MIN_GAMES if gm_enabled else self._MANAGER_TRIP_MIN_GAMES
-            if manager_games < required_games:
-                return self._error(
-                    'create_room',
-                    'GM_TRIP_GAME_COUNT_NOT_ENOUGH' if gm_enabled else 'MANAGER_TRIP_GAME_COUNT_NOT_ENOUGH',
-                    (
-                        f'村長 Trip 開啟 GM 功能需要的場次不足，至少需要 {required_games} 場'
-                        if gm_enabled
-                        else f'村長 Trip 遊戲場次不足，至少需要 {required_games} 場'
-                    ),
-                    403,
-                )
+            # manager_games = self.get_trip_games_count_from_db(manager_trip)
+            # required_games = self._GM_TRIP_MIN_GAMES if gm_enabled else self._MANAGER_TRIP_MIN_GAMES
+            # if manager_games < required_games:
+            #     return self._error(
+            #         'create_room',
+            #         'GM_TRIP_GAME_COUNT_NOT_ENOUGH' if gm_enabled else 'MANAGER_TRIP_GAME_COUNT_NOT_ENOUGH',
+            #         (
+            #             f'村長 Trip 開啟 GM 功能需要的場次不足，至少需要 {required_games} 場'
+            #             if gm_enabled
+            #             else f'村長 Trip 遊戲場次不足，至少需要 {required_games} 場'
+            #         ),
+            #         403,
+            #     )
         elif gm_enabled:
             return self._error('create_room', 'GM_REQUIRES_MANAGER_TRIP', '需要先設定村長 Trip 才能開啟 GM 功能', 400)
         is_chat_room = bool(payload.get('is_chat_room', False))
@@ -1547,7 +1589,17 @@ class RoomManager:
         enable_initial_green_card = bool(payload.get('enable_initial_green_card', False))
         enable_neutral_chaos_mode = bool(payload.get('enable_neutral_chaos_mode', False))
         enable_badge_unique_character_select = bool(payload.get('enable_badge_unique_character_select', False))
+        enable_random_initial_position = bool(payload.get('enable_random_initial_position', False))
         turn_timeout_minutes = int(payload.get('turn_timeout_minutes', 3) or 3)
+        max_players_raw = payload.get('max_players')
+        max_players = None
+        if max_players_raw is not None and str(max_players_raw).strip() != '':
+            try:
+                max_players = int(max_players_raw)
+            except (TypeError, ValueError):
+                return self._error('create_room', 'INVALID_MAX_PLAYERS', '房間人數上限格式錯誤', 400)
+            if max_players < 4 or max_players > 8:
+                return self._error('create_room', 'INVALID_MAX_PLAYERS', '房間人數上限必須在 4~8 人之間', 400)
         normalized_room_name = self._normalize_room_name_for_limit(room_name)
         if not normalized_room_name:
             return self._error('create_room', 'ROOM_NAME_REQUIRED', 'room_name is required', 400)
@@ -1570,7 +1622,9 @@ class RoomManager:
             enable_initial_green_card=enable_initial_green_card,
             enable_neutral_chaos_mode=enable_neutral_chaos_mode,
             enable_badge_unique_character_select=enable_badge_unique_character_select,
+            enable_random_initial_position=enable_random_initial_position,
             turn_timeout_minutes=turn_timeout_minutes,
+            max_players=max_players,
         )
         return self._success('create_room', self._serialize_room(game_room))
 
@@ -1622,8 +1676,13 @@ class RoomManager:
         normalized_player_info['trip'] = trip_display
         normalized_player_info['is_village_manager'] = self.is_manager_trip(game_room, trip_display)
         normalized_player_info['is_gm'] = is_gm_joiner
-        # GM 不下場，不需要準備；直接視為已準備，避免卡在「全員準備」的判斷裡。
-        normalized_player_info['is_ready'] = bool(is_gm_joiner)
+        # 2026-10-15 修正：GM 原本在這裡被直接視為已準備（is_ready 強制設 True），
+        # 單純是因為 GM 不計入開局人數、不需要「準備」，想避免卡在「全員準備」的
+        # 判斷裡——但 GM 本來就不在 _non_gm_players() 的計算範圍內，這個強制已準備
+        # 完全是多餘的，徒增一個 GM 卡片一進房就顯示「已準備」的誤導畫面。Mike
+        # 回報這會造成混淆，拿掉這段，GM 的 is_ready 照一般玩家一樣預設為 False
+        # （沒有實際意義，all_ready／all_non_gm_ready 的計算從頭到尾都只看非 GM
+        # 玩家，不受影響）。
         ret = self.join_room(room_id, normalized_player_info)
         if not ret:
             return self._error('join_room', 'JOIN_FAILED', '住民登記失敗', 400)
@@ -1691,12 +1750,38 @@ class RoomManager:
             return self._error('start_game', 'ROOM_NOT_FOUND', '房間不存在', 404)
         if bool(getattr(game_room, 'is_chat_room', False)):
             return self._error('start_game', 'CHAT_ROOM_NO_GAME', '聊天村不可開始遊戲', 400)
+        # 2026-10-20 修正：2026-10-15 加上的 GM 專屬開局限制（只有 GM 能按「開始遊戲」）
+        # 整段移除：Mike 要求 GM 功能改回跟非 GM 房間一樣，全員（含 GM）準備完成就自動開局
+        # （見 api_toggle_ready()），不再需要這裡的 GM 權限檢查，回到 GM 功能出現之前的行為：
+        # 任何人都可以調用這支 API（主要是連接測試用的 startGameForm）手動觸發開局。
         # 2026-10-09 修正：「遊戲開始」「本場配置」這兩則系統訊息改成在 game_start()
         # 裡面統一發送（見 game/room.py），這裡不用再補發，避免跟自動開局路徑各自
         # 維護一份、訊息順序又跑到初始綠卡流程後面的問題。
         game_room = self.start_game(room_id, seed=seed)
         viewer_account = str(payload.get('account') or payload.get('viewer_account') or '').strip() or None
         return self._success('start_game', self._serialize_room_state(game_room, viewer_account=viewer_account))
+
+    def api_gm_release_game_start(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        # 2026-10-15：開啟 GM 功能的房間，開局（發角色/站位/判定首位玩家）後會先暫停
+        # （game_room.awaiting_gm_release），等 GM 按下「開始遊戲流程」才真正進入初始
+        # 綠卡或常規回合流程（見 game/room.py 的 game_start()／gm_release_game_start()）。
+        room_id = payload.get('room_id')
+        account = str(payload.get('account') or '').strip()
+        if room_id is None or not account:
+            return self._error('gm_release_game_start', 'INVALID_PAYLOAD', 'room_id and account are required', 400)
+        game_room = self.get_room(room_id)
+        if not game_room:
+            return self._error('gm_release_game_start', 'ROOM_NOT_FOUND', '房間不存在', 404)
+        if int(getattr(game_room, 'room_status', 0) or 0) != 2:
+            return self._error('gm_release_game_start', 'GAME_NOT_STARTED', '遊戲尚未開始', 400)
+        requester = game_room.players.get(account)
+        if not requester or not bool(requester.profile.get('is_gm', False)):
+            return self._error('gm_release_game_start', 'ONLY_GM_CAN_RELEASE', '只有 GM 可以開始遊戲', 403)
+        if not bool(getattr(game_room, 'awaiting_gm_release', False)):
+            return self._error('gm_release_game_start', 'NOT_AWAITING_GM_RELEASE', '目前不是等待 GM 開始遊戲的狀態', 400)
+        game_room.gm_release_game_start()
+        game_room.touch_activity()
+        return self._success('gm_release_game_start', self._serialize_room_state(game_room, viewer_account=account))
 
     def api_next_step(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         room_id = payload.get('room_id')
@@ -1771,8 +1856,13 @@ class RoomManager:
         game_room.add_system_message(f"[{target_player.name or account}] {ready_text}")
         game_room.touch_activity()
 
-        # GM 旁觀主持、不下場，不計入開局人數、也不需要「準備」。
-        playing_players = self._non_gm_players(game_room)
+        # 2026-10-20 修正：Mike 要求 GM 功能的開局方式改回跟一般房間一樣——全員（這次改成
+        # 「含 GM」）準備完成就自動開局，GM 不用再額外按一顆「開始遊戲」按鈕，只要
+        # 自己也按「準備」就能控制開局時機。2026-10-15 那次改成「GM 不計入準備人數、
+        # 要 GM 手動按開始遊戲」的特殊處理整段拿掉，回到 GM 功能出現之前把
+        # game_room.players（含 GM）整包一起判斷的寫法；GM 是否準備現在跟其他玩家一樣
+        # 計入「全員準備完成」的判斷，也一起計入 4 人門檻。
+        playing_players = game_room.players
         player_count = len(playing_players)
         all_ready = (not bool(getattr(game_room, 'is_chat_room', False))) and player_count >= 4 and all(bool(p.profile.get('is_ready', False)) for p in playing_players.values())
         if all_ready:
@@ -1904,6 +1994,7 @@ class RoomManager:
             'enable_initial_green_card',
             'enable_neutral_chaos_mode',
             'enable_badge_unique_character_select',
+            'enable_random_initial_position',
             'turn_timeout_minutes',
             'use_basic_card_set',
             'card_set_basic',
@@ -1956,6 +2047,11 @@ class RoomManager:
         enable_initial_green_card = bool(payload.get('enable_initial_green_card', getattr(game_room, 'enable_initial_green_card', False)))
         enable_neutral_chaos_mode = bool(payload.get('enable_neutral_chaos_mode', getattr(game_room, 'enable_neutral_chaos_mode', False)))
         enable_badge_unique_character_select = bool(payload.get('enable_badge_unique_character_select', getattr(game_room, 'enable_badge_unique_character_select', False)))
+        # 2026-10-15：隨機初始位置開放村長在開局前隨時切換（跟其他房間設定一樣，
+        # 僅限招募中/房間還沒開局時可改）；GM 這個設定不開放在這裡切換，仍然只能在
+        # 建村時決定，因為 GM 是在玩家加入時比對 Trip 判斷的，開局前臨時切換會有「已
+        # 加入的人要不要追溯升級成 GM」的歧義，Mike 明確要求 GM 維持建村時決定就好。
+        enable_random_initial_position = bool(payload.get('enable_random_initial_position', getattr(game_room, 'enable_random_initial_position', False)))
         timeout_minutes_raw = payload.get('turn_timeout_minutes', int(getattr(game_room, 'turn_timeout_seconds', 180) or 180) // 60)
         try:
             timeout_minutes = int(timeout_minutes_raw or 3)
@@ -1993,7 +2089,10 @@ class RoomManager:
         game_room.expansion_mode = expansion_mode
         game_room.enable_initial_green_card = enable_initial_green_card
         game_room.enable_neutral_chaos_mode = enable_neutral_chaos_mode
-        game_room.enable_badge_unique_character_select = enable_badge_unique_character_select
+        # 2026-10-19 修正：跟 create_room 一樣，中立大亂鬥跟徽章唯一互斥，開啟
+        # 中立大亂鬥時徽章唯一強制關閉（見 create_room 裡的修正說明）。
+        game_room.enable_badge_unique_character_select = enable_badge_unique_character_select and not enable_neutral_chaos_mode
+        game_room.enable_random_initial_position = enable_random_initial_position
         game_room.turn_timeout_seconds = int(timeout_minutes * 60)
         game_room.max_players = max_players
         game_room.touch_activity()
@@ -2299,6 +2398,17 @@ class RoomManager:
         except ValueError as exc:
             return self._error('upload_avatar', 'BAD_REQUEST', str(exc), 400)
         return self._success('upload_avatar', avatar)
+
+    def api_filter_avatars_by_trip(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        # 2026-10-15：選頭貼時可以篩選出「自己上傳的頭貼」。這裡不要求 TRIP 一定要
+        # 登記過——單純把玩家輸入的原始密語加密後，去比對每一張頭貼存的 owner_trip，
+        # 找得到就回傳符合的頭貼編號，找不到就回傳空清單，不當成錯誤處理。
+        trip_raw = str(payload.get('trip', '') or '').strip()
+        if not trip_raw:
+            return self._error('filter_avatars_by_trip', 'INVALID_PAYLOAD', '請輸入 TRIP', 400)
+        trip_key = self.encrypt_trip_like_higu(trip_raw)
+        avatar_ids = self.avatar_store.list_avatar_ids_by_trip_key(trip_key)
+        return self._success('filter_avatars_by_trip', {'avatar_ids': avatar_ids})
 
     def api_submit_bug_report(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         # 2026-10-13：問題回報不需要有登記 Trip 才能用——玩家自己打一個暱稱就能回報，

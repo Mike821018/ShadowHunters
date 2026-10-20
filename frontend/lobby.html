@@ -126,6 +126,18 @@
                 <span id="chatVillageHint" class="field-hint" data-i18n="lobby.create.chat_room_hint">（聊天用村莊，最多 50 人，不會開始遊戲，也不會套用閒置自動廢村）</span>
               </label>
 
+              <label class="option-title" for="roomMaxPlayersSelect" data-i18n="lobby.create.max_players_label">房間人數上限</label>
+              <div class="stacked-fields">
+                <select id="roomMaxPlayersSelect" class="txt">
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                  <option value="6">6</option>
+                  <option value="7">7</option>
+                  <option value="8" selected>8</option>
+                </select>
+                <span class="field-hint" data-i18n="lobby.create.max_players_hint">（4~8 人之間；勾選聊天村的話不受此設定影響，固定 50 人）</span>
+              </div>
+
               <label class="option-title" for="turnTimeoutSelect" data-i18n="lobby.create.turn_timeout_label">暴斃時間</label>
               <select id="turnTimeoutSelect" class="txt">
                 <option value="2" data-i18n="lobby.create.turn_timeout_2min">2 分鐘</option>
@@ -164,6 +176,12 @@
               <label class="checkbox-row">
                 <input type="checkbox" id="enableNeutralChaosModeCheck" aria-describedby="enableNeutralChaosModeHint" />
                 <span id="enableNeutralChaosModeHint" class="field-hint" data-i18n="lobby.create.neutral_chaos_mode_hint">（嘗試全中立角色；若中立角色不足會自動回復原設定）</span>
+              </label>
+
+              <label class="option-title" for="enableRandomInitialPositionCheck" data-i18n="lobby.create.random_initial_position_label">隨機初始位置</label>
+              <label class="checkbox-row">
+                <input type="checkbox" id="enableRandomInitialPositionCheck" aria-describedby="enableRandomInitialPositionHint" />
+                <span id="enableRandomInitialPositionHint" class="field-hint" data-i18n="lobby.create.random_initial_position_hint">（遊戲開始時先把所有玩家骰到隨機的場地上，但不會觸發場地效果，純粹決定初始站位）</span>
               </label>
 
               <div></div>

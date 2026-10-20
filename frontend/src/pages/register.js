@@ -944,6 +944,8 @@ export async function initRegisterPage({
     avatarOptions: getAvatarOptions(),
     avatarPageSize: AVATAR_PAGE_SIZE,
     esc,
+    dispatch,
+    toast,
   });
 
   preventEnterSubmit(el.loginRoomForm);

@@ -7,6 +7,7 @@ import { showAreaChoiceDialog, showConfirmDialog, showEquipmentChoiceDialog, sho
 import { renderVillageInfo as renderVillageInfoModule } from './room/villageInfoRendering.js';
 import { buildReplayRoomState as buildReplayRoomStateModule } from './room/replayAdapter.js';
 import { buildChatStageLines } from './room/chatFormatter.js';
+import { markRenderSyncedAt } from './room/renderClock.js';
 import { createCardInfoHelpers } from './room/cardInfoDialog.js';
 import { createDiscardPileDetailHelpers } from './room/discardPileDialog.js';
 import { createDamageMeterHandlers } from './room/damageMeter.js';
@@ -155,6 +156,7 @@ function buildGreenChoiceDialogConfig(greenConfirm, dataSnapshot, state) {
       noActivateLabel: t('room.green_choice.skip'),
       showActivate: hasEquipment,
       showSkip: true,
+      showNoActivate: true,
     };
   }
 
@@ -454,7 +456,7 @@ function maybeHandleAutoEndTurn(state, snapshot) {
     return;
   }
   if (autoEndTurnTimer) return; // 已排程過，避免同一次回合結束階段重複排程
-  const delayMs = 2000 + Math.floor(Math.random() * 3001); // 隨機 2000-5000ms
+  const delayMs = 5000 + Math.floor(Math.random() * 3001); // 隨機 5000-8000ms（Mike 要求把自動結束回合的等待時間拉長成 5-8 秒）
   autoEndTurnTimer = window.setTimeout(() => {
     autoEndTurnTimer = null;
     autoEndTurnRunner?.();
@@ -999,6 +1001,12 @@ export function renderState({
     fieldset.style.display = isChatRoom ? 'none' : '';
   });
 
+  // 2026-10-19 修正：Mike 要求側欄暴斃倒數、系統訊息面板倒數、浮動聊天室鏡像
+  // 倒數這三個地方「接到同一個 clock 變數」，不要各自獨立呼叫 Date.now()。在這兩個
+  // render 呼叫之前統一標記一次本次渲染的同步時間點，renderVillageInfo／
+  // renderChatStage 內部蓋 data-remain-synced-at 時都改讀這個共用值
+  // （見 renderClock.js），確保三個地方的時間戳記完全一致。
+  markRenderSyncedAt();
   renderVillageInfo(data);
   renderChatStage({ el, esc }, data, state);
   renderSummary({ el, statusText }, data);
@@ -1040,6 +1048,15 @@ export function renderState({
           : [];
   const playerPromptClass = pendingDicePromptTargets.length > 0
     ? String(pendingDiceAction?.highlightPromptClass || 'attack-target-prompt')
+    // 2026-10-17 修正：greenConfirm.active 本身沒有區分「這跟我有沒有關係」（見
+    // promptState.js 的註解），原本完全沒有特別處理，所以會跟著掉進下面這行最後
+    // 的 'attack-target-prompt'（紅色閃爍），導致不管是不是自己的回合、是不是目標
+    // 本人，所有玩家畫面上都會看到同一張卡片在閃——Mike 回報「沒輪到自己的時候不要
+    // 有閃爍特效」就是在講這個。只有真正是這次目標本人（greenConfirm.isTarget）才
+    // 維持原本的閃爍提示，其他人（出卡的人、單純旁觀的其他玩家）改用不會動的靜態
+    // 高亮（prompt-target-static），一樣看得出是誰被影響，但不會一直閃。
+    : greenConfirm.active && !greenConfirm.isTarget
+    ? 'prompt-target-static'
     : (pendingKillLoot.active || pendingSteal.active || areaPrompt.active || cardPrompt.active) ? 'area-target-prompt' : 'attack-target-prompt';
   const handleEquipmentChipClick = ({ equipmentName, anchorEl }) => {
     openEquipmentCardDialog(equipmentName, anchorEl);
@@ -1177,16 +1194,23 @@ export function bindRoomEvents({
   // 目前該顯示的秒數，不需要跟 render 流程互相協調，也不會因為反覆重算而累積誤差。
   if (!turnTimeoutTickerBound) {
     window.setInterval(() => {
-      const remainEl = document.getElementById('roomTurnTimeoutRemainSeconds');
-      if (!(remainEl instanceof HTMLElement)) return;
-      const baseRemain = Number(remainEl.getAttribute('data-remain-base'));
-      const syncedAt = Number(remainEl.getAttribute('data-remain-synced-at'));
-      if (!Number.isFinite(baseRemain) || !Number.isFinite(syncedAt)) return;
-      const elapsedSeconds = Math.floor((Date.now() - syncedAt) / 1000);
-      const nextRemain = Math.max(0, baseRemain - elapsedSeconds);
-      if (remainEl.textContent !== String(nextRemain)) {
-        remainEl.textContent = String(nextRemain);
-      }
+      // 2026-10-19 修正：原本只更新側欄那一個 #roomTurnTimeoutRemainSeconds，Mike
+      // 反映聊天室（系統訊息面板＋右下角浮動聊天室鏡像的那則倒數訊息）還是跳著
+      // 換數字，沒有一起套用本機時鐘讀秒；改成用共用的 data-remain-base／
+      // data-remain-synced-at 屬性選取所有符合的元素（側欄＋聊天室可能同時
+      // 存在的兩份鏡像），每秒統一校正一次，不用個別維護選取器。
+      const remainEls = document.querySelectorAll('[data-remain-base][data-remain-synced-at]');
+      remainEls.forEach((remainEl) => {
+        if (!(remainEl instanceof HTMLElement)) return;
+        const baseRemain = Number(remainEl.getAttribute('data-remain-base'));
+        const syncedAt = Number(remainEl.getAttribute('data-remain-synced-at'));
+        if (!Number.isFinite(baseRemain) || !Number.isFinite(syncedAt)) return;
+        const elapsedSeconds = Math.floor((Date.now() - syncedAt) / 1000);
+        const nextRemain = Math.max(0, baseRemain - elapsedSeconds);
+        if (remainEl.textContent !== String(nextRemain)) {
+          remainEl.textContent = String(nextRemain);
+        }
+      });
     }, 1000);
     turnTimeoutTickerBound = true;
   }
@@ -1333,17 +1357,26 @@ export function bindRoomEvents({
       if (greenConfirm.canSetChoice && greenConfirm.needsChoice) {
         const dialogConfig = buildGreenChoiceDialogConfig(greenConfirm, dataSnapshot, state);
         if (dialogConfig.unknownCombinedFlow) {
+          // 2026-10-19 修正：原本把「不發動（照原本判定走）」塞進 cancelLabel／
+          // cancelReturnsValue:'tertiary'，導致按下那顆看起來像取消的按鈕，其實是
+          // 直接送出「不發動」這個決定，玩家沒有機會單純關掉視窗、先不決定、晚點
+          // 再重新確認綠卡內容——Mike 回報這個問題。現在「不發動」改用獨立的
+          // noActivateLabel／showNoActivate（對應 choiceDialogs.js 新增的第 4 顆
+          // 按鈕），cancelLabel 恢復成單純的「取消」，不再帶 cancelReturnsValue，
+          // 點下去／按 Esc 都只會讓 selected 變成空字串，底下 if (!selected) return
+          // 就會什麼都不送出地關掉視窗，之後可以再點一次「下一步」重新打開確認。
           const selected = await showGreenChoiceDialog({
             el,
             title: dialogConfig.title,
             message: dialogConfig.message,
             activateLabel: dialogConfig.activateLabel,
             skipLabel: dialogConfig.skipLabel,
-            cancelLabel: dialogConfig.noActivateLabel,
+            noActivateLabel: dialogConfig.noActivateLabel,
+            showNoActivate: dialogConfig.showNoActivate,
+            cancelLabel: t('room.area_choice.cancel'),
             currentChoice: dialogConfig.currentChoice,
             showActivate: dialogConfig.showActivate,
             showSkip: dialogConfig.showSkip,
-            cancelReturnsValue: 'tertiary',
           });
           if (!selected) return;
 
@@ -1351,7 +1384,10 @@ export function bindRoomEvents({
             ? 'activate_give'
             : selected === 'skip'
               ? 'activate_damage'
-              : 'normal';
+              : selected === 'no_activate'
+                ? 'normal'
+                : '';
+          if (!mappedChoice) return;
           const choiceApplied = await setPendingGreenCardChoice(mappedChoice);
           if (!choiceApplied) return;
           await confirmPendingGreenCard();
@@ -2116,6 +2152,17 @@ export function bindRoomEvents({
 
   const abolishVillage = async () => {
     if (!state.roomId || !state.account) return;
+    // 2026-10-19 新增：Mike 回報廢村按鈕原本點了就直接執行，完全沒有二次確認，
+    // 遊戲進行中誤觸的後果很大（全部玩家直接被踢出房間、遊戲紀錄中斷），補上
+    // 跟其他有風險的操作（例如發動角色能力）一樣的確認視窗，取消就什麼都不做。
+    const confirmed = await openConfirmDialog({
+      title: t('room.confirm.title'),
+      message: t('room.confirm.abolish_village_message'),
+      confirmLabel: t('room.confirm.confirm'),
+      cancelLabel: t('room.confirm.cancel'),
+    });
+    if (!confirmed) return;
+
     const abolishRoomId = state.roomId;
     await dispatch('abolish_room', { room_id: state.roomId, account: state.account });
     clearRoomAutoRefreshTimer();
@@ -2156,6 +2203,18 @@ export function bindRoomEvents({
     toast(t('toast.turn_timeout_extended'));
   };
 
+  // 2026-10-20 修正：GM 功能改回跟非 GM 房間一樣，全員（含 GM）準備完成就自動開局
+  // （見 backend room_manager.py 的 api_toggle_ready()），GM 不用再額外按一顆「開始
+  // 遊戲」按鈕手動觸發，gmStartGame() 這個函式跟著拿掉。下面的 gmReleaseGameStart()
+  // 是另一重關卡（發完角色後暫停，等 GM 按「開始遊戲流程」），這次沒有改動，保留。
+
+  const gmReleaseGameStart = async () => {
+    if (!state.roomId || !state.account) return;
+    const data = await dispatch('gm_release_game_start', { room_id: state.roomId, account: state.account });
+    renderState(data);
+    toast(t('toast.gm_released_game_start'));
+  };
+
   const updateVillageSettings = async (patch = {}) => {
     if (!state.roomId || !state.account) return;
     const roomInfo = latestRoomSnapshot?.room || {};
@@ -2168,6 +2227,7 @@ export function bindRoomEvents({
         enable_initial_green_card: patch.enable_initial_green_card ?? Boolean(roomInfo.enable_initial_green_card),
         enable_neutral_chaos_mode: patch.enable_neutral_chaos_mode ?? Boolean(roomInfo.enable_neutral_chaos_mode),
         enable_badge_unique_character_select: patch.enable_badge_unique_character_select ?? Boolean(roomInfo.enable_badge_unique_character_select),
+        enable_random_initial_position: patch.enable_random_initial_position ?? Boolean(roomInfo.enable_random_initial_position),
         max_players: patch.max_players ?? Number(roomInfo.max_players || 8),
       });
       renderState(data);
@@ -2207,6 +2267,11 @@ export function bindRoomEvents({
     const extendTimeoutTarget = event.target instanceof Element ? event.target.closest('#btnExtendTurnTimeoutInline') : null;
     if (extendTimeoutTarget) {
       extendTurnTimeout();
+      return;
+    }
+    const gmReleaseStartTarget = event.target instanceof Element ? event.target.closest('#btnGmReleaseStartInline') : null;
+    if (gmReleaseStartTarget) {
+      gmReleaseGameStart();
       return;
     }
     const editSettingsTarget = event.target instanceof Element ? event.target.closest('#btnEditRoomSettingsInline') : null;
@@ -2269,6 +2334,7 @@ export function bindRoomEvents({
     const initialGreenCheck = dialog.querySelector('[data-setting-initial-green-check]');
     const neutralChaosCheck = dialog.querySelector('[data-setting-neutral-chaos-check]');
     const badgeUniqueCheck = dialog.querySelector('[data-setting-badge-unique-check]');
+    const randomPositionCheck = dialog.querySelector('[data-setting-random-position-check]');
     const maxPlayersSelect = dialog.querySelector('[data-setting-max-players-select]');
 
     const turnTimeoutMinutes = Number.parseInt(String(timeoutSelect?.value || ''), 10);
@@ -2303,6 +2369,7 @@ export function bindRoomEvents({
       enable_initial_green_card: Boolean(initialGreenCheck?.checked),
       enable_neutral_chaos_mode: Boolean(neutralChaosCheck?.checked),
       enable_badge_unique_character_select: Boolean(badgeUniqueCheck?.checked),
+      enable_random_initial_position: Boolean(randomPositionCheck?.checked),
       max_players: maxPlayersPatch,
     });
 

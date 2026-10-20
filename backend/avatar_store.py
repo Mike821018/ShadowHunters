@@ -82,6 +82,22 @@ class AvatarStore:
         rows.sort(key=lambda item: int(item['id']))
         return rows
 
+    def list_avatar_ids_by_trip_key(self, trip_key: str) -> List[int]:
+        """2026-10-15：選頭貼時可以篩選出「自己上傳的頭貼」，這裡接收已經加密過的
+        TRIP 標籤（呼叫端負責把玩家輸入的原始密語加密成這個格式，這裡不重複處理），
+        回傳 owner_trip 符合的頭貼編號清單。"""
+        trip_key = str(trip_key or '').strip()
+        if not trip_key:
+            return []
+        ids: List[int] = []
+        for row in self._catalog.get('avatars', []):
+            avatar_id = int(row.get('id', 0) or 0)
+            if avatar_id <= 0:
+                continue
+            if str(row.get('owner_trip', '') or '').strip() == trip_key:
+                ids.append(avatar_id)
+        return ids
+
     def _decode_data_url(self, image_data_url: str) -> Tuple[str, bytes]:
         match = DATA_URL_RE.match(str(image_data_url or '').strip())
         if not match:

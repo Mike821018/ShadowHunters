@@ -1,6 +1,6 @@
 import { t } from '../i18n.js';
 
-export function bindAvatarPicker({ state, el, avatarOptions, avatarPageSize, esc }) {
+export function bindAvatarPicker({ state, el, avatarOptions, avatarPageSize, esc, dispatch, toast }) {
   if (!el.avatarOptionGrid || !el.avatarPreview || !el.avatarValue) return;
 
   let filteredOptions = Array.isArray(avatarOptions) ? avatarOptions.slice() : [];
@@ -160,26 +160,63 @@ export function bindAvatarPicker({ state, el, avatarOptions, avatarPageSize, esc
   const searchInput = document.getElementById('avatarPickerSearchInput');
   const searchButton = document.getElementById('btnAvatarPickerSearch');
   const searchClearButton = document.getElementById('btnAvatarPickerSearchClear');
-  const applySearch = () => {
+
+  // 2026-10-15：村民登錄這邊也可以篩選出「自己上傳的頭貼」，直接用上面登錄表單填的 TRIP（el.trip），
+  // 不用再另外開一個輸入框；跟名稱搜尋可以一起使用（先依 TRIP 篩出自己上傳的，再從裡面搜尋名稱）。
+  const mineFilterCheck = el.avatarPickerMineFilterCheck;
+  let mineFilterIds = null;
+
+  const applyFilters = () => {
     const query = String(searchInput?.value || '').trim().toLowerCase();
+    let base = avatarOptions;
+    if (mineFilterIds) {
+      base = base.filter((item) => item.isCustom && mineFilterIds.has(Number(item.id)));
+    }
     filteredOptions = query
-      ? avatarOptions.filter((item) => item.name.toLowerCase().includes(query) || String(item.id).includes(query))
-      : avatarOptions.slice();
+      ? base.filter((item) => item.name.toLowerCase().includes(query) || String(item.id).includes(query))
+      : base.slice();
     state.avatarPage = 1;
     renderAvatarPage();
   };
+  const applySearch = applyFilters;
 
   searchButton?.addEventListener('click', applySearch);
   searchClearButton?.addEventListener('click', () => {
     if (searchInput) searchInput.value = '';
-    filteredOptions = avatarOptions.slice();
-    state.avatarPage = 1;
-    renderAvatarPage();
+    applyFilters();
   });
   searchInput?.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
     applySearch();
+  });
+
+  const loadMineFilter = async () => {
+    const trip = String(el.trip?.value || '').trim();
+    if (!trip) {
+      toast?.(t('toast.avatar_mine_filter_trip_required'), 'error');
+      if (mineFilterCheck) mineFilterCheck.checked = false;
+      mineFilterIds = null;
+      applyFilters();
+      return;
+    }
+    try {
+      const data = await dispatch('filter_avatars_by_trip', { trip });
+      mineFilterIds = new Set((data?.avatar_ids || []).map((id) => Number(id)));
+    } catch (error) {
+      if (mineFilterCheck) mineFilterCheck.checked = false;
+      mineFilterIds = null;
+    }
+    applyFilters();
+  };
+
+  mineFilterCheck?.addEventListener('change', () => {
+    if (mineFilterCheck.checked) {
+      void loadMineFilter();
+    } else {
+      mineFilterIds = null;
+      applyFilters();
+    }
   });
 
   renderAvatarPage();

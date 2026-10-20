@@ -52,14 +52,53 @@ function getAreaNameClass(areaName) {
   return AREA_NAME_CLASS[String(areaName || '').trim()] || '';
 }
 
+// 2026-10-19 修正：Mike 回報走到森林／古代祭壇時，原本該出現的場地效果說明
+// toast（area_action_weird_woods／area_action_altar）實際上看不到。追下去發現
+// 原因不是這則訊息沒有觸發，而是觸發的時機點——玩家擲骰移動進場地時，
+// room.js 裡的動作處理流程會先呼叫 renderState(data)（這一步內部的 diff 邏輯
+// 偵測到場地提示剛好從沒有變成有，跳出這則場地說明 toast），緊接著下一行
+// 又呼叫 toast(t('toast.next_step_ok'))（這個模式在 room.js 裡到處都是：幾乎
+// 每個玩家操作完成後都會接著跳一個「動作成功」的通用 toast）。原本的
+// createToast() 沒有佇列，每次呼叫都是直接整個蓋掉 el.toast 的內容跟計時器，
+// 所以場地說明 toast 跳出來不到 1 毫秒就被緊接著的「next_step 成功」蓋掉，
+// 玩家完全沒有機會看到。
+// 改成簡單的序列佇列：同一時間只顯示一則，顯示滿 2200ms 後，若佇列裡還有
+// 排隊中的訊息，稍微留一點間隔（150ms，讓畫面有切換感，不是無縫接著跳下一則）
+// 再顯示下一則，不會互相蓋掉。佇列長度上限 5，避免極端情況（例如短時間內
+// 連續觸發大量 toast）無限堆積、越排越久才顯示到最新的訊息——超過上限時
+// 直接捨棄最舊的排隊訊息，保留最新的幾則。
+const TOAST_SHOW_MS = 2200;
+const TOAST_GAP_MS = 150;
+const TOAST_QUEUE_LIMIT = 5;
+
 export function createToast(el) {
-  return function toast(message, type = 'success') {
-    if (!el.toast) return;
-    el.toast.textContent = message;
-    el.toast.className = `toast show ${type}`;
+  const queue = [];
+  let showing = false;
+
+  const showNext = () => {
+    if (!el.toast) {
+      showing = false;
+      return;
+    }
+    const next = queue.shift();
+    if (!next) {
+      showing = false;
+      return;
+    }
+    showing = true;
+    el.toast.textContent = next.message;
+    el.toast.className = `toast show ${next.type}`;
     setTimeout(() => {
       if (el.toast) el.toast.className = 'toast';
-    }, 2200);
+      setTimeout(showNext, TOAST_GAP_MS);
+    }, TOAST_SHOW_MS);
+  };
+
+  return function toast(message, type = 'success') {
+    if (!el.toast) return;
+    queue.push({ message, type });
+    while (queue.length > TOAST_QUEUE_LIMIT) queue.shift();
+    if (!showing) showNext();
   };
 }
 
@@ -100,6 +139,10 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
   const inGameOrder = Number(data?.room?.room_status || 0) >= 2 && orderIndex.size > 0;
   const winnerSet = new Set(Array.isArray(data?.winners) ? data.winners.map((value) => String(value || '').trim()).filter(Boolean) : []);
   const entries = Object.entries(players).sort(([accA, a], [accB, b]) => {
+    // 2026-10-15：GM 旁觀主持、不下場，不管加入順序或行動順序怎麼排，GM 永遠排在最後面。
+    const gmA = Boolean(a?.is_gm);
+    const gmB = Boolean(b?.is_gm);
+    if (gmA !== gmB) return gmA ? 1 : -1;
     if (inGameOrder) {
       const ia = orderIndex.has(accA) ? Number(orderIndex.get(accA)) : Number.MAX_SAFE_INTEGER;
       const ib = orderIndex.has(accB) ? Number(orderIndex.get(accB)) : Number.MAX_SAFE_INTEGER;
@@ -142,7 +185,9 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
 
       const isSelf = Boolean(selfAccount && account === selfAccount);
       const isWinner = winnerSet.has(String(account || '').trim());
-      const canPickColor = isSelf && roomStatus === 1 && !p.is_ready && typeof onColorChange === 'function';
+      // 2026-10-15：GM 旁觀主持，角色欄直接顯示「GM」，也不顯示顏色位置那個 token 色塊（GM 不佔用九種類色，那個色塊单純是當傚選色）。
+      const isGm = Boolean(p.is_gm);
+      const canPickColor = !isGm && isSelf && roomStatus === 1 && !p.is_ready && typeof onColorChange === 'function';
       const resolvedCharacter = String(p.character || p.character_name || '').trim();
       const hasKnownRole = Boolean(resolvedCharacter);
       const roleNameEn = hasKnownRole ? resolvedCharacter : (isSelf ? p.self_character : null);
@@ -151,7 +196,7 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       const lang = getCurrentUiLang();
       const areaDisplayName = getLocalizedAreaName(p.area, lang);
       const areaNameClass = getAreaNameClass(p.area);
-      const roleDisplayName = roleNameEn ? getCharacterLocalizedName(roleNameEn, lang) : '???';
+      const roleDisplayName = isGm ? 'GM' : (roleNameEn ? getCharacterLocalizedName(roleNameEn, lang) : '???');
       const isRoleRevealed = Boolean((p?.settlement_character_reveal ?? p?.character_reveal) || false);
       const roleRevealStatusLabel = t(isRoleRevealed ? 'ui.role_reveal_revealed' : 'ui.role_reveal_hidden');
       const roleTooltip = roleNameEn ? getCharacterTooltipInfo(roleNameEn, lang) : null;
@@ -197,7 +242,7 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
         }
       }
 
-      let colorControlHtml = `<span class="color-chip-static" style="background:${cardColor}" title="${esc(p.color || 'N/A')}"></span>`;
+      let colorControlHtml = isGm ? '' : `<span class="color-chip-static" style="background:${cardColor}" title="${esc(p.color || 'N/A')}"></span>`;
       if (canPickColor) {
         const swatches = PLAYER_COLORS.map((c) => {
           const taken = Object.entries(players).some(([acc, pl]) => acc !== account && pl.color === c);
@@ -278,9 +323,16 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
 
   if (view === 'room') {
     const minVisibleSlots = 8;
-    const seatCards = entries.map(renderCard);
+    // 2026-10-15：GM 旁觀主持、不下場，在村民座位圖裡固定排在最後，跟真正下場的玩家之間留一格空位；真正玩家還是照原本規則補滿到 8 格，GM 不佔用這個名額。
+    const nonGmEntries = entries.filter(([, p]) => !p?.is_gm);
+    const gmEntries = entries.filter(([, p]) => p?.is_gm);
+    const seatCards = nonGmEntries.map(renderCard);
     while (seatCards.length < minVisibleSlots) {
       seatCards.push('<div class="seat-empty">-</div>');
+    }
+    if (gmEntries.length) {
+      seatCards.push('<div class="seat-empty">-</div>');
+      seatCards.push(...gmEntries.map(renderCard));
     }
     container.classList.add('seat-grid');
     container.classList.remove('flow-grid');

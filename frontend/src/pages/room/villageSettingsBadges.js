@@ -1,4 +1,4 @@
-import { expansionModeToCardFlags, optionBadgeMeta, positionOptionPopover } from './roomSettingsBadges.js';
+import { positionOptionPopover, buildSettingsBadgeCodes, buildToggleBadge, buildTimeoutBadge } from './roomSettingsBadges.js';
 
 // 房間頁「村子資訊」區塊的設定徽章列：把原本一整串文字（TRIP:關 / 卡組:[B]+[E] / ...）
 // 改成一排小徽章，點擊可以看到完整說明；手機版尤其吃緊的空間因此省下不少。
@@ -7,60 +7,17 @@ import { expansionModeToCardFlags, optionBadgeMeta, positionOptionPopover } from
 // 2026-10-09 修正：Mike 反映原本未啟用（灰色）的徽章也會顯示出來，畫面太雜、灰色徽章
 // 看起來像壞掉或沒意義；改成只顯示目前有效的設定（TRIP 開啟、卡組 B/E、綠卡/中立亂鬥/
 // 徽章唯一有開），沒開的項目直接不顯示，暴斃時間本身是數值不是開關，維持固定顯示。
-
-function badgeButtonHtml({ code, className, title, desc, display }) {
-  const label = String(display ?? code);
-  return `<button type="button" class="${className}" data-village-badge="${code}" data-badge-title="${title}" data-badge-desc="${desc}" aria-label="${title}" title="${title}">${label}</button>`;
-}
-
-function buildTripBadge({ t }) {
-  const title = t('room.info.badge_trip_title');
-  const desc = t('room.info.badge_trip_on_desc');
-  return badgeButtonHtml({
-    code: 'T',
-    className: 'records-option-badge village-settings-badge-trip-on',
-    title,
-    desc,
-    display: 'T',
-  });
-}
-
-function buildTimeoutBadge({ t }, room) {
-  const minutes = Number(room?.turn_timeout_minutes || 3);
-  const title = t('room.info.badge_timeout_title');
-  const desc = t('room.info.badge_timeout_desc_fmt', { n: minutes });
-  return badgeButtonHtml({
-    code: 'TIMEOUT',
-    className: 'records-option-badge village-settings-badge-timeout',
-    title,
-    desc,
-    display: t('room.info.badge_timeout_display_fmt', { n: minutes }),
-  });
-}
-
-function buildToggleBadge(code) {
-  const meta = optionBadgeMeta(code);
-  return badgeButtonHtml({ code, className: meta.className, title: meta.title, desc: meta.desc, display: code });
-}
-
+// 2026-10-19 修正：原本這裡自己維護一份「room 欄位 → 徽章」的 if 判斷式（T/GM/B/E/G/C/U/R），
+// 跟 records.js 的對戰紀錄列表各自獨立判讀，2026-10-15 補 GM／R 徽章時這裡記得改了、
+// records.js 那邊卻漏掉，Mike 發現對戰紀錄列表「沒有把所有的徽章都放上去」。改成呼叫
+// roomSettingsBadges.js 共用的 buildSettingsBadgeCodes()／buildToggleBadge()／
+// buildTimeoutBadge()，這裡跟 records.js 現在是同一份判讀邏輯，未來要加新設定的徽章，
+// 只需要改 roomSettingsBadges.js 那份清單，兩邊會自動一起更新。
 export function renderVillageSettingsBadges({ t }, room) {
   if (!room) return '';
-  const expansionMode = String(room.expansion_mode || 'all');
-  const { useBasic, useExtend } = expansionModeToCardFlags(expansionMode);
-  const initialGreen = Boolean(room.enable_initial_green_card);
-  const neutralChaos = Boolean(room.enable_neutral_chaos_mode);
-  const badgeUnique = Boolean(room.enable_badge_unique_character_select);
-  const requireTrip = Boolean(room.require_trip);
-
-  const badges = [];
-  if (requireTrip) badges.push(buildTripBadge({ t }));
-  if (useBasic) badges.push(buildToggleBadge('B'));
-  if (useExtend) badges.push(buildToggleBadge('E'));
-  if (initialGreen) badges.push(buildToggleBadge('G'));
-  if (neutralChaos) badges.push(buildToggleBadge('C'));
-  if (badgeUnique) badges.push(buildToggleBadge('U'));
-  badges.push(buildTimeoutBadge({ t }, room));
-
+  const badgeCodes = buildSettingsBadgeCodes(room);
+  const badges = badgeCodes.map((code) => buildToggleBadge(code));
+  badges.push(buildTimeoutBadge(room));
   return `<span class="records-option-wrap village-settings-badges">${badges.join('')}</span>`;
 }
 

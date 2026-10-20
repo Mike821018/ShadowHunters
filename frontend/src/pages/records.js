@@ -1,6 +1,6 @@
 import { t } from '../i18n.js';
 import { apiFetch } from '../utils.js';
-import { optionBadgeMeta, positionOptionPopover } from './room/roomSettingsBadges.js';
+import { positionOptionPopover, buildSettingsBadgeCodes, buildToggleBadge, buildTimeoutBadge } from './room/roomSettingsBadges.js';
 
 function winnerBadge(camp, tokenLabel) {
   if (camp === 'hunter') {
@@ -45,53 +45,21 @@ function formatDateTime(raw) {
   return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
 }
 
-function parseOptionBadges(rawOptions) {
-  const text = String(rawOptions || '').trim();
-  if (!text || text === '-') return { badges: [], extras: [] };
-  const tokens = text.split('/').map((part) => String(part || '').trim()).filter(Boolean);
-  const badgeSet = new Set();
-  const extras = [];
-  tokens.forEach((token) => {
-    const normalized = token.toLowerCase();
-    if (normalized === 'initial green card') {
-      badgeSet.add('G');
-      return;
-    }
-    if (normalized === 'neutral chaos mode' || normalized === 'neutral chaos' || normalized === '中立大亂鬥' || normalized === '中立大乱闘') {
-      badgeSet.add('C');
-      return;
-    }
-    if (normalized === 'badge unique' || normalized === 'unique badges' || normalized === '徽章唯一') {
-      badgeSet.add('U');
-      return;
-    }
-    if (normalized === 'all') {
-      badgeSet.add('B');
-      badgeSet.add('E');
-      return;
-    }
-    if (normalized === 'no_extend') {
-      badgeSet.add('B');
-      return;
-    }
-    if (normalized === 'expansion_only') {
-      badgeSet.add('E');
-      return;
-    }
-    extras.push(token);
-  });
-  return { badges: Array.from(badgeSet), extras };
-}
-
-function renderOptionsCell(rawOptions) {
-  const { badges, extras } = parseOptionBadges(rawOptions);
-  if (!badges.length && !extras.length) return '<span class="lighttxt">-</span>';
-  const badgeHtml = badges.map((code) => {
-    const meta = optionBadgeMeta(code);
-    return `<button type="button" class="${meta.className}" data-option-badge="${code}" data-option-title="${meta.title}" data-option-desc="${meta.desc}" aria-label="${meta.title}" title="${meta.title}">${code}</button>`;
-  }).join('');
-  const extrasHtml = extras.map((token) => `<span class="records-option-extra">${token}</span>`).join('');
-  return `<span class="records-option-wrap">${badgeHtml}${extrasHtml}</span>`;
+// 2026-10-19 修正：這裡原本是解析後端拼接成人類可讀句子的 options 字串
+// （例如「Initial Green Card / Badge Unique / all」），逐一比對固定的關鍵字
+// 判斷要顯示哪個徽章代碼。這套判斷式跟房間頁村子資訊徽章列（villageSettingsBadges.js）
+// 是完全分開維護的兩份邏輯，2026-10-15 villageSettingsBadges.js 補上 GM／R 兩個
+// 徽章時，這裡完全沒有同步更新，導致 Mike 回報「對戰紀錄沒有把所有的徽章都
+// 放上去」。現在後端 api_get_game_records 已經改成每筆紀錄都附上結構化的
+// game_settings 欄位（跟單筆紀錄詳情 API 用的是同一套正規化邏輯），這裡直接
+// 呼叫 roomSettingsBadges.js 共用的 buildSettingsBadgeCodes()／buildToggleBadge()／
+// buildTimeoutBadge()——跟房間頁是同一份判讀清單，不用再自己解析文字，未來
+// 要新增設定的徽章，只需要改 roomSettingsBadges.js 那份清單，這裡會自動跟著出現。
+function renderOptionsCell(settings) {
+  if (!settings) return '<span class="lighttxt">-</span>';
+  const badgeHtml = buildSettingsBadgeCodes(settings).map((code) => buildToggleBadge(code)).join('');
+  const timeoutHtml = buildTimeoutBadge(settings);
+  return `<span class="records-option-wrap">${badgeHtml}${timeoutHtml}</span>`;
 }
 
 function bindOptionBadgePopover(host) {
@@ -148,15 +116,21 @@ function renderRecordsTable(entries) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${roomId}</td>
-      <td><a href="${villageLink}">${villageName}</a></td>
+      <td><a href="${villageLink}" target="_blank" rel="noopener">${villageName}</a></td>
       <td>${endTimeText || '-'}</td>
       <td>${entry.player_count ?? '-'}</td>
       <td>${winnerCell(entry.winner_code)}</td>
-      <td>${renderOptionsCell(entry.options)}</td>
+      <td>${renderOptionsCell(entry.game_settings)}</td>
     `;
     tr.classList.add('room-row');
-    tr.addEventListener('click', () => {
-      window.location.href = villageLink;
+    tr.addEventListener('click', (event) => {
+      // 2026-10-17 修正：Mike 要求查詢戰績／瀏覽紀錄點進房號時改用開新分頁，
+      // 而不是在同一個分頁跳轉過去，方便一邊看列表一邊開多場復盤。這裡的 <a>
+      // 本身已經是 target="_blank"，如果點到的是連結本身（或連結內的文字），
+      // 交給瀏覽器原生行為處理即可，不要再額外呼叫一次 window.open()，否則會
+      // 一次點擊開出兩個分頁；只有點到整列其他空白區域時才由這裡手動開新分頁。
+      if (event.target instanceof Element && event.target.closest('a')) return;
+      window.open(villageLink, '_blank', 'noopener');
     });
     bindOptionBadgePopover(tr);
     tbody.appendChild(tr);

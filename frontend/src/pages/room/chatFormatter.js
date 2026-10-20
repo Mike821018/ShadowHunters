@@ -1,5 +1,7 @@
 import { renderChatTextWithEmojis } from './chatEmoji.js';
 import { PLAYER_COLOR_HEX, DEPARTED_PLAYER_COLOR_HEX } from '../../constants.js';
+import { getCharacterInfo } from '../../characterInfo.js';
+import { getRenderSyncedAtMs } from './renderClock.js';
 
 export function buildChatStageLines({
   messages,
@@ -121,28 +123,42 @@ export function buildChatStageLines({
     return byName ? String(byName[0] || '') : '';
   };
 
-  const getVisibleRoleName = (label, accountHint = '') => {
+  // 2026-10-17：系統訊息（遊戲結束／回放模式顯示真實身分時）原本只查得到角色的「本地化
+  // 名稱」，沒有保留英文原名，沒辦法用來查陣營（陣營表 characterInfo.js 是用英文名當
+  // key）。拆成兩層：getVisibleRoleEnglishName() 只負責找出英文原名（不做任何翻譯），
+  // getVisibleRoleName() 在這之上做本地化，呼叫端不變；pidRole() 改用英文版本去查陣營。
+  const getVisibleRoleEnglishName = (label, accountHint = '') => {
     const account = String(resolveAccountByLabel(label) || accountHint || '').trim();
     if (!account) {
-      const replayRole = String(replayRoleByName[String(label || '').trim()] || '').trim();
-      if (!replayRole) return '';
-      return getCharacterLocalizedName(replayRole, getCurrentUiLang());
+      return String(replayRoleByName[String(label || '').trim()] || '').trim();
     }
     const player = data?.players?.[account];
     if (!player) {
-      const replayRole = String(replayRoleByAccount[account] || replayRoleByName[String(label || '').trim()] || '').trim();
-      if (!replayRole) return '';
-      return getCharacterLocalizedName(replayRole, getCurrentUiLang());
+      return String(replayRoleByAccount[account] || replayRoleByName[String(label || '').trim()] || '').trim();
     }
     const selfRole = account === viewerAccount ? String(player?.self_character || '').trim() : '';
     const publicRole = String(player?.character || player?.character_name || '').trim();
     const roleName = publicRole || selfRole;
     if (!roleName) {
-      const replayRole = String(replayRoleByAccount[account] || replayRoleByName[String(label || '').trim()] || '').trim();
-      if (!replayRole) return '';
-      return getCharacterLocalizedName(replayRole, getCurrentUiLang());
+      return String(replayRoleByAccount[account] || replayRoleByName[String(label || '').trim()] || '').trim();
     }
-    return getCharacterLocalizedName(roleName, getCurrentUiLang());
+    return roleName;
+  };
+
+  const getVisibleRoleName = (label, accountHint = '') => {
+    const englishName = getVisibleRoleEnglishName(label, accountHint);
+    if (!englishName) return '';
+    return getCharacterLocalizedName(englishName, getCurrentUiLang());
+  };
+
+  // 2026-10-17：系統訊息的角色標示原本固定灰色（chat-role），跟聊天室裡（10-15 新增）
+  // 每則發言名字後面「(角色)」的陣營配色不一致——Mike 回報要求系統訊息也要上陣營顏色。
+  // 從角色英文名查陣營，直接取 characterInfo.js 的 camp.en（'Shadow'/'Hunter'/'Civilian'），
+  // 轉小寫後正好對應 theme.css 既有的 chat-role-shadow/chat-role-hunter/chat-role-civilian
+  // 三個 class，跟聊天室共用同一套配色，不用另外定義樣式。
+  const getCampClassForEnglishRole = (englishName) => {
+    const info = getCharacterInfo(englishName);
+    return String(info?.camp?.en || '').trim().toLowerCase();
   };
 
   const getRoleRevealStatusLabel = (label, accountHint = '') => {
@@ -158,15 +174,29 @@ export function buildChatStageLines({
     return t(isRevealed ? 'ui.role_reveal_revealed' : 'ui.role_reveal_hidden');
   };
 
-  const pidRole = (name, accountHint = '', explicitRoleName = '') => {
+  const pidRole = (name, accountHint = '', explicitEnglishRoleName = '') => {
     const rawName = decodeHtml(name);
     const normalizedName = String(rawName || '').trim();
     if (!normalizedName || normalizedName === '-') {
       return pidPlain(rawName || '-');
     }
     const rawHint = decodeHtml(accountHint);
-    const roleName = String(explicitRoleName || '').trim() || getVisibleRoleName(rawName, rawHint);
-    return `${pidPlain(rawName, rawHint)}<span class="chat-role">(${esc(roleName || '???')})</span>`;
+    // 2026-10-17：GM 沒有陣營，系統訊息遇到 GM 名字時跟聊天室（getChatRoleHtml）一樣
+    // 直接顯示「(GM)」、固定用 chat-role-gm 青色樣式，不要掉進下面查不到角色就顯示
+    // 「(???)」的灰色分支——不然 GM 在系統訊息裡看起來永遠像「身分沒揭露」。
+    const resolvedAccount = String(resolveAccountByLabel(rawName) || rawHint || '').trim();
+    const resolvedPlayer = resolvedAccount ? data?.players?.[resolvedAccount] : null;
+    if (resolvedPlayer?.is_gm) {
+      return `${pidPlain(rawName, rawHint)}<span class="chat-role chat-role-gm">(GM)</span>`;
+    }
+    // explicitEnglishRoleName：呼叫端如果已經知道角色的英文原名（而不是本地化後的顯示
+    // 名稱），直接傳進來，這裡統一做本地化＋查陣營，呼叫端不用自己呼叫
+    // getCharacterLocalizedName。
+    const englishRoleName = String(explicitEnglishRoleName || '').trim() || getVisibleRoleEnglishName(rawName, rawHint);
+    const roleName = englishRoleName ? getCharacterLocalizedName(englishRoleName, lang) : '';
+    const campClass = englishRoleName ? getCampClassForEnglishRole(englishRoleName) : '';
+    const roleSpanClass = campClass ? `chat-role chat-role-${esc(campClass)}` : 'chat-role';
+    return `${pidPlain(rawName, rawHint)}<span class="${roleSpanClass}">(${esc(roleName || '???')})</span>`;
   };
 
   const pid = (name, accountHint = '') => {
@@ -395,13 +425,21 @@ export function buildChatStageLines({
     if ((m = text.match(/^村長 \[(.+)\] 延長目前回合倒數：\[(.+)\] 重新開始計時$/))) {
       return t('room.system.extend_turn_timeout', { target: pid(esc(m[2]), m[2]) });
     }
-    if ((m = text.match(/^村長更新房間設定：Card:(.+?) \/ 初始綠卡=(On|Off)(?: \/ 中立大亂鬥=(On|Off))?(?: \/ 徽章唯一=(On|Off))? \/ 暴斃時間=(\d+)分$/))) {
+    // 2026-10-15：村長更新房間設定的摘要字串（後端 _format_room_settings_summary()）
+    // 後來陸續補了「隨機初始位置」「人數上限」兩個欄位，這裡的正規表達式跟翻譯字串
+    // 原本沒有同步更新，導致訊息比對不到，整句掉進最後面的通用 fallback（直接顯示
+    // 後端原始文字，沒有翻譯也沒有排版）。這裡把這兩個欄位補進來；「人數上限」統一
+    // 放在最後，跟後端摘要字串的欄位順序一致，兩個新欄位都用 (?:...)? 包起來，舊的
+    // 歷史系統訊息（還沒有這兩個欄位時留下的）一樣可以正常比對、只是這兩項顯示預設值。
+    if ((m = text.match(/^村長更新房間設定：Card:(.+?) \/ 初始綠卡=(On|Off)(?: \/ 中立大亂鬥=(On|Off))?(?: \/ 徽章唯一=(On|Off))?(?: \/ 隨機初始位置=(On|Off))? \/ 暴斃時間=(\d+)分(?: \/ 人數上限=(\d+)人)?$/))) {
       return t('room.system.updated_room_settings', {
         card_pool: formatRoomCardPoolLabel(m[1]),
         initial_green: settingToggleLabel(m[2]),
         neutral_chaos: settingToggleLabel(m[3] || 'Off'),
         badge_unique: settingToggleLabel(m[4] || 'Off'),
-        timeout: esc(t('room.info.boom_timeout_fmt_minutes', { n: m[5] })),
+        random_position: settingToggleLabel(m[5] || 'Off'),
+        timeout: esc(t('room.info.boom_timeout_fmt_minutes', { n: m[6] })),
+        max_players: esc(m[7] || '-'),
       });
     }
     if ((m = text.match(/^本場配置：Card:(.+?) \/ 初始綠卡=(On|Off)(?: \/ 中立大亂鬥=(On|Off))?(?: \/ 徽章唯一=(On|Off))? \/ 暴斃時間=(\d+)分$/))) {
@@ -514,7 +552,7 @@ export function buildChatStageLines({
     if (abilityDamage && / 點傷害$/.test(abilityDamage.amount)) {
       return t('room.system.ability_damage', {
         target: pidRole(esc(abilityDamage.target), abilityDamage.target),
-        source: pidRole(esc(abilityDamage.source), abilityDamage.source, getCharacterLocalizedName(abilityDamage.character, lang)),
+        source: pidRole(esc(abilityDamage.source), abilityDamage.source, abilityDamage.character),
         amount: esc(abilityDamage.amount.replace(/ 點傷害$/, '')),
       });
     }
@@ -522,7 +560,7 @@ export function buildChatStageLines({
     if (abilityHeal && / 點傷害$/.test(abilityHeal.amount)) {
       return t('room.system.ability_heal', {
         target: pidRole(esc(abilityHeal.target), abilityHeal.target),
-        source: pidRole(esc(abilityHeal.source), abilityHeal.source, getCharacterLocalizedName(abilityHeal.character, lang)),
+        source: pidRole(esc(abilityHeal.source), abilityHeal.source, abilityHeal.character),
         amount: esc(abilityHeal.amount.replace(/ 點傷害$/, '')),
       });
     }
@@ -544,7 +582,7 @@ export function buildChatStageLines({
       });
     }
     if ((m = text.match(/^\[(.+)\] 因為 白卡\(First Aid\) 傷害變為 (\d+)$/))) return t('room.system.first_aid_set', { player: pidRole(esc(m[1]), m[1]), card: buildCardToken({ cardName: 'First Aid', cardColor: 'white', cardType: 'action' }), amount: esc(m[2]) });
-    if ((m = text.match(/^\[(.+)\] 因為 \[(.+)\]\(Fu-ka\) 角色能力效果傷害變為 (\d+)$/))) return t('room.system.fuka_set', { target: pidRole(esc(m[1]), m[1]), source: pidRole(esc(m[2]), m[2], getCharacterLocalizedName('Fu-ka', lang)), amount: esc(m[3]) });
+    if ((m = text.match(/^\[(.+)\] 因為 \[(.+)\]\(Fu-ka\) 角色能力效果傷害變為 (\d+)$/))) return t('room.system.fuka_set', { target: pidRole(esc(m[1]), m[1]), source: pidRole(esc(m[2]), m[2], 'Fu-ka'), amount: esc(m[3]) });
 
     const declaredAttack = parseBracketedPair(text, '] 宣告攻擊 [', ']');
     if (declaredAttack && declaredAttack.rest === '') {
@@ -682,7 +720,7 @@ export function buildChatStageLines({
       const winners = labels.map((label) => {
         const match = label.match(/^(.+?)\(([^()]+)\)$/);
         if (match) {
-          return pidRole(match[1], match[1], getCharacterLocalizedName(match[2], lang));
+          return pidRole(match[1], match[1], match[2]);
         }
         return pidRole(label, label);
       });
@@ -706,6 +744,28 @@ export function buildChatStageLines({
     }
   };
 
+  // 2026-10-15：聊天室每則訊息的發言者名字後面補上一個「(角色)」，跟村民卡片一樣用 can_view_character 的規則做遮罩（後端在 p.character 有沒有值的時候，就已經檢查過本人是不是看得到了，所以這裡直接沿用同一套邏輯）：還沒揭露時顯示灰色的「(???)」；揭露了就顯示角色名稱，顏色跟陣營走；GM 沒有陣營，直接顯示「(GM)」。
+  const getChatRoleHtml = (account) => {
+    const acc = String(account || '').trim();
+    if (!acc) return '';
+    const player = data?.players?.[acc];
+    if (!player) return '';
+    if (player.is_gm) {
+      return '<span class="chat-role chat-role-gm">(GM)</span>';
+    }
+    const isSelfPlayer = acc === viewerAccount;
+    const resolvedCharacter = String(player.character || player.character_name || '').trim();
+    const hasKnownRole = Boolean(resolvedCharacter);
+    const roleNameEn = hasKnownRole ? resolvedCharacter : (isSelfPlayer ? String(player.self_character || '').trim() : '');
+    if (!roleNameEn) {
+      return '<span class="chat-role">(???)</span>';
+    }
+    const roleCamp = hasKnownRole ? player.character_camp : (isSelfPlayer ? player.self_character_camp : '');
+    const campClass = String(roleCamp || '').trim().toLowerCase() || 'civilian';
+    const roleDisplay = getCharacterLocalizedName(roleNameEn, lang);
+    return `<span class="chat-role chat-role-${esc(campClass)}">(${esc(roleDisplay)})</span>`;
+  };
+
   messages.forEach((message) => {
     const msgType = String(message?.type || 'chat').toLowerCase();
     const ts = Number(message?.timestamp || 0);
@@ -726,7 +786,8 @@ export function buildChatStageLines({
     const chatTextHtml = renderChatTextWithEmojis(text, esc);
     const senderColorHex = account ? getPlayerLabelColor(account) : null;
     const senderStyleAttr = senderColorHex ? ` style="color:${senderColorHex}"` : '';
-    chatLines.push(`<div class="${cls}"><div class="chat-sender"${senderStyleAttr}>${esc(name || '-')}<span class="chat-time">(${timeStr})</span>:</div><div class="chat-text">${chatTextHtml}</div></div>`);
+    const chatRoleHtml = getChatRoleHtml(account);
+    chatLines.push(`<div class="${cls}"><div class="chat-sender"${senderStyleAttr}>${esc(name || '-')}${chatRoleHtml}<span class="chat-time">(${timeStr})</span>:</div><div class="chat-text">${chatTextHtml}</div></div>`);
   });
 
   const timeoutRemain = Number(data?.turn_timeout?.remaining_seconds);
@@ -745,7 +806,20 @@ export function buildChatStageLines({
     // 這則倒數訊息只放進 systemLines、沒有 mirrorToChat，所以浮動聊天室看不到。
     // 補上 mirrorToChat=true，讓它跟其他系統訊息一樣同時鏡像一份進聊天室；
     // chat-line-system 搭配 system-timeout-self 本來就有對應的紅色樣式可以直接套用。
-    pushSystemLine(esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-', n: Math.max(0, timeoutRemain) })), timeoutClass, nowTs, true);
+    // 2026-10-19 修正：這裡原本是把 {n} 直接算好代入、整段文字當靜態字串塞進去，
+    // 只有房間快照推播進來、這個函式重新整個跑一次時數字才會換，看起來像是跳著
+    // 倒數，不是每秒讀秒——跟側欄暴斃倒數之前的問題（見 villageInfoRendering.js
+    // 2026-10-13 修正）一樣。改成同一套做法：只把秒數包成帶 data-remain-base／
+    // data-remain-synced-at 的 <span>，交給 room.js 裡同一個每秒 tick 的本機倒數
+    // 計時器去算，不用等下一次推播；用 class 不用 id，因為這則訊息系統面板跟
+    // 浮動聊天室各有一份鏡像，同時間 DOM 裡會有兩個，計時器那邊已經改成用
+    // querySelectorAll 選取所有符合的元素，不限定單一 id。
+    const timeoutRemainDisplay = Math.max(0, timeoutRemain);
+    const timeoutRemainSpan = '<span class="chat-turn-timeout-remain" data-remain-base="'
+      + timeoutRemainDisplay + '" data-remain-synced-at="' + getRenderSyncedAtMs() + '">' + timeoutRemainDisplay + '</span>';
+    const timeoutTextTemplate = esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-' }));
+    const timeoutTextHtml = timeoutTextTemplate.replace('{n}', timeoutRemainSpan);
+    pushSystemLine(timeoutTextHtml, timeoutClass, nowTs, true);
   }
 
   return { chatLines, systemLines };

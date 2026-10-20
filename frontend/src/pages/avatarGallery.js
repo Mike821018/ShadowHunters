@@ -315,13 +315,25 @@ export async function initAvatarGalleryPage({ toast, dispatch }) {
   const searchBtn = document.getElementById('btnAvatarSearch');
   const searchClearBtn = document.getElementById('btnAvatarSearchClear');
 
-  const applySearch = () => {
+  // 2026-10-15：選頭貼時可以篩選出「自己上傳的頭貼」，跟名稱搜尋可以同時使用
+  // （先依 TRIP 篩出自己上傳的那些，再從裡面搜尋名稱）。mineFilterIds 是
+  // null 代表沒有啟用這個篩選，是 Set 的話就是目前這組 TRIP 名下的頭貼編號。
+  const mineFilterTripInput = document.getElementById('avatarMineFilterTrip');
+  const mineFilterCheck = document.getElementById('avatarMineFilterCheck');
+  let mineFilterIds = null;
+
+  const applyFilters = () => {
     const query = (searchInput?.value || '').trim().toLowerCase();
+    let base = allOptions;
+    if (mineFilterIds) {
+      base = base.filter((a) => a.isCustom && mineFilterIds.has(Number(a.id)));
+    }
     filteredOptions = query
-      ? allOptions.filter((a) => a.name.toLowerCase().includes(query) || String(a.id).includes(query))
-      : allOptions.slice();
+      ? base.filter((a) => a.name.toLowerCase().includes(query) || String(a.id).includes(query))
+      : base.slice();
     applyPage(1);
   };
+  const applySearch = applyFilters;
 
   searchBtn?.addEventListener('click', applySearch);
   searchInput?.addEventListener('keydown', (e) => {
@@ -329,8 +341,38 @@ export async function initAvatarGalleryPage({ toast, dispatch }) {
   });
   searchClearBtn?.addEventListener('click', () => {
     if (searchInput) searchInput.value = '';
-    filteredOptions = allOptions.slice();
-    applyPage(1);
+    applyFilters();
+  });
+
+  const loadMineFilter = async () => {
+    const trip = (mineFilterTripInput?.value || '').trim();
+    if (!trip) {
+      toast(t('toast.avatar_mine_filter_trip_required'), 'error');
+      if (mineFilterCheck) mineFilterCheck.checked = false;
+      mineFilterIds = null;
+      applyFilters();
+      return;
+    }
+    try {
+      const data = await dispatch('filter_avatars_by_trip', { trip });
+      mineFilterIds = new Set((data?.avatar_ids || []).map((id) => Number(id)));
+    } catch (error) {
+      if (mineFilterCheck) mineFilterCheck.checked = false;
+      mineFilterIds = null;
+    }
+    applyFilters();
+  };
+
+  mineFilterCheck?.addEventListener('change', () => {
+    if (mineFilterCheck.checked) {
+      void loadMineFilter();
+    } else {
+      mineFilterIds = null;
+      applyFilters();
+    }
+  });
+  mineFilterTripInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && mineFilterCheck?.checked) void loadMineFilter();
   });
 
   numberInput?.addEventListener('change', () => {
