@@ -1,5 +1,5 @@
 import { t } from '../i18n.js';
-import { apiFetch } from '../utils.js';
+import { apiFetch, esc } from '../utils.js';
 import { positionOptionPopover, buildSettingsBadgeCodes, buildToggleBadge, buildTimeoutBadge } from './room/roomSettingsBadges.js';
 
 function winnerBadge(camp, tokenLabel) {
@@ -13,6 +13,14 @@ function winnerBadge(camp, tokenLabel) {
     return `<span class="records-winner records-winner-civilian">${tokenLabel.civilian}</span>`;
   }
   return '';
+}
+
+// 2026-10-22 新增：聊天村廢村後保留的紀錄沒有陣營／勝負概念（room_kind === 'chat'），
+// 不該顯示勝負徽章，改顯示跟大廳列表（lobby.js）同一個「聊天村」分類標籤，方便在
+// 一般對戰紀錄裡一眼區分出來。沿用大廳已經有的 CSS class（room-type-tag／
+// chat-room-tag，定義在 theme.css）跟 locale key（lobby.rooms.chat_tag），不用新增樣式。
+function chatRoomTagCell() {
+  return `<span class="room-type-tag chat-room-tag">${esc(t('lobby.rooms.chat_tag'))}</span>`;
 }
 
 function winnerCell(winnerCode) {
@@ -119,7 +127,7 @@ function renderRecordsTable(entries) {
       <td><a href="${villageLink}" target="_blank" rel="noopener">${villageName}</a></td>
       <td>${endTimeText || '-'}</td>
       <td>${entry.player_count ?? '-'}</td>
-      <td>${winnerCell(entry.winner_code)}</td>
+      <td>${entry.room_kind === 'chat' ? chatRoomTagCell() : winnerCell(entry.winner_code)}</td>
       <td>${renderOptionsCell(entry.game_settings)}</td>
     `;
     tr.classList.add('room-row');
@@ -183,6 +191,10 @@ export async function initRecordsPage({ toast }) {
     page: 1,
     pageSize: 20,
     search: '',
+    // 2026-10-22 新增：Mike 要求紀錄閱覽頁把「一般紀錄」跟「聊天村紀錄」拆成
+    // 子分頁分開顯示，不要混在同一份列表裡。預設停在一般紀錄分頁（跟改版前的
+    // 行為一致），切分頁時重置回第 1 頁再重新查詢。
+    roomKind: 'game',
   };
 
   const searchInput = document.getElementById('recordsSearchInput');
@@ -194,6 +206,7 @@ export async function initRecordsPage({ toast }) {
     params.set('page', String(state.page));
     params.set('page_size', String(state.pageSize));
     if (state.search) params.set('search', state.search);
+    params.set('room_kind', state.roomKind);
     const result = await fetchJson(`/api/game_records?${params.toString()}`);
     renderRecordsTable(result.entries || []);
     updatePager(
@@ -218,6 +231,25 @@ export async function initRecordsPage({ toast }) {
     state.page = 1;
     await loadPage();
   };
+
+  // 2026-10-22 新增：一般／聊天村分頁按鈕。沿用身分登錄頁／頭像頁已經有的
+  // .tab／.current 分頁樣式，不用另外加 CSS；點了哪個分頁就把 state.roomKind
+  // 換成對應值，重置回第 1 頁重新查詢（跟搜尋／換頁共用同一份 loadPage）。
+  const kindTabButtons = Array.from(document.querySelectorAll('.records-kind-tabs [data-room-kind]'));
+  kindTabButtons.forEach((button) => {
+    button.addEventListener('click', async () => {
+      const kind = button.getAttribute('data-room-kind') || 'game';
+      if (kind === state.roomKind) return;
+      state.roomKind = kind;
+      state.page = 1;
+      kindTabButtons.forEach((btn) => {
+        const active = btn === button;
+        btn.classList.toggle('current', active);
+        btn.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      await loadPage();
+    });
+  });
 
   searchButton?.addEventListener('click', submitSearch);
   searchClearButton?.addEventListener('click', async () => {

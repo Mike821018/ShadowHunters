@@ -262,10 +262,13 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
         page_raw = (params.get('page') or ['1'])[0]
         page_size_raw = (params.get('page_size') or ['20'])[0]
         search = (params.get('search') or [''])[0]
+        # 2026-10-22 新增：紀錄閱覽頁的一般／聊天村子分頁用這個參數跟後端要
+        # 對應種類的紀錄（見 api_get_game_records 的 room_kind 參數說明）。
+        room_kind = (params.get('room_kind') or [''])[0]
         limit = int(limit_raw or 100)
         page = int(page_raw or 1)
         page_size = int(page_size_raw or 20)
-        result = self._server().room_manager.records_api.api_get_game_records(limit, page, page_size, search=search)
+        result = self._server().room_manager.records_api.api_get_game_records(limit, page, page_size, search=search, room_kind=room_kind)
         self._send_json(HTTPStatus.OK, result)
 
     def _handle_trip_directory(self, query: str):

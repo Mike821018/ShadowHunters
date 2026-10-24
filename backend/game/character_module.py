@@ -55,6 +55,21 @@ class Character():
         user.can_use_ability = self.can_use_ability
         user.character_reveal = True
 
+    def unreveal(self, user):
+        # 2026-10-20 新增：GM 在遊戲進行中可以把已揭露、但還活著的玩家身分重新隱藏（反揭露），
+        # 用來修正 GM 自己手誤揭露或想暫時隱藏身分等情況。這裡刻意做成 reveal() 的完整相反：
+        # 不只是把 character_reveal 改回 False，連同 reveal() 當時一次性複製過去的被動戰鬥
+        # 屬性（force_atk／leech／counter_atk／atk_type）也一併還原成未揭露前的預設值，
+        # 否則像狼男的反打、Valkyrie 的攻擊骰這類「只在揭露後才生效」的被動效果，會在玩家
+        # 被反揭露、身分理論上重新隱藏之後仍然繼續套用，造成戰鬥判定跟顯示狀態對不起來。
+        user.character_name = ''
+        user.force_atk = False
+        user.leech = 0
+        user.counter_atk = False
+        user.atk_type = 1
+        user.can_use_ability = False
+        user.character_reveal = False
+
     def ability(self, user, target, rooms) -> bool:
         return False
 

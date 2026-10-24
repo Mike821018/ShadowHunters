@@ -98,7 +98,7 @@
                   <input type="checkbox" id="gmEnabledCheck" disabled />
                   <span data-i18n="lobby.create.gm_enabled_label">開啟 GM 功能</span>
                 </label>
-                <span class="field-hint" data-i18n="lobby.create.gm_enabled_hint">（村長 Trip 的累積場次需達到 30 場以上才能開啟；開啟後，加入時比對到村長 Trip 的那個人會升級成 GM——旁觀主持、不下場、不計入 4~8 人門檻，但仍保留村長的設定/踢人等管理權限）</span>
+                <span class="field-hint" data-i18n="lobby.create.gm_enabled_hint">（村長 Trip 的累積場次需達到 30 場以上才能開啟；開啟後，加入時比對到村長 Trip 的那個人會升級成 GM——旁觀主持、不下場、不計入 4~10 人門檻，但仍保留村長的設定/踢人等管理權限）</span>
               </div>
 
               <label class="option-title" for="requireTripCheck" data-i18n="lobby.create.require_trip_label">Trip 驗證</label>
@@ -134,8 +134,10 @@
                   <option value="6">6</option>
                   <option value="7">7</option>
                   <option value="8" selected>8</option>
+                  <option value="9">9</option>
+                  <option value="10">10</option>
                 </select>
-                <span class="field-hint" data-i18n="lobby.create.max_players_hint">（4~8 人之間；勾選聊天村的話不受此設定影響，固定 50 人）</span>
+                <span class="field-hint" data-i18n="lobby.create.max_players_hint">（4~10 人之間；勾選聊天村的話不受此設定影響，固定 50 人）</span>
               </div>
 
               <label class="option-title" for="turnTimeoutSelect" data-i18n="lobby.create.turn_timeout_label">暴斃時間</label>

@@ -26,7 +26,7 @@ function categoryLabel(category) {
   return key ? t(key) : String(category || '');
 }
 
-function bindSubmitForm({ el, state, dispatch, toast }) {
+function bindSubmitForm({ el, state, dispatch, toast, roomId }) {
   if (!el.bugReportSubmitForm || el.bugReportSubmitForm.dataset.bound === 'true') return;
 
   el.bugReportSubmitForm.addEventListener('submit', async (event) => {
@@ -44,7 +44,7 @@ function bindSubmitForm({ el, state, dispatch, toast }) {
     }
 
     const trip = el.bugReportTrip?.value.trim() || '';
-    const room_id = state.roomId || null;
+    const room_id = roomId || null;
     const data = await dispatch('submit_bug_report', { nickname, category, description, room_id, trip });
 
     if (el.bugReportSubmitResult) el.bugReportSubmitResult.hidden = false;
@@ -128,11 +128,22 @@ function bindTripLookupForm({ el, dispatch, esc, toast }) {
 }
 
 export async function initReportPage({ el, state, dispatch, esc, toast }) {
-  if (state.roomId && el.bugReportRoomHint) {
+  // 2026-10-20 修正：這裡原本直接用 state.roomId，但 state.roomId 是全站共用的
+  // 「最後待過的房間」（restoreSession() 在每頁都會從 sessionStorage 還原，不管從哪一頁
+  // 連過來都會有值），導致不管使用者是從房間頁的「問題回報」快速連結點進來、
+  // 還是直接從首頁／大廳導覽列的「問題回報」分頁點進來、
+  // 都會帶上上一次待過的房間快照，很容易牛頭不對馬嘴（例如使用者根本不記得、
+  // 甚至已經結束的舊房間）。改成只認網址上明確帶的 ?roomId= 參數——真的
+  // 是從房間頁快速連結點進來才會有這個參數，直接點尰覽列進來則不會，
+  // 這樣才符合這個功能原本「方便在房間裡回報時附上快照」的設計用意。
+  const roomIdParam = Number(new URLSearchParams(window.location.search).get('roomId'));
+  const reportRoomId = Number.isFinite(roomIdParam) && roomIdParam > 0 ? roomIdParam : null;
+
+  if (reportRoomId && el.bugReportRoomHint) {
     el.bugReportRoomHint.hidden = false;
-    el.bugReportRoomHint.textContent = t('report.submit.room_context_hint', { room: state.roomId });
+    el.bugReportRoomHint.textContent = t('report.submit.room_context_hint', { room: reportRoomId });
   }
-  bindSubmitForm({ el, state, dispatch, toast });
+  bindSubmitForm({ el, state, dispatch, toast, roomId: reportRoomId });
   bindLookupForm({ el, dispatch, esc, toast });
   bindTripLookupForm({ el, dispatch, esc, toast });
 }

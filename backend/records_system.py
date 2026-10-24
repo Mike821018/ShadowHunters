@@ -76,6 +76,17 @@ class GameRecord:
     game_log: List[Dict[str, Any]] = field(default_factory=list)
     chat_messages: List[Dict[str, Any]] = field(default_factory=list)
     final_state: Dict[str, Any] = field(default_factory=dict)
+    # 2026-10-22 新增：Mike 要求廢村也要建立紀錄（餵玩家統計、點進房間還能看回放），
+    # 但不要主動出現在對戰紀錄列表裡；這個旗標標記這筆紀錄是不是廢村產生的，
+    # 列表 API（api_get_game_records）看到就跳過，單筆查詢（api_get_game_record／
+    # api_get_game_record_by_room_id）跟玩家統計不受影響，照常可查、照常累計。
+    is_abolished: bool = False
+    # 2026-10-22 新增：Mike 要求聊天村廢村也要保留紀錄（紀錄列表要能看到聊天村分類），
+    # 但聊天村沒有角色/陣營/勝負這些遊戲概念，不能混進玩家統計／排行榜的計算，
+    # 否則下次伺服器重啟時 rebuild_player_stats() 會把這些無意義的資料重新套用一次，
+    # 污染玩家的勝率等統計。用這個欄位標記紀錄種類：'game'＝一般對戰（預設值，
+    # 向下相容舊紀錄），'chat'＝聊天村紀錄。rebuild_player_stats() 跟統計更新都要跳過 'chat'。
+    room_kind: str = 'game'
 
 
 @dataclass
@@ -333,6 +344,8 @@ class GameRecordStore:
             'game_log': list(record.game_log or []),
             'chat_messages': list(getattr(record, 'chat_messages', []) or []),
             'final_state': dict(getattr(record, 'final_state', {}) or {}),
+            'is_abolished': bool(getattr(record, 'is_abolished', False)),
+            'room_kind': str(getattr(record, 'room_kind', 'game') or 'game'),
         }
 
     def _game_record_from_dict(self, row: Dict[str, Any]) -> GameRecord:
@@ -353,6 +366,8 @@ class GameRecordStore:
             game_log=list(row.get('game_log') or []),
             chat_messages=list(row.get('chat_messages') or []),
             final_state=dict(row.get('final_state') or {}),
+            is_abolished=bool(row.get('is_abolished', False)),
+            room_kind=str(row.get('room_kind') or 'game'),
         )
 
     def _persist_game_record(self, record: GameRecord):
@@ -1077,6 +1092,11 @@ class GameRecordStore:
     def rebuild_player_stats(self):
         self.player_stats.clear()
         for game_record in sorted(self.game_records.values(), key=lambda row: row.game_date):
+            # 2026-10-22 新增：聊天村紀錄（room_kind == 'chat'）沒有角色/陣營/勝負，
+            # 不能拿來跑一般對戰的統計計算，否則每次伺服器重啟都會把這些無意義的
+            # 資料重新套用進玩家統計，汙染勝率等數據。
+            if str(getattr(game_record, 'room_kind', 'game') or 'game') == 'chat':
+                continue
             for player_record in game_record.players:
                 self.update_player_stats(player_record.player_id, game_record, player_record)
         self.update_leaderboards()

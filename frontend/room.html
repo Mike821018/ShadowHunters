@@ -219,6 +219,41 @@
                         </div>
                       </form>
                     </dialog>
+                    <dialog id="gmCharacterChoiceDialog" class="area-choice-dialog equipment-choice-dialog gm-character-choice-dialog" aria-labelledby="gmCharacterChoiceTitle">
+                      <form method="dialog" class="area-choice-form">
+                        <div class="area-choice-header">
+                          <strong id="gmCharacterChoiceTitle">更改玩家角色</strong>
+                        </div>
+                        <p id="gmCharacterChoiceMessage" class="area-choice-message">請選擇要指定給這位玩家的角色。</p>
+                        <div id="gmCharacterChoiceOptions" class="equipment-choice-options"></div>
+                        <div class="area-choice-actions equipment-choice-actions">
+                          <button id="gmCharacterChoiceCancelButton" class="btn area-choice-button neutral" type="button" autofocus>取消</button>
+                        </div>
+                      </form>
+                    </dialog>
+                    <dialog id="gmPlayerAdjustDialog" class="area-choice-dialog gm-player-adjust-dialog" aria-labelledby="gmPlayerAdjustTitle">
+                      <form method="dialog" class="area-choice-form">
+                        <div class="area-choice-header">
+                          <strong id="gmPlayerAdjustTitle">調整玩家狀態</strong>
+                        </div>
+                        <p id="gmPlayerAdjustMessage" class="area-choice-message">請選擇要對這位玩家執行的調整。</p>
+                        <div class="gm-player-adjust-actions">
+                          <button id="gmPlayerAdjustBoomButton" class="btn area-choice-button danger" type="button">暴斃</button>
+                          <button id="gmPlayerAdjustRevealButton" class="btn area-choice-button heal" type="button">揭露</button>
+                          <button id="gmPlayerAdjustUnrevealButton" class="btn area-choice-button neutral" type="button">反揭露</button>
+                          <button id="gmPlayerAdjustDiscardEquipmentButton" class="btn area-choice-button neutral" type="button">丟棄裝備</button>
+                          <button id="gmPlayerAdjustGiveEquipmentButton" class="btn area-choice-button heal" type="button">給予裝備</button>
+                        </div>
+                        <div class="gm-player-adjust-hp-row">
+                          <label id="gmPlayerAdjustHpLabel" for="gmPlayerAdjustHpInput">調整血量</label>
+                          <input id="gmPlayerAdjustHpInput" class="gm-player-adjust-hp-input" type="number" min="0" step="1" inputmode="numeric" />
+                          <button id="gmPlayerAdjustHpApplyButton" class="btn area-choice-button heal" type="button">套用</button>
+                        </div>
+                        <div class="area-choice-actions">
+                          <button id="gmPlayerAdjustCancelButton" class="btn area-choice-button neutral" type="button" autofocus>取消</button>
+                        </div>
+                      </form>
+                    </dialog>
                     <dialog id="greenChoiceDialog" class="area-choice-dialog" aria-labelledby="greenChoiceTitle">
                       <form method="dialog" class="area-choice-form">
                         <div class="area-choice-header">
@@ -230,18 +265,6 @@
                           <button id="greenChoiceSkipButton" class="btn area-choice-button danger" type="button">不發動</button>
                           <button id="greenChoiceNoActivateButton" class="btn area-choice-button neutral" type="button" hidden>不發動</button>
                           <button id="greenChoiceCancelButton" class="btn area-choice-button neutral" type="button" autofocus>取消</button>
-                        </div>
-                      </form>
-                    </dialog>
-                    <dialog id="confirmDialog" class="area-choice-dialog" aria-labelledby="confirmDialogTitle">
-                      <form method="dialog" class="area-choice-form">
-                        <div class="area-choice-header">
-                          <strong id="confirmDialogTitle">確認操作</strong>
-                        </div>
-                        <p id="confirmDialogMessage" class="area-choice-message">是否繼續？</p>
-                        <div class="area-choice-actions">
-                          <button id="confirmDialogConfirmButton" class="btn area-choice-button heal" type="button">確認</button>
-                          <button id="confirmDialogCancelButton" class="btn area-choice-button neutral" type="button" autofocus>取消</button>
                         </div>
                       </form>
                     </dialog>
@@ -258,6 +281,28 @@
                   </div>
                 </div>
             </fieldset>
+
+            <!-- 2026-10-22 修正：confirmDialog 原本巢狀在 .room-layout-game-fieldset 裡面，
+                 但聊天村會把這個 fieldset 整個設成 display:none（見 room.js 的
+                 chatHiddenFieldsets）。聊天村唯一能觸發這個共用確認視窗的操作是村長的
+                 「廢除村莊」按鈕，結果 dialog.showModal() 在 display:none 的祖先底下會直接
+                 丟出 InvalidStateError，把 openConfirmDialog() 回傳的 Promise 原地 reject 掉，
+                 畫面上完全沒有任何提示（沒有確認視窗、沒有錯誤訊息）——這就是 Mike 回報的
+                 「聊天村點廢村會卡住」。搬到兩個 fieldset 外面當兄弟節點，不管是不是聊天村
+                 都不會被隱藏；<dialog> 本來就是靠瀏覽器原生 top layer 顯示，不依賴在文件
+                 流中的實際位置，搬動位置不影響其他地方。 -->
+            <dialog id="confirmDialog" class="area-choice-dialog" aria-labelledby="confirmDialogTitle">
+              <form method="dialog" class="area-choice-form">
+                <div class="area-choice-header">
+                  <strong id="confirmDialogTitle">確認操作</strong>
+                </div>
+                <p id="confirmDialogMessage" class="area-choice-message">是否繼續？</p>
+                <div class="area-choice-actions">
+                  <button id="confirmDialogConfirmButton" class="btn area-choice-button heal" type="button">確認</button>
+                  <button id="confirmDialogCancelButton" class="btn area-choice-button neutral" type="button" autofocus>取消</button>
+                </div>
+              </form>
+            </dialog>
 
             <fieldset class="room-layout-system-fieldset">
               <legend><strong>系統訊息</strong></legend>

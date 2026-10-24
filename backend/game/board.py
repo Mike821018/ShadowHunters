@@ -89,6 +89,23 @@ class board():
             random.shuffle(self.card_deck[card.color])
         # update
 
+    def take_card_by_name(self, pile_key, card_name):
+        """
+        2026-10-22 新增：GM「給裝備」功能用，從指定牌堆（例如 'White' 牌庫本身，或
+        'White Discard' 棄牌堆）依名稱精準抽出一張卡片，不像 draw() 只能拿最上面那張、
+        也不會觸發 draw() 的「牌庫空了從棄牌堆洗回」邏輯（GM 指定抽取不需要這個）。
+        找不到就回傳 None，呼叫端自行判斷要回什麼錯誤碼。
+        """
+        pile = self.card_deck.get(pile_key)
+        if not pile:
+            return None
+        target_name = str(card_name or '')
+        for idx, card in enumerate(pile):
+            if str(getattr(card, 'name', '') or '') == target_name:
+                return pile.pop(idx)
+        return None
+        # update
+
     def roll_dice(self, roll_type): # 1: 1D4(一顆四面骰), 2: 1D6(一顆六面骰), 3: 1D4+1D6(一顆四面骰+一顆六面骰)
         D4 = 0
         D6 = 0

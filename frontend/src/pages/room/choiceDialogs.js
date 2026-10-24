@@ -263,3 +263,205 @@ export function showConfirmDialog({
     dialog.showModal();
   });
 }
+export function showGmPlayerAdjustDialog({
+  el,
+  title,
+  message,
+  isAlive,
+  isRevealed,
+  currentDamage,
+  maxHp,
+  boomLabel,
+  revealLabel,
+  unrevealLabel,
+  discardEquipmentLabel,
+  giveEquipmentLabel,
+  hasEquipment,
+  canGiveEquipment,
+  hpLabel,
+  hpApplyLabel,
+  cancelLabel,
+}) {
+  return new Promise((resolve) => {
+    const dialog = el.gmPlayerAdjustDialog;
+    if (!(dialog instanceof HTMLDialogElement)) {
+      resolve(null);
+      return;
+    }
+
+    if (el.gmPlayerAdjustTitle) el.gmPlayerAdjustTitle.textContent = title;
+    if (el.gmPlayerAdjustMessage) el.gmPlayerAdjustMessage.textContent = message;
+    if (el.gmPlayerAdjustBoomButton) {
+      el.gmPlayerAdjustBoomButton.textContent = boomLabel;
+      el.gmPlayerAdjustBoomButton.hidden = !isAlive;
+    }
+    if (el.gmPlayerAdjustRevealButton) {
+      el.gmPlayerAdjustRevealButton.textContent = revealLabel;
+      el.gmPlayerAdjustRevealButton.hidden = Boolean(isRevealed);
+    }
+    if (el.gmPlayerAdjustUnrevealButton) {
+      el.gmPlayerAdjustUnrevealButton.textContent = unrevealLabel;
+      el.gmPlayerAdjustUnrevealButton.hidden = !isAlive || !isRevealed;
+    }
+    // 2026-10-22 新增：GM 裝備管理——丟棄裝備只在玩家還活著且身上至少有一件裝備時顯示；
+    // 給予裝備只在玩家還活著、且牌庫／棄牌堆至少還有一件可給的裝備卡時顯示。
+    if (el.gmPlayerAdjustDiscardEquipmentButton) {
+      el.gmPlayerAdjustDiscardEquipmentButton.textContent = discardEquipmentLabel;
+      el.gmPlayerAdjustDiscardEquipmentButton.hidden = !isAlive || !hasEquipment;
+    }
+    if (el.gmPlayerAdjustGiveEquipmentButton) {
+      el.gmPlayerAdjustGiveEquipmentButton.textContent = giveEquipmentLabel;
+      el.gmPlayerAdjustGiveEquipmentButton.hidden = !isAlive || !canGiveEquipment;
+    }
+    if (el.gmPlayerAdjustHpLabel) el.gmPlayerAdjustHpLabel.textContent = hpLabel;
+    if (el.gmPlayerAdjustHpApplyButton) el.gmPlayerAdjustHpApplyButton.textContent = hpApplyLabel;
+    if (el.gmPlayerAdjustCancelButton) el.gmPlayerAdjustCancelButton.textContent = cancelLabel;
+    if (el.gmPlayerAdjustHpInput) {
+      const normalizedMax = Number.isFinite(maxHp) ? Math.max(0, Math.trunc(maxHp)) : null;
+      const normalizedCurrent = Number.isFinite(currentDamage) ? Math.max(0, Math.trunc(currentDamage)) : 0;
+      el.gmPlayerAdjustHpInput.min = '0';
+      if (normalizedMax !== null) el.gmPlayerAdjustHpInput.max = String(normalizedMax);
+      el.gmPlayerAdjustHpInput.value = String(normalizedCurrent);
+    }
+
+    const parseResult = (raw) => {
+      const text = String(raw || '').trim();
+      if (!text) return null;
+      if (text.startsWith('adjust_hp:')) {
+        const value = Number(text.slice('adjust_hp:'.length));
+        if (!Number.isFinite(value)) return null;
+        return { action: 'adjust_hp', value: Math.trunc(value) };
+      }
+      if (
+        text === 'boom' ||
+        text === 'reveal' ||
+        text === 'unreveal' ||
+        text === 'discard_equipment' ||
+        text === 'give_equipment'
+      ) {
+        return { action: text };
+      }
+      return null;
+    };
+
+    let settled = false;
+    const cleanup = () => {
+      dialog.removeEventListener('cancel', onCancel);
+      dialog.removeEventListener('close', onClose);
+      el.gmPlayerAdjustBoomButton?.removeEventListener('click', onBoom);
+      el.gmPlayerAdjustRevealButton?.removeEventListener('click', onReveal);
+      el.gmPlayerAdjustUnrevealButton?.removeEventListener('click', onUnreveal);
+      el.gmPlayerAdjustDiscardEquipmentButton?.removeEventListener('click', onDiscardEquipment);
+      el.gmPlayerAdjustGiveEquipmentButton?.removeEventListener('click', onGiveEquipment);
+      el.gmPlayerAdjustHpApplyButton?.removeEventListener('click', onHpApply);
+      el.gmPlayerAdjustCancelButton?.removeEventListener('click', onCancelClick);
+    };
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const onCancel = (event) => {
+      event.preventDefault();
+      dialog.close('');
+    };
+    const onClose = () => finish(parseResult(dialog.returnValue || ''));
+    const onCancelClick = () => dialog.close('');
+    const onBoom = () => dialog.close('boom');
+    const onReveal = () => dialog.close('reveal');
+    const onUnreveal = () => dialog.close('unreveal');
+    const onDiscardEquipment = () => dialog.close('discard_equipment');
+    const onGiveEquipment = () => dialog.close('give_equipment');
+    const onHpApply = () => {
+      const raw = Number(el.gmPlayerAdjustHpInput?.value);
+      if (!Number.isFinite(raw)) return;
+      dialog.close(`adjust_hp:${Math.trunc(raw)}`);
+    };
+
+    dialog.addEventListener('cancel', onCancel);
+    dialog.addEventListener('close', onClose);
+    el.gmPlayerAdjustBoomButton?.addEventListener('click', onBoom);
+    el.gmPlayerAdjustRevealButton?.addEventListener('click', onReveal);
+    el.gmPlayerAdjustUnrevealButton?.addEventListener('click', onUnreveal);
+    el.gmPlayerAdjustDiscardEquipmentButton?.addEventListener('click', onDiscardEquipment);
+    el.gmPlayerAdjustGiveEquipmentButton?.addEventListener('click', onGiveEquipment);
+    el.gmPlayerAdjustHpApplyButton?.addEventListener('click', onHpApply);
+    el.gmPlayerAdjustCancelButton?.addEventListener('click', onCancelClick);
+    dialog.showModal();
+  });
+}
+
+export function showGmCharacterChoiceDialog({ el, title, message, groups, cancelLabel }) {
+  return new Promise((resolve) => {
+    const dialog = el.gmCharacterChoiceDialog;
+    const optionsHost = el.gmCharacterChoiceOptions;
+    const normalizeChoiceOption = (option) => {
+      if (option && typeof option === 'object') {
+        return {
+          value: String(option.value || '').trim(),
+          label: String(option.label || option.value || '').trim(),
+        };
+      }
+      const value = String(option || '').trim();
+      return { value, label: value };
+    };
+    const normalizedGroups = (Array.isArray(groups) ? groups : [])
+      .map((group) => ({
+        camp: String(group?.camp || '').trim(),
+        label: String(group?.label || '').trim(),
+        options: (Array.isArray(group?.options) ? group.options : [])
+          .map(normalizeChoiceOption)
+          .filter((option) => option.value),
+      }))
+      .filter((group) => group.options.length);
+    if (!(dialog instanceof HTMLDialogElement) || !(optionsHost instanceof HTMLElement)) {
+      resolve('');
+      return;
+    }
+
+    if (el.gmCharacterChoiceTitle) el.gmCharacterChoiceTitle.textContent = title;
+    if (el.gmCharacterChoiceMessage) el.gmCharacterChoiceMessage.textContent = message;
+    if (el.gmCharacterChoiceCancelButton) el.gmCharacterChoiceCancelButton.textContent = cancelLabel;
+    optionsHost.innerHTML = normalizedGroups
+      .map((group) => `<div class="gm-character-choice-group" data-camp="${escapeAttr(group.camp)}"><div class="gm-character-choice-group-label">${escapeHtml(group.label)}</div><div class="equipment-choice-options gm-character-choice-group-options">${group.options
+        .map((option) => `<button class="equipment-choice-option" type="button" data-gm-character-choice="${escapeAttr(option.value)}" aria-label="${escapeAttr(option.label)}">${escapeHtml(option.label)}</button>`)
+        .join('')}</div></div>`)
+      .join('');
+
+    let settled = false;
+    const cleanup = () => {
+      dialog.removeEventListener('cancel', onCancel);
+      dialog.removeEventListener('close', onClose);
+      el.gmCharacterChoiceCancelButton?.removeEventListener('click', onCancelClick);
+      optionsHost.querySelectorAll('[data-gm-character-choice]').forEach((button) => {
+        button.removeEventListener('click', onOptionClick);
+      });
+    };
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const onCancel = (event) => {
+      event.preventDefault();
+      dialog.close('');
+    };
+    const onClose = () => finish(dialog.returnValue || '');
+    const onCancelClick = () => dialog.close('');
+    const onOptionClick = (event) => {
+      const target = event.currentTarget;
+      if (!(target instanceof HTMLElement)) return;
+      dialog.close(String(target.getAttribute('data-gm-character-choice') || ''));
+    };
+
+    dialog.addEventListener('cancel', onCancel);
+    dialog.addEventListener('close', onClose);
+    el.gmCharacterChoiceCancelButton?.addEventListener('click', onCancelClick);
+    optionsHost.querySelectorAll('[data-gm-character-choice]').forEach((button) => {
+      button.addEventListener('click', onOptionClick);
+    });
+    dialog.showModal();
+  });
+}

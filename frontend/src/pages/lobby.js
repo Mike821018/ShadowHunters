@@ -4,7 +4,9 @@ export function renderRooms({ el, esc, withVillageSuffix, goToRoomPage }, rooms)
   if (!el.roomsTbody) return;
   el.roomsTbody.innerHTML = '';
 
-  const visibleRooms = (rooms || []).filter((r) => Number(r.room_status) !== 3);
+  // 2026-10-20 修正：房間廢除後（status 4）不再把整個房間砍掉，房間名單跟遊戲結束（status 3）一樣，也要跟著隱藏，
+  // 不應該還顯示在大廳房間列表裡讓人誤以為還能加入。
+  const visibleRooms = (rooms || []).filter((r) => Number(r.room_status) !== 3 && Number(r.room_status) !== 4);
 
   if (!visibleRooms.length) {
     const tr = document.createElement('tr');
@@ -94,7 +96,7 @@ export function bindLobbyEvents({
   el.managerTrip?.addEventListener('input', syncGmEnabledAvailability);
   syncGmEnabledAvailability();
 
-  // 2026-10-15：聊天村人數上限固定 50 人，不受「房間人數上限」這個 4~8 的選單
+  // 2026-10-15：聊天村人數上限固定 50 人，不受「房間人數上限」這個 4~10 的選單
   // 影響，勾選聊天村的時候把這個選單停用，避免讓人誤以為選了就有效。
   const syncMaxPlayersAvailability = () => {
     if (!el.roomMaxPlayersSelect) return;
@@ -122,7 +124,8 @@ export function bindLobbyEvents({
     const enable_badge_unique_character_select = el.badgeUniqueCheck?.checked ?? false;
     const enable_random_initial_position = el.enableRandomInitialPositionCheck?.checked ?? false;
     const turn_timeout_minutes = Math.max(1, Number.parseInt(el.turnTimeoutSelect?.value || '3', 10) || 3);
-    const max_players = Math.min(8, Math.max(4, Number.parseInt(el.roomMaxPlayersSelect?.value || '8', 10) || 8));
+    // 2026-10-22 修正：房間人數上限從 8 放寬到 10（9人=3-3-3、10人=3-3-4）。
+    const max_players = Math.min(10, Math.max(4, Number.parseInt(el.roomMaxPlayersSelect?.value || '8', 10) || 8));
     if (!baseName) {
       toast(t('toast.room_name_required'), 'error');
       return;

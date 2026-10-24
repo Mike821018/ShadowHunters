@@ -1,9 +1,9 @@
-import { PLAYER_COLOR_HEX } from '../constants.js';
+import { PLAYER_COLOR_HEX, resolvePlayerColorHex } from '../constants.js';
 import { getCharacterLocalizedName, getCurrentUiLang } from '../characterInfo.js';
 import { t } from '../i18n.js';
 import { clearRoomAccount } from '../session.js';
 import { apiFetch } from '../utils.js';
-import { showAreaChoiceDialog, showConfirmDialog, showEquipmentChoiceDialog, showGreenChoiceDialog } from './room/choiceDialogs.js';
+import { showAreaChoiceDialog, showConfirmDialog, showEquipmentChoiceDialog, showGmCharacterChoiceDialog, showGmPlayerAdjustDialog, showGreenChoiceDialog } from './room/choiceDialogs.js';
 import { renderVillageInfo as renderVillageInfoModule } from './room/villageInfoRendering.js';
 import { buildReplayRoomState as buildReplayRoomStateModule } from './room/replayAdapter.js';
 import { buildChatStageLines } from './room/chatFormatter.js';
@@ -645,7 +645,9 @@ function renderSummary({ el, statusText }, data) {
       ? t('room.info.status_playing')
       : roomStatus === 3
         ? t('room.info.status_finished')
-        : String(room.room_status ?? '-');
+        : roomStatus === 4
+          ? t('room.info.status_abolished')
+          : String(room.room_status ?? '-');
   el.sumRoomStatus.textContent = roomStatusText;
   el.sumCurrentPlayer.textContent = turn.current_trip_display || '-';
   el.sumTurnStatus.textContent = turn.status == null ? '-' : `${turn.status} (${statusText[turn.status] || t('common.unknown')})`;
@@ -810,6 +812,7 @@ function renderFieldCards(data, state = null) {
       },
     },
     PLAYER_COLOR_HEX,
+    resolvePlayerColorHex,
     getMoveAreaPromptState,
     getAbilityAreaPromptState,
     showOccupantNamePopup,
@@ -1020,6 +1023,17 @@ export function renderState({
   const pendingDicePromptTargets = Array.isArray(pendingDiceAction?.highlightTargetAccounts)
     ? pendingDiceAction.highlightTargetAccounts.map((value) => String(value || '').trim()).filter(Boolean)
     : [];
+  // 2026-10-20 新增：開局後、GM 按下「開始遊戲」放行前這段暫停期間，GM 可以點別人的
+  // 卡片改角色，這裡把場上所有非 GM 玩家的卡片標成「可點」，當作這段期間沒有其他
+  // prompt 時的最後一層備案（見下面兩個 ternary 鏈最後的 fallback）。
+  const viewerSelfForGmEdit = data?.players?.[state.account];
+  const isGmEditModeActive = Boolean(viewerSelfForGmEdit?.is_gm) && Boolean(data?.room?.awaiting_gm_release);
+  const gmEditableAccounts = isGmEditModeActive
+    ? Object.entries(data?.players || {})
+      .filter(([account, p]) => account !== state.account && !p?.is_gm)
+      .map(([account]) => String(account || '').trim())
+      .filter(Boolean)
+    : [];
   const playerPromptTargets = pendingDicePromptTargets.length > 0
     ? pendingDicePromptTargets
     : pendingDiceAction
@@ -1045,7 +1059,7 @@ export function renderState({
             .filter(Boolean)
         : attackPrompt.active
           ? attackPrompt.targetAccounts
-          : [];
+          : gmEditableAccounts;
   const playerPromptClass = pendingDicePromptTargets.length > 0
     ? String(pendingDiceAction?.highlightPromptClass || 'attack-target-prompt')
     // 2026-10-17 修正：greenConfirm.active 本身沒有區分「這跟我有沒有關係」（見
@@ -1057,7 +1071,9 @@ export function renderState({
     // 高亮（prompt-target-static），一樣看得出是誰被影響，但不會一直閃。
     : greenConfirm.active && !greenConfirm.isTarget
     ? 'prompt-target-static'
-    : (pendingKillLoot.active || pendingSteal.active || areaPrompt.active || cardPrompt.active) ? 'area-target-prompt' : 'attack-target-prompt';
+    : (pendingKillLoot.active || pendingSteal.active || areaPrompt.active || cardPrompt.active) ? 'area-target-prompt'
+    : isGmEditModeActive ? 'gm-edit-target-prompt'
+    : 'attack-target-prompt';
   const handleEquipmentChipClick = ({ equipmentName, anchorEl }) => {
     openEquipmentCardDialog(equipmentName, anchorEl);
   };
@@ -2163,18 +2179,34 @@ export function bindRoomEvents({
     });
     if (!confirmed) return;
 
-    const abolishRoomId = state.roomId;
-    await dispatch('abolish_room', { room_id: state.roomId, account: state.account });
-    clearRoomAutoRefreshTimer();
-    clearRoomEventSource();
-    clearRoomAccount(state, abolishRoomId);
-    state.roomId = null;
-    persistSession(state);
-    setVillageInfoMessage(t('room.info.not_joined'));
-    renderState({ players: {} });
-    await refreshRooms();
+    // 2026-10-20 修正：廢村改成跟遊戲正常結束一樣對待：後端不再把房間砍掉，所以這裡也不再會
+    // 中斷事件源、清掉帳號、踢回大廳——改成跟其他操作一樣原地用回傳的最新狀態重新渲染，
+    // 使用者留在房間里，仍然可以聊天、回顧紀錄。
+    const data = await dispatch('abolish_room', { room_id: state.roomId, account: state.account });
+    renderState(data);
     toast(t('toast.village_abolished'));
-    goToLobbyPage();
+  };
+
+  // 2026-10-23 新增：房間建立時如果沒設村長 Trip，就永遠不會有人符合村長身分，
+  // abolishVillage()／canAbolish 那條路徑永遠不會出現，房間會卡死廢不掉。這裡補一個
+  // 給非村長玩家用的「投票廢村」，達到門檻（一般村 3 票、聊天村 5 票，見 villageInfoRendering.js
+  // 的 abolishVoteThreshold）後端就會直接廢村，不用等到真的有人符合村長身分。
+  const voteAbolishVillage = async () => {
+    if (!state.roomId || !state.account) return;
+    const isChatRoom = Boolean(latestRoomSnapshot?.room?.is_chat_room);
+    const threshold = isChatRoom ? 5 : 3;
+    const confirmed = await openConfirmDialog({
+      title: t('room.confirm.title'),
+      message: t('room.confirm.vote_abolish_village_message', { n: threshold }),
+      confirmLabel: t('room.confirm.confirm'),
+      cancelLabel: t('room.confirm.cancel'),
+    });
+    if (!confirmed) return;
+
+    const data = await dispatch('vote_abolish_room', { room_id: state.roomId, voter_account: state.account });
+    renderState(data);
+    const abolished = Number(data?.room?.room_status || 0) === 4;
+    toast(abolished ? t('toast.vote_abolish_done') : t('toast.vote_abolish_cast'));
   };
 
   const toggleReady = async () => {
@@ -2215,6 +2247,254 @@ export function bindRoomEvents({
     toast(t('toast.gm_released_game_start'));
   };
 
+  // 2026-10-20 新增：開局後、GM 按下「開始遊戲」放行前這段暫停期間，GM 可以點玩家
+  // 卡片自由調整這位玩家的角色（見 backend room_manager.py 的 api_gm_change_character()），
+  // 不限制陣營人數是否平衡，由 GM 自己拿捏。可選清單只列「目前沒有人用」或「這位玩家
+  // 自己目前的角色」，已經是其他玩家角色的選項直接不列出來，避免點了才被後端擋下。
+  // 2026-10-20 新增：角色名稱沿用「進行中卡片」(room.active_card.names) 已經有的
+  // 全角色翻譯表（zh/en/jp 三個語系都已經涵蓋全部 20 位角色），不用再另外開
+  // 一份新的角色名稱翻譯；找不到對應翻譯時（理論上不會發生，保險起見）就退回原始英文名稱，
+  // 不會顯示翻譯鍵本身那一長串字串。
+  const localizedCharacterName = (rawName) => {
+    const key = `room.active_card.names.${rawName}`;
+    const translated = t(key);
+    return translated === key ? rawName : translated;
+  };
+
+  // 2026-10-20 新增：改成分陣營分組（暗影／獵人／中立），每個選項用徽章＋對應語系
+  // 的角色名稱呈現，不要只有一串英文名單，方便 GM 在一堆角色裡快速找到要的那一個。
+  const CHARACTER_CHOICE_CAMP_ORDER = ['Shadow', 'Hunter', 'Civilian'];
+
+  const gmChangeCharacterForTarget = async (targetAccount, dataSnapshot) => {
+    if (!state.roomId || !state.account) return;
+    const snapshot = dataSnapshot || latestRoomSnapshot;
+    const targetPlayer = snapshot?.players?.[targetAccount];
+    const catalog = Array.isArray(snapshot?.gm_character_catalog) ? snapshot.gm_character_catalog : [];
+    const selectable = catalog.filter((entry) => !entry?.assigned_to || entry.assigned_to === targetAccount);
+    const groups = CHARACTER_CHOICE_CAMP_ORDER
+      .map((camp) => {
+        const entries = selectable.filter((entry) => entry.camp === camp);
+        return {
+          camp,
+          label: entries[0]?.camp_label || camp,
+          options: entries.map((entry) => ({
+            value: entry.key,
+            label: `[${entry.badge}] ${localizedCharacterName(entry.name)}`,
+          })),
+        };
+      })
+      .filter((group) => group.options.length);
+    if (!groups.length) return;
+
+    const chosen = await showGmCharacterChoiceDialog({
+      el,
+      title: t('room.gm_character_choice.title'),
+      message: t('room.gm_character_choice.message', { name: targetPlayer?.name || targetAccount }),
+      groups,
+      cancelLabel: t('room.area_choice.cancel'),
+    });
+    if (!chosen) return;
+
+    try {
+      const data = await dispatch('gm_change_character', {
+        room_id: state.roomId,
+        account: state.account,
+        target_account: targetAccount,
+        character: chosen,
+      });
+      renderState(data);
+      toast(t('toast.gm_character_changed'));
+    } catch (error) {
+      if (error?.code === 'ROOM_NOT_FOUND') {
+        goToLobbyPage();
+        return;
+      }
+      console.error(error);
+    }
+  };
+
+  // 2026-10-20 新增：GM 在遊戲進行中（非開局暫停期間）點其他玩家卡片叫出的調整面板，
+  // 提供暴斃／調整血量（自動判定死亡或復活）／揭露／反揭露四種操作，統一走這裡，
+  // 跟上面 gmChangeCharacterForTarget（只在 awaiting_gm_release 暫停期間換角色）分開。
+  const gmAdjustPlayerForTarget = async (targetAccount, dataSnapshot) => {
+    if (!state.roomId || !state.account) return;
+    const snapshot = dataSnapshot || latestRoomSnapshot;
+    const targetPlayer = snapshot?.players?.[targetAccount];
+    if (!targetPlayer) return;
+
+    const isAlive = Boolean(targetPlayer.alive);
+    const isRevealed = Boolean(targetPlayer.character_reveal);
+    // 2026-10-21 修正：血量輸入框對應的是玩家目前「累積傷害值」（跟既有傷害計量表／
+    // defence()/check_death() 同一套：0 代表沒受傷，數字越高越接近死亡，達到角色血量
+    // 上限即死亡），不是「剩餘血量」。上限一律讀後端新加的 character_max_hp（固定取
+    // 角色類別本身的 hp，不受死亡/暴斃影響），不能用 targetPlayer.hp——那欄位在
+    // 暴斃後會被後端歸零，死亡玩家會顯示不出正確上限，GM 也沒辦法知道要調到多少才能復活。
+    const maxHpRaw = Number(targetPlayer.character_max_hp);
+    const maxHp = Number.isFinite(maxHpRaw) && maxHpRaw > 0 ? maxHpRaw : null;
+    const damageRaw = Number(targetPlayer.damage);
+    const currentDamage = Number.isFinite(damageRaw) ? Math.max(0, damageRaw) : 0;
+    // 2026-10-22 新增：GM 裝備管理用——目前身上是否有裝備（丟棄按鈕用），以及
+    // 牌庫／棄牌堆是否還有至少一件裝備類卡片可給（給予按鈕用）。deck_cards 只有
+    // GM 視角才看得到內容（見 room_manager.py _serialize_room_state），非 GM 一律是空陣列，
+    // 但這裡本來就只有 GM 會呼叫這個流程，不受影響。
+    const targetEquipmentNames = Array.isArray(targetPlayer.equipment)
+      ? targetPlayer.equipment.map((value) => String(value || '').trim()).filter(Boolean)
+      : [];
+    const whitePile = snapshot?.card_piles?.White || {};
+    const deckEquipmentCards = (Array.isArray(whitePile.deck_cards) ? whitePile.deck_cards : []).filter(
+      (card) => card && card.type === 'Equipment',
+    );
+    const discardEquipmentCards = (Array.isArray(whitePile.discard_cards) ? whitePile.discard_cards : []).filter(
+      (card) => card && card.type === 'Equipment',
+    );
+
+    const choice = await showGmPlayerAdjustDialog({
+      el,
+      title: t('room.gm_player_adjust.title'),
+      message: t('room.gm_player_adjust.message', { name: targetPlayer?.name || targetAccount }),
+      isAlive,
+      isRevealed,
+      currentDamage,
+      maxHp,
+      boomLabel: t('room.gm_player_adjust.boom'),
+      revealLabel: t('room.gm_player_adjust.reveal'),
+      unrevealLabel: t('room.gm_player_adjust.unreveal'),
+      discardEquipmentLabel: t('room.gm_player_adjust.discard_equipment'),
+      giveEquipmentLabel: t('room.gm_player_adjust.give_equipment'),
+      hasEquipment: targetEquipmentNames.length > 0,
+      canGiveEquipment: deckEquipmentCards.length > 0 || discardEquipmentCards.length > 0,
+      hpLabel: t('room.gm_player_adjust.hp_label', { max: maxHp === null ? '?' : maxHp }),
+      hpApplyLabel: t('room.gm_player_adjust.hp_apply'),
+      cancelLabel: t('room.area_choice.cancel'),
+    });
+    if (!choice || !choice.action) return;
+
+    if (choice.action === 'discard_equipment') {
+      if (!targetEquipmentNames.length) return;
+      const equipmentName = await showEquipmentChoiceDialog({
+        el,
+        title: t('room.gm_discard_equipment_choice.title'),
+        message: t('room.gm_discard_equipment_choice.message', { name: targetPlayer?.name || targetAccount }),
+        options: targetEquipmentNames.map(localizeEquipmentOption),
+        cancelLabel: t('room.area_choice.cancel'),
+      });
+      if (!equipmentName) {
+        toast(t('toast.area_choice_cancelled'));
+        return;
+      }
+      try {
+        const data = await dispatch('gm_discard_player_equipment', {
+          room_id: state.roomId,
+          account: state.account,
+          target_account: targetAccount,
+          equipment_name: equipmentName,
+        });
+        renderState(data);
+        toast(t('toast.gm_player_adjusted'));
+      } catch (error) {
+        if (error?.code === 'ROOM_NOT_FOUND') {
+          goToLobbyPage();
+          return;
+        }
+        console.error(error);
+        toast(t('toast.gm_player_adjust_failed'), 'error');
+      }
+      return;
+    }
+
+    if (choice.action === 'give_equipment') {
+      // 2026-10-22 修正：Mike 要求牌庫／棄牌堆的編排邏輯比照「更改玩家角色」
+      // （依分類分組、組內再列選項），不要像原本那樣把來源用冒號接在同一排選項的
+      // 文字前面——沿用同一個 showGmCharacterChoiceDialog（分組選單）而不是
+      // showEquipmentChoiceDialog（單一平面列表），牌庫、棄牌堆各自是一組，各自有
+      // 自己的標題列，跟角色選擇依陣營分組的視覺是同一套。
+      const giveGroups = [
+        {
+          camp: 'deck',
+          label: t('room.gm_give_equipment_choice.source_deck'),
+          options: deckEquipmentCards.map((card) => ({
+            value: `deck:${card.name}`,
+            label: getEquipmentDisplayLabel(card.name),
+          })),
+        },
+        {
+          camp: 'discard',
+          label: t('room.gm_give_equipment_choice.source_discard'),
+          options: discardEquipmentCards.map((card) => ({
+            value: `discard:${card.name}`,
+            label: getEquipmentDisplayLabel(card.name),
+          })),
+        },
+      ];
+      if (!giveGroups.some((group) => group.options.length)) return;
+      const picked = await showGmCharacterChoiceDialog({
+        el,
+        title: t('room.gm_give_equipment_choice.title'),
+        message: t('room.gm_give_equipment_choice.message', { name: targetPlayer?.name || targetAccount }),
+        groups: giveGroups,
+        cancelLabel: t('room.area_choice.cancel'),
+      });
+      if (!picked) {
+        toast(t('toast.area_choice_cancelled'));
+        return;
+      }
+      const separatorIdx = picked.indexOf(':');
+      const source = separatorIdx >= 0 ? picked.slice(0, separatorIdx) : '';
+      const equipmentName = separatorIdx >= 0 ? picked.slice(separatorIdx + 1) : '';
+      if (!source || !equipmentName) return;
+      try {
+        const data = await dispatch('gm_give_equipment', {
+          room_id: state.roomId,
+          account: state.account,
+          target_account: targetAccount,
+          source,
+          equipment_name: equipmentName,
+        });
+        renderState(data);
+        toast(t('toast.gm_player_adjusted'));
+      } catch (error) {
+        if (error?.code === 'ROOM_NOT_FOUND') {
+          goToLobbyPage();
+          return;
+        }
+        console.error(error);
+        toast(t('toast.gm_player_adjust_failed'), 'error');
+      }
+      return;
+    }
+
+    const actionMap = {
+      boom: 'gm_boom_player',
+      reveal: 'gm_reveal_player_character',
+      unreveal: 'gm_unreveal_player_character',
+      adjust_hp: 'gm_adjust_player_hp',
+    };
+    const dispatchAction = actionMap[choice.action];
+    if (!dispatchAction) return;
+
+    const payload = {
+      room_id: state.roomId,
+      account: state.account,
+      target_account: targetAccount,
+    };
+    if (choice.action === 'adjust_hp') {
+      payload.damage = choice.value;
+    }
+
+    try {
+      const data = await dispatch(dispatchAction, payload);
+      renderState(data);
+      toast(t('toast.gm_player_adjusted'));
+    } catch (error) {
+      if (error?.code === 'ROOM_NOT_FOUND') {
+        goToLobbyPage();
+        return;
+      }
+      console.error(error);
+      toast(t('toast.gm_player_adjust_failed'), 'error');
+    }
+  };
+
   const updateVillageSettings = async (patch = {}) => {
     if (!state.roomId || !state.account) return;
     const roomInfo = latestRoomSnapshot?.room || {};
@@ -2252,6 +2532,11 @@ export function bindRoomEvents({
     const abolishTarget = event.target instanceof Element ? event.target.closest('#btnAbolishVillageInline') : null;
     if (abolishTarget) {
       abolishVillage();
+      return;
+    }
+    const voteAbolishTarget = event.target instanceof Element ? event.target.closest('#btnVoteAbolishVillageInline') : null;
+    if (voteAbolishTarget) {
+      voteAbolishVillage();
       return;
     }
     const readyTarget = event.target instanceof Element ? event.target.closest('#btnToggleReadyInline') : null;
@@ -2507,6 +2792,8 @@ export function bindRoomEvents({
       canActivateStandbyAbility,
       startStandbyAbilityActivation,
       markEndTurnAbilityInteractionStarted,
+      gmChangeCharacterForTarget,
+      gmAdjustPlayerForTarget,
     });
   };
 

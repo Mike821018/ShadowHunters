@@ -1,4 +1,4 @@
-import { DAMAGE_ROLE_MARKERS, DAMAGE_TRACK_VALUES, PLAYER_COLOR_HEX } from '../../constants.js';
+import { DAMAGE_ROLE_MARKERS, DAMAGE_TRACK_VALUES, PLAYER_COLOR_HEX, resolvePlayerColorHex } from '../../constants.js';
 
 export function createDamageMeterHandlers({ t, esc }) {
   function clampDamageValue(value) {
@@ -82,7 +82,7 @@ export function createDamageMeterHandlers({ t, esc }) {
             return `
               <div class="damage-meter-cell" role="cell">
                 ${players.map((player) => {
-                  const fill = PLAYER_COLOR_HEX[player.color] || '#cccccc';
+                  const fill = resolvePlayerColorHex(player.color, '#cccccc');
                   // 原本顏色代號還是 White/Black/... 時，白色色塊 (#f0f0f0) 太淺、需要額外加深色外框
                   // 才看得清楚；2026-10-03 顏色代號改成 Color1~Color9、原本的白色也換成玫紅色後，
                   // 9 種顏色本身都夠深、不再需要這個特例，統一用原本給其他顏色的外框即可。

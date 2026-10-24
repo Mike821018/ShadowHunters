@@ -1,11 +1,14 @@
 import { t } from './i18n.js';
-import { PLAYER_COLORS, PLAYER_COLOR_HEX } from './constants.js';
+import { PLAYER_COLORS, PLAYER_COLOR_HEX, resolvePlayerColorHex } from './constants.js';
 import { getCharacterLocalizedName, getCharacterTooltipInfo, getCurrentUiLang } from './characterInfo.js';
 import { getAvatarColorById, getAvatarImageSrcById } from './avatarConfig.js';
 import { apiFetch } from './utils.js';
 
 function colorHex(color) {
-  return PLAYER_COLOR_HEX[color] || '#cccccc';
+  // 2026-10-22 修正：聊天村玩家顏色改存完整色碼（例如 '#3fae7d'），不再限制在
+  // PLAYER_COLOR_HEX 這 9 色代號裡，這裡改呼叫共用的 resolvePlayerColorHex()
+  // 判斷是不是已經是完整色碼。
+  return resolvePlayerColorHex(color, '#cccccc');
 }
 
 const EQUIPMENT_ICON = {
@@ -129,10 +132,36 @@ export function createStatusHelpers({ state, el }) {
 
 export function renderPlayerCards(container, data, { esc, getInitial, statusText, state, onColorChange, onPlayerCardClick, onEquipmentChipClick, onShieldChipClick, view = 'flow', targetAccounts = [], targetPromptClass = 'attack-target-prompt' } = {}) {
   if (!container) return;
+  // 2026-10-23 新增：Mike 回報手機上選色塊時「點開面板就自動關掉」「編輯色碼也會跳掉」——
+  // 根本原因是別人的任何動作（加入房間、改顏色、狀態切換等）都會經由 SSE/輪詢觸發這支
+  // 函式，把所有玩家卡的 innerHTML 整個砍掉重建一次；下面雖然有補救邏輯會記住「選色面板
+  // 原本是不是開著」並在重建後重新打開，但面板裡的 DOM 節點（色盤 input、文字輸入框）
+  // 整個被換成新的，使用者正在輸入的 focus／打到一半還沒送出的字、手機上彈出的鍵盤，全部
+  // 會被這次重建打斷，看起來就像「面板自己關掉」「打字打一半被踢出來」。這裡在真正砍掉
+  // 重建 DOM 之前先檢查：目前的 focus 是不是正落在聊天村色碼輸入框（文字框）或原生色盤
+  // 上——如果是，代表使用者正在編輯自己的顏色，直接整次跳過重繪，保留現有 DOM 原封不動；
+  // 等使用者打完送出（onColorChange 會觸發新的 state、重新呼叫這支函式）或自己點掉面板、
+  // 失焦，下一次重繪才會真的套用最新資料。其他玩家卡片短暫沒跟著更新是可接受的代價，
+  // 換來的是自己選色不會被打斷。
+  const activeEl = document.activeElement;
+  if (
+    activeEl instanceof HTMLElement
+    && container.contains(activeEl)
+    && (activeEl.matches('[data-pick-color-hex-text]') || activeEl.matches('[data-pick-color-hex]'))
+  ) {
+    return;
+  }
   const players = data?.players || {};
   const targetAccountSet = new Set(Array.isArray(targetAccounts) ? targetAccounts : []);
   const currentAccount = data?.turn?.current_account || null;
   const roomStatus = Number(data?.room?.room_status || 0);
+  // 2026-10-23 新增：聊天村的 GM 在 room.join() 裡其實也會被分配到一組隨機色碼
+  // （見 backend/game/room.py 的 _random_chat_token_color()，那段對聊天村玩家是不分
+  // GM 的），但底下 isGm 的色塊排除邏輯原本是為「一般遊戲村 GM 不佔用九色、沒有顏色」
+  // 這個前提寫的，從來沒考慮過聊天村。結果聊天村的 GM 雖然有顏色，介面卻完全不顯示、
+  // 也點不出選色面板，Mike 回報「我在聊天村沒辦法選色塊」就是這個。這裡記下房間是不是
+  // 聊天村，底下兩處 isGm 判斷都補上聊天村的例外。
+  const isChatRoom = Boolean(data?.room?.is_chat_room);
   const selfAccount = state?.account || null;
   const actionOrder = Array.isArray(data?.action_order) ? data.action_order : [];
   const orderIndex = new Map(actionOrder.map((acc, idx) => [String(acc), idx]));
@@ -176,6 +205,16 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       const classes = [
         'player-card',
         p.alive ? 'alive' : 'dead',
+        // 2026-10-21 新增：Mike 要求暴斃的玩家卡片要跟一般死亡區分出不一樣的顏色，
+        // 之前 is_boomed 只會反映在聊天室系統訊息的文字上，卡片本身跟一般死亡視覺
+        // 完全相同。這裡只在玩家已經死亡時才加 boomed class（活著的玩家理論上不會
+        // is_boomed=True，但保險起見還是跟 !p.alive 一起判斷，避免未來邏輯變動時
+        // 活著的玩家卡片被誤套用暴斃配色）。
+        // 2026-10-21 修正：這個 renderCard 同時也被歷史回放（replayAdapter.js）共用，
+        // 但回放組出來的玩家資料欄位叫 boomed（沿用舊的戰績紀錄命名），不是即時房間
+        // 狀態用的 is_boomed，兩邊欄位名稱不一樣、來源也是兩套完全獨立的序列化邏輯，
+        // 所以這裡兩個欄位都要檢查，否則回放畫面會看不出暴斃的顏色。
+        (!p.alive && (p.is_boomed || p.boomed)) ? 'boomed' : '',
         p.is_ready ? 'ready' : '',
         targetAccountSet.has(account) ? targetPromptClass : '',
         account === currentAccount ? 'current-turn' : '',
@@ -186,8 +225,10 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       const isSelf = Boolean(selfAccount && account === selfAccount);
       const isWinner = winnerSet.has(String(account || '').trim());
       // 2026-10-15：GM 旁觀主持，角色欄直接顯示「GM」，也不顯示顏色位置那個 token 色塊（GM 不佔用九種類色，那個色塊单純是當傚選色）。
+      // 2026-10-23 修正：上面這個前提只適用一般遊戲村——聊天村的 GM 一樣會被配到隨機色碼
+      // （見上面 isChatRoom 的說明），所以聊天村要排除在這個「GM 沒有顏色」的假設之外。
       const isGm = Boolean(p.is_gm);
-      const canPickColor = !isGm && isSelf && roomStatus === 1 && !p.is_ready && typeof onColorChange === 'function';
+      const canPickColor = (!isGm || isChatRoom) && isSelf && roomStatus === 1 && !p.is_ready && typeof onColorChange === 'function';
       const resolvedCharacter = String(p.character || p.character_name || '').trim();
       const hasKnownRole = Boolean(resolvedCharacter);
       const roleNameEn = hasKnownRole ? resolvedCharacter : (isSelf ? p.self_character : null);
@@ -242,17 +283,28 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
         }
       }
 
-      let colorControlHtml = isGm ? '' : `<span class="color-chip-static" style="background:${cardColor}" title="${esc(p.color || 'N/A')}"></span>`;
+      let colorControlHtml = (isGm && !isChatRoom) ? '' : `<span class="color-chip-static" style="background:${cardColor}" title="${esc(p.color || 'N/A')}"></span>`;
       if (canPickColor) {
-        const swatches = PLAYER_COLORS.map((c) => {
-          const taken = Object.entries(players).some(([acc, pl]) => acc !== account && pl.color === c);
-          const selected = p.color === c;
-          return `<button class="color-swatch${selected ? ' selected' : ''}${taken ? ' taken' : ''}" type="button" data-pick-color="${c}" style="background:${colorHex(c)}" title="${c}" aria-pressed="${selected}"${taken ? ' disabled' : ''}></button>`;
-        }).join('');
+        // 2026-10-23 新增：Mike 回報聊天村點開色塊「還是用選的」——聊天村玩家的顏色
+        // 本來就是完整色碼（不是九色代號），所以聊天村改用色碼輸入（原生色盤 + 可直接
+        // 打字的文字框，兩個互相同步），取代一般遊戲村用的九色色塊；一般遊戲村的九色
+        // 色塊維持不變。
+        const pickerContentHtml = isChatRoom
+          ? `
+            <div class="color-hex-picker">
+              <input type="color" class="color-hex-swatch-input" data-pick-color-hex value="${cardColor}" aria-label="${esc(t('ui.color_picker_label'))}" />
+              <input type="text" class="color-hex-text-input" data-pick-color-hex-text value="${esc(cardColor)}" maxlength="7" placeholder="#rrggbb" aria-label="${esc(t('ui.color_picker_label'))}" />
+            </div>
+          `
+          : PLAYER_COLORS.map((c) => {
+              const taken = Object.entries(players).some(([acc, pl]) => acc !== account && pl.color === c);
+              const selected = p.color === c;
+              return `<button class="color-swatch${selected ? ' selected' : ''}${taken ? ' taken' : ''}" type="button" data-pick-color="${c}" style="background:${colorHex(c)}" title="${c}" aria-pressed="${selected}"${taken ? ' disabled' : ''}></button>`;
+            }).join('');
         colorControlHtml = `
-          <div class="color-picker" data-color-picker>
+          <div class="color-picker${isChatRoom ? ' color-picker-chat' : ''}" data-color-picker>
             <button class="color-chip-trigger" type="button" style="background:${cardColor}" title="${esc(t('ui.color_picker_label'))}" aria-label="${esc(t('ui.color_picker_label'))}" aria-expanded="false"></button>
-            <div class="color-picker-row" role="group" aria-label="${esc(t('ui.color_picker_label'))}" hidden>${swatches}</div>
+            <div class="color-picker-row" role="group" aria-label="${esc(t('ui.color_picker_label'))}" hidden>${pickerContentHtml}</div>
           </div>
         `;
       }
@@ -383,6 +435,12 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       if (!isOpen) {
         panel.removeAttribute('hidden');
         toggle.setAttribute('aria-expanded', 'true');
+        // 2026-10-23 新增：聊天村的色碼文字框打開面板後立刻搶 focus——一方面方便直接
+        // 打字，另一方面讓上面那段「正在編輯就跳過重繪」的保護，從面板打開的那一刻就
+        // 立刻生效，盡量縮短「剛打開、但還沒 focus 進文字框」這段仍然可能被 SSE/輪詢
+        // 重繪打斷的空窗期（手機上 Mike 回報的「點開面板就自動關掉」多半就是卡在這段）。
+        const hexTextInput = panel.querySelector('[data-pick-color-hex-text]');
+        if (hexTextInput instanceof HTMLInputElement) hexTextInput.focus();
       }
     });
   });
@@ -417,6 +475,51 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
         const color = btn.getAttribute('data-pick-color');
         if (color) onColorChange(color);
       });
+    });
+
+    // 2026-10-23 新增：聊天村的色碼輸入——原生色盤（data-pick-color-hex）跟文字框
+    // （data-pick-color-hex-text）互相同步顯示，但只在「確定」的那一刻（色盤的 change
+    // 事件＝使用者關掉系統色盤、文字框按 Enter 或失焦）才真的呼叫 onColorChange 打一次
+    // API，避免拖曳色盤時每個中間值都送一次後端。格式驗證跟後端 api_change_color 用同一套
+    // #rrggbb 規則，文字框輸入不合法格式時只標紅、不送出。
+    const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+    container.querySelectorAll('[data-pick-color-hex]').forEach((colorInput) => {
+      if (!(colorInput instanceof HTMLInputElement)) return;
+      const picker = colorInput.closest('[data-color-picker]');
+      const textInput = picker?.querySelector('[data-pick-color-hex-text]');
+      colorInput.addEventListener('input', () => {
+        if (textInput instanceof HTMLInputElement) {
+          textInput.value = colorInput.value;
+          textInput.classList.remove('invalid');
+        }
+      });
+      colorInput.addEventListener('change', () => {
+        closeAllColorPickers();
+        if (HEX_COLOR_RE.test(colorInput.value)) onColorChange(colorInput.value.toLowerCase());
+      });
+    });
+    container.querySelectorAll('[data-pick-color-hex-text]').forEach((textInput) => {
+      if (!(textInput instanceof HTMLInputElement)) return;
+      const picker = textInput.closest('[data-color-picker]');
+      const colorInput = picker?.querySelector('[data-pick-color-hex]');
+      const commit = () => {
+        const value = textInput.value.trim();
+        if (!HEX_COLOR_RE.test(value)) {
+          textInput.classList.add('invalid');
+          return;
+        }
+        textInput.classList.remove('invalid');
+        if (colorInput instanceof HTMLInputElement) colorInput.value = value.toLowerCase();
+        onColorChange(value.toLowerCase());
+      };
+      textInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          commit();
+          closeAllColorPickers();
+        }
+      });
+      textInput.addEventListener('blur', commit);
     });
   }
 

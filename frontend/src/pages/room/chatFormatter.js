@@ -1,5 +1,5 @@
 import { renderChatTextWithEmojis } from './chatEmoji.js';
-import { PLAYER_COLOR_HEX, DEPARTED_PLAYER_COLOR_HEX } from '../../constants.js';
+import { PLAYER_COLOR_HEX, DEPARTED_PLAYER_COLOR_HEX, resolvePlayerColorHex } from '../../constants.js';
 import { getCharacterInfo } from '../../characterInfo.js';
 import { getRenderSyncedAtMs } from './renderClock.js';
 
@@ -66,7 +66,10 @@ export function buildChatStageLines({
     if (!acc) return null;
     const player = data?.players?.[acc];
     if (!player) return DEPARTED_PLAYER_COLOR_HEX;
-    const hex = PLAYER_COLOR_HEX[player.color];
+    // 2026-10-22 修正：聊天村玩家顏色改存完整色碼，不再限制在 PLAYER_COLOR_HEX
+    // 這 9 色代號裡，改呼叫共用的 resolvePlayerColorHex()；查不到／還沒選色時
+    // fallback 給空字串（跟原本行為一致，維持 hex ? ... : null 這段判斷）。
+    const hex = resolvePlayerColorHex(player.color, '');
     return hex ? toReadableTextHex(hex) : null;
   };
 
@@ -417,6 +420,9 @@ export function buildChatStageLines({
     if ((m = text.match(/^\[(.+)\] 離開了村莊$/))) return t('room.system.left_lobby', { player: pid(esc(m[1]), m[1]) });
     if ((m = text.match(/^\[(.+)\] 投票剔除 \[(.+)\]/))) return t('room.system.voted_kick', { actor: pid(esc(m[1]), m[1]), target: pid(esc(m[2]), m[2]) });
     if ((m = text.match(/^\[(.+)\] 已被投票剔除$/))) return t('room.system.kicked', { target: pid(esc(m[1]), m[1]) });
+    if ((m = text.match(/^\[(.+)\] 投票廢村（目前 (\d+)\/(\d+) 票）$/))) {
+      return t('room.system.voted_abolish', { actor: pid(esc(m[1]), m[1]), count: esc(m[2]), threshold: esc(m[3]) });
+    }
     if ((m = text.match(/^村長 \[(.+)\] 剔除了 \[(.+)\]$/))) return t('room.system.manager_kicked', { actor: pid(esc(m[1]), m[1]), target: pid(esc(m[2]), m[2]) });
     if ((m = text.match(/^村長 \[(.+)\] 發起點名/))) return t('room.system.roll_call');
     if ((m = text.match(/^村長 延長目前回合倒數：\[(.+)\] 重新開始計時$/))) {

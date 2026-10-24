@@ -33,6 +33,8 @@ export async function handlePlayerCardClick(targetAccount, ctx) {
     canActivateStandbyAbility,
     startStandbyAbilityActivation,
     markEndTurnAbilityInteractionStarted,
+    gmChangeCharacterForTarget,
+    gmAdjustPlayerForTarget,
   } = ctx;
 
   const getTargetDisplayName = (account) => {
@@ -58,6 +60,22 @@ export async function handlePlayerCardClick(targetAccount, ctx) {
   const isSelfCard = targetAccount === state.account;
   const selfPlayer = dataSnapshot?.players?.[state.account];
   const hasNotRevealed = selfPlayer && !selfPlayer.character_reveal && selfPlayer.character;
+
+  // 2026-10-20 新增：開局後、GM 按下「開始遊戲」放行前這段暫停期間，GM 點別人的卡片是「改角色」，不是下面那些攻擊/偷裝備等一般操作。放在最前面是因為這段期間回合流程還沒開始，下面這些 prompt 都不會 active，不會互相干擾。
+  const isGmViewer = Boolean(selfPlayer?.is_gm);
+  const awaitingGmRelease = Boolean(dataSnapshot?.room?.awaiting_gm_release);
+  if (isGmViewer && awaitingGmRelease && !isSelfCard) {
+    await gmChangeCharacterForTarget?.(targetAccount, dataSnapshot);
+    return;
+  }
+
+  // 2026-10-20 新增：遊戲進行中（非 GM 開局暫停期間），GM 點別人的卡片是叫出「調整
+  // 面板」（暴斃／調整血量／揭露／反揭露），同樣放在最前面、優先於下面一般的攻擊/偷
+  // 裝備等 prompt 判斷——GM 本身不下場、不會進入這些 prompt，點卡片一律是要調整對方。
+  if (isGmViewer && isGameOngoing && !isSelfCard) {
+    await gmAdjustPlayerForTarget?.(targetAccount, dataSnapshot);
+    return;
+  }
 
   if (pendingKillLoot.active && pendingKillLoot.deathAccounts.includes(String(targetAccount || '').trim())) {
     await resolvePendingKillLoot(targetAccount, dataSnapshot);

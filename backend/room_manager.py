@@ -1,4 +1,5 @@
 import random
+import re
 import base64
 import secrets
 import hashlib
@@ -26,8 +27,14 @@ from backend.records_system import GameRecordStore
 # 這是 Mike 確認過的破壞性改動：2026-10-03 以前的對戰紀錄裡玩家顏色欄位存的是
 # 舊名稱字串（White/Black/...），改名後這些舊紀錄的顏色會查不到對應色碼、
 # 顯示不出玩家顏色（不影響紀錄其他內容），Mike 已確認可以接受這個影響。
+# 2026-10-23：場上玩家人數上限放寬到 10 人後，Mike 指出色塊只準備 9 色不夠分（10 人
+# 開局一定會有 1 人分不到顏色），但也不是單純補到剛好 10 色——Mike 要求刻意多留 1 個
+# 備用色（總共 11 色），這樣不管湊到幾人，永遠會有至少 1 色是沒人用的，玩家才有顏色可以
+# 互相交換（如果剛好 10 色對 10 人，所有顏色都會被占滿，誰都換不到別人以外的顏色）。
+# GM 維持原設計不變，不下場、不佔用這些色塊。
 PLAYER_COLORS = [
-    'Color1', 'Color2', 'Color3', 'Color4', 'Color5', 'Color6', 'Color7', 'Color8', 'Color9'
+    'Color1', 'Color2', 'Color3', 'Color4', 'Color5', 'Color6', 'Color7', 'Color8', 'Color9',
+    'Color10', 'Color11',
 ]
 
 
@@ -47,7 +54,7 @@ API_SCHEMAS = {
                         'login_room',
                         'start_game', 'next_step', 'card_effect', 'loot_from_kill',
                         'steal_equipment', 'set_green_card_choice', 'confirm_green_card', 'confirm_equipment',
-                        'get_room_state', 'change_color', 'abolish_room', 'toggle_ready', 'vote_kick', 'roll_call',
+                        'get_room_state', 'change_color', 'abolish_room', 'vote_abolish_room', 'toggle_ready', 'vote_kick', 'roll_call',
                         'extend_turn_timeout',
                         'activate_standby_ability',
                         'send_chat',
@@ -125,7 +132,12 @@ class RoomManager:
         self._snapshot_lock = threading.RLock()
         self._restore_persisted_rooms()
 
+    # 2026-10-20 修正：廢村改成不把整個房間砍掉後，'abolish_room' 改走跟其他變更房間狀態的動作一樣，
+    # 推一則 room_state_changed 讓還在房間裡的其他人重新拉一次最新狀態（看到「已廢除」），不再像以前那樣
+    # 走個別的 room_closed 不惜把別人踢回大廳（room_closed 還有在用，是閒置自動廢村才會走的路）。
     _ROOM_STATE_EVENT_ACTIONS = {
+        'abolish_room',
+        'vote_abolish_room',
         'join_room',
         'leave_room',
         'start_game',
@@ -146,8 +158,23 @@ class RoomManager:
         'reveal_character',
         'activate_standby_ability',
         'send_chat',
+        # 2026-10-20 新增：GM 在遊戲進行中點玩家卡片叫出的調整面板（暴斃／調整血量／
+        # 揭露／反揭露），四個動作都會改變所有人看到的場上狀態，需要廣播給全房間。
+        'gm_boom_player',
+        'gm_adjust_player_hp',
+        'gm_reveal_player_character',
+        'gm_unreveal_player_character',
+        # 2026-10-22 新增：GM 裝備管理（丟棄玩家裝備到棄牌堆／從牌庫或棄牌堆給玩家裝備），
+        # 跟上面四個一樣會改變全房間看到的場上狀態（裝備欄、牌庫／棄牌堆數量），需要廣播。
+        'gm_discard_player_equipment',
+        'gm_give_equipment',
     }
 
+    # 2026-10-23 新增：投票廢村門檻。Mike 確認：一般遊戲村 3 票、聊天村（最多 50 人，
+    # 門檻也拉高一點避免太容易被幾個人就表決掉）5 票。只有在發起投票的玩家不是村長時
+    # 才會真的走計票流程——村長本來就能直接按「廢除村莊」，不需要投票。
+    _ABOLISH_VOTE_THRESHOLD = 3
+    _ABOLISH_VOTE_THRESHOLD_CHAT = 5
     _CARD_SET_BASIC = 'B'
     _CARD_SET_EXTEND = 'E'
     _ROOM_SNAPSHOT_FILENAME = 'live_room_snapshots.json'
@@ -189,6 +216,11 @@ class RoomManager:
             game_room.latest_roll_call_notice = {}
         if not isinstance(getattr(game_room, 'kick_votes', None), dict):
             game_room.kick_votes = {}
+        # 2026-10-23 新增：投票廢村機制剛上線，重啟前存下來的舊快照裡的房間物件
+        # 不會有 abolish_votes 這個屬性（pickle 還原時只會照快照當時的欄位還原），
+        # 這裡補上預設值，避免舊房間在使用投票廢村時 AttributeError。
+        if not isinstance(getattr(game_room, 'abolish_votes', None), set):
+            game_room.abolish_votes = set()
         if not isinstance(getattr(game_room, 'private_character_visibility', None), dict):
             game_room.private_character_visibility = {}
         if not isinstance(getattr(game_room, '_start_passive_applied', None), dict):
@@ -368,13 +400,15 @@ class RoomManager:
         if game_room.is_chat_room:
             game_room.max_players = 50
         else:
-            # 2026-10-15：建房當下就能選人數上限（4~8 人），不用等建完村再進去改設定；
+            # 2026-10-15：建房當下就能選人數上限（4~10 人），不用等建完村再進去改設定；
             # 沒填或格式不對的話沿用原本預設的 8 人。
+            # 2026-10-22 修正：Mike 要求開放到最多 10 人（9人=3-3-3、10人=3-3-4，
+            # 見 backend/game/setting.py 的 camp_setting），這裡的上限夾擠從 8 放寬到 10。
             try:
                 chosen_max_players = int(max_players) if max_players is not None else 8
             except (TypeError, ValueError):
                 chosen_max_players = 8
-            game_room.max_players = min(8, max(4, chosen_max_players))
+            game_room.max_players = min(10, max(4, chosen_max_players))
         setattr(game_room, 'manager_ref', self)
         game_room.room_status = 1
         game_room.create()
@@ -450,10 +484,11 @@ class RoomManager:
         if bool(getattr(game_room, 'is_chat_room', False)):
             raise ValueError('chat rooms cannot start game')
 
-        # GM 旁觀主持、不下場，不計入 4~8 人的開局人數限制。
+        # GM 旁觀主持、不下場，不計入 4~10 人的開局人數限制。
+        # 2026-10-22 修正：人數上限從 8 放寬到 10（9人=3-3-3、10人=3-3-4）。
         player_count = len(self._non_gm_players(game_room))
-        if player_count not in range(4, 9):
-            raise ValueError('Shadow Hunters requires 4 to 8 players')
+        if player_count not in range(4, 11):
+            raise ValueError('Shadow Hunters requires 4 to 10 players')
 
         if seed is not None:
             random.seed(seed)
@@ -533,7 +568,7 @@ class RoomManager:
                 remain_idx += 1
 
     def _assign_characters(self, game_room: room.room):
-        # GM 不下場，不佔用角色分配池、不計入 4~8 人的陣營人數配置。
+        # GM 不下場，不佔用角色分配池、不計入 4~10 人的陣營人數配置。
         playing_players = self._non_gm_players(game_room)
         player_count = len(playing_players)
         camp_config = dict(character_module.camp_setting[player_count])
@@ -616,6 +651,37 @@ class RoomManager:
         name = self._character_name(character_cls)
         return name[:1].upper() if name else ''
 
+    # 2026-10-20 新增：GM 功能——開局後、GM 按下「開始遊戲」放行前這段暫停期間，
+    # GM 可以點玩家卡片自由調整這位玩家的角色（Mike 確認：不限制陣營人數是否平衡，
+    # 由 GM 自己拿捏），這裡提供給前端的角色總表，附上目前擴充模式下每個角色是否
+    # 已經被（場上其他）玩家持有，讓前端畫出可選清單、擋掉已經被別人用掉的角色。
+    def _character_catalog_for_gm(self, game_room: room.room) -> List[Dict[str, Any]]:
+        expansion_mode = self._normalize_expansion_mode(getattr(game_room, 'expansion_mode', 'all'))
+        assigned_by_class: Dict[Any, str] = {}
+        for account, p in game_room.players.items():
+            if getattr(p, 'character', None) is not None:
+                assigned_by_class[type(p.character)] = account
+
+        camp_groups = [
+            ('Shadow', character_module.shadow_camp),
+            ('Hunter', character_module.hunter_camp),
+            ('Civilian', character_module.civilian_camp),
+        ]
+        camp_label = {'Shadow': '暗影', 'Hunter': '獵人', 'Civilian': '中立'}
+
+        catalog: List[Dict[str, Any]] = []
+        for camp_name, classes in camp_groups:
+            for character_cls in self._resolve_camp_classes(classes, expansion_mode):
+                catalog.append({
+                    'key': str(getattr(character_cls, '__name__', '') or self._character_name(character_cls)),
+                    'name': self._character_name(character_cls),
+                    'camp': camp_name,
+                    'camp_label': camp_label.get(camp_name, camp_name),
+                    'badge': self._character_badge_letter(character_cls),
+                    'assigned_to': assigned_by_class.get(character_cls),
+                })
+        return catalog
+
     def _build_character_alias_index(self, expansion_mode: str) -> Dict[str, Any]:
         available = []
         available.extend(self._resolve_camp_classes(character_module.shadow_camp, expansion_mode))
@@ -662,7 +728,7 @@ class RoomManager:
         if not forced_roles:
             return {}
 
-        # GM 不下場，不計入 4~8 人的陣營人數配置查表。
+        # GM 不下場，不計入 4~10 人的陣營人數配置查表。
         player_count = len(self._non_gm_players(game_room))
         camp_config = character_module.camp_setting[player_count]
         alias_index = self._build_character_alias_index(expansion_mode)
@@ -957,6 +1023,19 @@ class RoomManager:
                     }
                     for card in (board_deck.get('White Discard', []) or [])
                 ],
+                # 2026-10-22 新增：GM「給裝備」功能專用，牌庫本身的內容原本完全不會
+                # 序列化出去（連數量以外的東西都沒有），這裡只有 GM 檢視者才看得到，而且
+                # 只列真正能裝備的 Equipment 類卡片（排除一次性 Action 卡，那些不適用
+                # 這個功能）；非 GM 一律回傳空陣列，保留欄位方便前端判斷。
+                'deck_cards': [
+                    {
+                        'id': f"White:{str(getattr(card, 'name', '') or '')}",
+                        'name': str(getattr(card, 'name', '') or ''),
+                        'type': str(getattr(card, 'type', '') or ''),
+                    }
+                    for card in (board_deck.get('White', []) or [])
+                    if viewer_is_gm and str(getattr(card, 'type', '') or '') == 'Equipment'
+                ],
             },
             'Black': {
                 'deck': pile_count('Black'),
@@ -1191,9 +1270,22 @@ class RoomManager:
                     'color': p.color,
                     'is_ready': bool(p.profile.get('is_ready', False)),
                     'alive': p.is_alive,
+                    # 2026-10-21 新增：之前「是不是暴斃」在即時房間狀態裡完全沒有直接欄位可讀，
+                    # 只能靠 hp 被歸零這個副作用間接推斷（容易因為其他欄位調整而搞混，見
+                    # Mike 對 character_max_hp 那次修正的提問）。直接把 is_boomed 這個既有
+                    # 旗標原樣公開出來，不受任何欄位調整影響，判斷邏輯完全沒變——暴斃
+                    # （gm_boom_player／逾時暴斃）才會是 True，一般死亡（戰鬥傷害／GM 調整
+                    # 血量到上限）維持 False，跟 _check_all_victory() 判斷勝利條件時排除
+                    # 暴斃玩家的邏輯是同一個欄位、同一套規則。
+                    'is_boomed': bool(getattr(p, 'is_boomed', False)),
                     'status': p.status,
                     'damage': p.damage,
                     'hp': p.hp if (game_room.can_view_character(viewer_account, account)) else None,
+                    # 2026-10-21 新增：GM 血量調整面板要能在玩家死亡/暴斃後（p.hp 會被歸零）
+                    # 仍然知道角色真正的血量上限，不能只靠 p.hp——那是「目前血量欄位」，
+                    # 暴斃後會被清成 0。這裡固定取角色類別本身的 hp（不受死亡/暴斃影響），
+                    # 可視範圍跟 character / character_camp 用同一套規則（GM 一律可見）。
+                    'character_max_hp': int(getattr(p.character, 'hp', 0) or 0) if (p.character and game_room.can_view_character(viewer_account, account)) else None,
                     'invulnerability_source': (
                         str(getattr(p, 'immortal_source', '') or '')
                         or str(getattr(p, 'eqp_immortal_source', '') or '')
@@ -1201,7 +1293,7 @@ class RoomManager:
                     'zone': p.zone,
                     'area': p.area.name if p.area else None,
                     'is_village_manager': bool(p.profile.get('is_village_manager', False)),
-                    'is_gm': bool(p.profile.get('is_gm', False)),  # GM：旁觀主持，不下場，不計入 4~8 人名額
+                    'is_gm': bool(p.profile.get('is_gm', False)),  # GM：旁觀主持，不下場，不計入 4~10 人名額
                     'character_reveal': p.character_reveal,
                     'settlement_character_reveal': bool(settlement_reveal_map.get(account, p.character_reveal)),
                     'character': p.character.name if (p.character and game_room.can_view_character(viewer_account, account)) else None,
@@ -1221,8 +1313,29 @@ class RoomManager:
                     'equipment': [eq.name for eq in p.equipment_list],
                 }
                 for account, p in game_room.players.items()
-                if int(getattr(game_room, 'room_status', 0) or 0) == 1 or bool(getattr(p, 'character', None))
+                # 2026-10-20 修正：GM 永遠不會拿到角色（character 永遠是 None），原本這條過濾條件在遊戲開始後（room_status == 2）會把 GM 整個排除在回傳的 players 列表外，導致 GM 自己的前端找不到自己（selfPlayer 變 undefined），被誤判成「還沒加入房間」，面板跳回「住民登錄」，看起來就像被登出。GM 本來就應該不管遊戲進度都一直出現在名單裡，因此額外加上 is_gm 的例外。
+                # 2026-10-22 修正：這條過濾條件原本假設「room_status 不是 1（招募中）
+                # 就代表已經開局過，玩家應該都有 character 了」，只有 room_status==1、
+                # 有角色、或是 GM 才會留在回傳的 players 名單裡。但聊天村永遠不會開局
+                # （start_game 被擋下），玩家永遠不會有 character；而廢村又會把
+                # room_status 從 1 改成 4（已廢除），結果一廢村，聊天村的所有玩家就全部
+                # 被這條過濾條件踢出 players 名單——前端看到自己的帳號不在 data.players
+                # 裡，誤判成「已經不在房間裡了」而清空 state.account（看起來像被登出），
+                # 玩家卡片列表也因為 players 是空的而整排變成佔位的「-」。聊天村加上
+                # is_chat_room 的例外，不管 room_status 是多少都一律保留全部玩家。
+                # 2026-10-23 修正：實裝投票廢村後現場測試發現——上面那段只補了聊天村的例外，但一
+                # 般遊戲村其實也可能在「招募中」尚未開局就被廢村（投票廢村成功、或村長直接按
+                # 「廢除村莊」都不要求先開局），這種情況跟聊天村一樣：沒人有 character、
+                # room_status 從 1 跳成 4，並不是 is_chat_room，所以前面的聊天村例外接不到，玩家
+                # 卡片一樣整排變成「-」、自己看自己也會誤判成被登出。根本原因是：廢村跟「有沒有
+                # 開過局」是兩回事，不應該用 room_status != 1 來推斷「一定有 character」。直接把
+                # room_status == 4（已廢除）加進例外，跟 room_status == 1 同等地保證全部玩家都保留，
+                # 不管廢村發生在開局前還是開局後、不管是投票廢村還是村長直接廢村。
+                if int(getattr(game_room, 'room_status', 0) or 0) in (1, 4) or bool(getattr(p, 'character', None)) or bool(p.profile.get('is_gm', False)) or bool(getattr(game_room, 'is_chat_room', False))
             },
+            # 2026-10-20 新增：只有 GM 視角才帶上這份角色總表，給前端在「GM 按玩家卡片
+            # 自由調整角色」這個功能用；非 GM 視角一律是空陣列，不額外洩漏角色分配資訊。
+            'gm_character_catalog': self._character_catalog_for_gm(game_room) if viewer_is_gm else [],
         }
 
     def _success(self, event: str, data: Any) -> Dict[str, Any]:
@@ -1452,9 +1565,10 @@ class RoomManager:
             return
         room_id = self._event_room_id_from_dispatch(action, payload, result)
         if room_id:
-            if action == 'abolish_room':
-                self._emit_room_closed_event(room_id)
-            elif action in self._ROOM_STATE_EVENT_ACTIONS:
+            # 2026-10-20 修正：'abolish_room' 不再特殊推 room_closed（會讓還在房間的其他人
+            # 被創走出大廳），改成也走普通的 room_state_changed（已加回
+            # _ROOM_STATE_EVENT_ACTIONS），讓大家收到最新「已廢除」狀態就好，不會被踢出房間。
+            if action in self._ROOM_STATE_EVENT_ACTIONS:
                 self._emit_room_state_event(room_id)
         if action in self._ROOM_SNAPSHOT_ACTIONS:
             self._persist_room_snapshots()
@@ -1476,6 +1590,20 @@ class RoomManager:
                 result = self.api_start_game(payload)
             elif action == 'gm_release_game_start':
                 result = self.api_gm_release_game_start(payload)
+            elif action == 'gm_change_character':
+                result = self.api_gm_change_character(payload)
+            elif action == 'gm_boom_player':
+                result = self.api_gm_boom_player(payload)
+            elif action == 'gm_adjust_player_hp':
+                result = self.api_gm_adjust_player_hp(payload)
+            elif action == 'gm_reveal_player_character':
+                result = self.api_gm_reveal_player_character(payload)
+            elif action == 'gm_unreveal_player_character':
+                result = self.api_gm_unreveal_player_character(payload)
+            elif action == 'gm_discard_player_equipment':
+                result = self.api_gm_discard_player_equipment(payload)
+            elif action == 'gm_give_equipment':
+                result = self.api_gm_give_equipment(payload)
             elif action == 'next_step':
                 result = self.api_next_step(payload)
             elif action == 'card_effect':
@@ -1496,6 +1624,8 @@ class RoomManager:
                 result = self.api_change_color(payload)
             elif action == 'abolish_room':
                 result = self.api_abolish_room(payload)
+            elif action == 'vote_abolish_room':
+                result = self.api_vote_abolish_room(payload)
             elif action == 'toggle_ready':
                 result = self.api_toggle_ready(payload)
             elif action == 'vote_kick':
@@ -1598,8 +1728,8 @@ class RoomManager:
                 max_players = int(max_players_raw)
             except (TypeError, ValueError):
                 return self._error('create_room', 'INVALID_MAX_PLAYERS', '房間人數上限格式錯誤', 400)
-            if max_players < 4 or max_players > 8:
-                return self._error('create_room', 'INVALID_MAX_PLAYERS', '房間人數上限必須在 4~8 人之間', 400)
+            if max_players < 4 or max_players > 10:
+                return self._error('create_room', 'INVALID_MAX_PLAYERS', '房間人數上限必須在 4~10 人之間', 400)
         normalized_room_name = self._normalize_room_name_for_limit(room_name)
         if not normalized_room_name:
             return self._error('create_room', 'ROOM_NAME_REQUIRED', 'room_name is required', 400)
@@ -1698,7 +1828,12 @@ class RoomManager:
         # Assign first available color to newly joined player
         # GM 旁觀主持、不下場，不佔用這 9 色（聊天室/系統訊息改用保留的 GM_COLOR_HEX），
         # 所以 GM 加入時跳過自動選色，避免白白佔掉一個顏色名額。
-        if not is_gm_joiner:
+        # 2026-10-23 修正：這段原本不分房間類型，一律在 join_room() 跑完後把玩家的
+        # 顏色改成固定 9 色代號之一。但聊天村玩家在 room.py 的 join() 裡面已經隨機
+        # 配好一組完整色碼了（見 _random_chat_token_color()），這段緊接著又把它蓋成
+        # 固定代號，等於聊天村的隨機配色功能從加入當下就立刻失效。補上 is_chat_room
+        # 的例外，聊天村跳過這段固定色自動選色，保留 room.join() 配好的隨機色碼。
+        if not is_gm_joiner and not bool(getattr(joined_room, 'is_chat_room', False)):
             taken_colors = {p.color for p_acc, p in joined_room.players.items() if p_acc != joined_account}
             available_color = next((c for c in PLAYER_COLORS if c not in taken_colors), '')
             if available_color and joined_account in joined_room.players:
@@ -1738,6 +1873,12 @@ class RoomManager:
         if not ret:
             return self._error('leave_room', 'LEAVE_FAILED', 'leave room failed', 400)
         game_room.reset_all_ready()
+        # 2026-10-23 新增：Mike 要求「有人離開村莊」時，廢村投票要跟準備狀態一樣整組重計
+        # （不是只把離開那個人的票從 abolish_votes 裡扣掉——那段在 game_room.kick() 裡面
+        # 已經有做，leave_room() 內部就是呼叫 kick()）。這裡額外把全房間的廢村票清空，
+        # 跟上面 reset_all_ready() 整組重置準備狀態的作法對齊：村子人數一變動，廢村票
+        # 就整組重新算，避免「離開前已經很接近門檻」的殘留票數在人員變動後還繼續有效。
+        game_room.clear_abolish_votes()
         return self._success('leave_room', {'room_id': room_id, 'account': account})
 
     def api_start_game(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -1783,6 +1924,160 @@ class RoomManager:
         game_room.touch_activity()
         return self._success('gm_release_game_start', self._serialize_room_state(game_room, viewer_account=account))
 
+    def api_gm_change_character(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        # 2026-10-20 新增：開局後、GM 按下「開始遊戲」放行前這段暫停期間，GM 可以點玩家
+        # 卡片自由調整這位玩家的角色（Mike 確認：不限制場上陣營人數是否還平衡，由 GM 自己
+        # 拿捏），方便依現場人數/熟悉度手動微調。同一角色在場上只能有一位玩家持有，換角色
+        # 一律走 assign_character()（跟開局分配角色同一條路徑），hp／陣營等狀態會重算乾淨，
+        # 這個操作只允許在 awaiting_gm_release 暫停期間做，此時所有玩家都還沒開始行動、沒有
+        # 傷害或裝備，換角色不會留下舊角色的殘留狀態。這裡刻意不發 system message 公告換成
+        # 什麼角色——系統訊息是廣播給所有人看的，遊戲還沒開始、角色都還沒公開，會洩漏身分。
+        room_id = payload.get('room_id')
+        account = str(payload.get('account') or '').strip()
+        target_account = str(payload.get('target_account') or '').strip()
+        character_key = str(payload.get('character') or '').strip()
+        if room_id is None or not account or not target_account or not character_key:
+            return self._error('gm_change_character', 'INVALID_PAYLOAD', 'room_id, account, target_account and character are required', 400)
+        game_room = self.get_room(room_id)
+        if not game_room:
+            return self._error('gm_change_character', 'ROOM_NOT_FOUND', '房間不存在', 404)
+        requester = game_room.players.get(account)
+        if not requester or not bool(requester.profile.get('is_gm', False)):
+            return self._error('gm_change_character', 'ONLY_GM_CAN_CHANGE_CHARACTER', '只有 GM 可以更改玩家角色', 403)
+        if int(getattr(game_room, 'room_status', 0) or 0) != 2 or not bool(getattr(game_room, 'awaiting_gm_release', False)):
+            return self._error('gm_change_character', 'NOT_AWAITING_GM_RELEASE', '只能在開局後、GM 按下開始遊戲之前調整角色', 400)
+        target_player = game_room.players.get(target_account)
+        if not target_player:
+            return self._error('gm_change_character', 'PLAYER_NOT_FOUND', '玩家不存在', 404)
+        if bool(target_player.profile.get('is_gm', False)):
+            return self._error('gm_change_character', 'CANNOT_CHANGE_GM_CHARACTER', 'GM 不下場，沒有角色可以更改', 400)
+
+        expansion_mode = self._normalize_expansion_mode(getattr(game_room, 'expansion_mode', 'all'))
+        alias_index = self._build_character_alias_index(expansion_mode)
+        character_cls = alias_index.get(character_key) or alias_index.get(character_key.lower())
+        if character_cls is None:
+            return self._error('gm_change_character', 'INVALID_CHARACTER', f'無效或不在目前擴充模式內的角色：{character_key}', 400)
+
+        for other_account, other_player in game_room.players.items():
+            if other_account == target_account:
+                continue
+            other_cls = type(other_player.character) if getattr(other_player, 'character', None) else None
+            if other_cls is character_cls:
+                return self._error('gm_change_character', 'CHARACTER_ALREADY_TAKEN', f'{self._character_name(character_cls)} 已經是其他玩家的角色', 400)
+
+        target_player.assign_character(character_cls())
+        game_room.touch_activity()
+        return self._success('gm_change_character', self._serialize_room_state(game_room, viewer_account=account))
+
+    def _api_require_gm_target(self, action, payload):
+        """
+        共用檢查：GM 在「遊戲進行中」（room_status==2）對某個 target_account 做調整的
+        四個新動作（暴斃／調整血量／揭露／反揭露）都要先過這些檢查，回傳
+        (game_room, requester, target_player, account, target_account, error_response)；
+        error_response 不是 None 時，呼叫端直接回傳它即可。
+        """
+        room_id = payload.get('room_id')
+        account = str(payload.get('account') or '').strip()
+        target_account = str(payload.get('target_account') or '').strip()
+        if room_id is None or not account or not target_account:
+            return None, None, None, None, None, self._error(action, 'INVALID_PAYLOAD', 'room_id, account and target_account are required', 400)
+        game_room = self.get_room(room_id)
+        if not game_room:
+            return None, None, None, None, None, self._error(action, 'ROOM_NOT_FOUND', '房間不存在', 404)
+        requester = game_room.players.get(account)
+        if not requester or not bool(requester.profile.get('is_gm', False)):
+            return None, None, None, None, None, self._error(action, 'ONLY_GM_CAN_ADJUST', '只有 GM 可以調整玩家狀態', 403)
+        if int(getattr(game_room, 'room_status', 0) or 0) != 2:
+            return None, None, None, None, None, self._error(action, 'GAME_NOT_IN_PROGRESS', '遊戲進行中才能使用這個功能', 400)
+        target_player = game_room.players.get(target_account)
+        if not target_player:
+            return None, None, None, None, None, self._error(action, 'PLAYER_NOT_FOUND', '玩家不存在', 404)
+        if bool(target_player.profile.get('is_gm', False)):
+            return None, None, None, None, None, self._error(action, 'CANNOT_ADJUST_GM', 'GM 不下場，沒有狀態可以調整', 400)
+        return game_room, requester, target_player, account, target_account, None
+
+    # 2026-10-20 新增：GM 在遊戲進行中點玩家卡片叫出的調整面板，四個動作共用的錯誤訊息對照表。
+    _GM_ADJUST_ERROR_MESSAGES = {
+        'PLAYER_NOT_FOUND': '玩家不存在',
+        'PLAYER_ALREADY_DEAD': '玩家已經死亡',
+        'NO_CHARACTER': '玩家尚未被分配角色',
+        'INVALID_MAX_HP': '角色血量上限無效',
+        'INVALID_HP_VALUE': '血量數值無效',
+        'ALREADY_REVEALED': '角色已經揭露',
+        'PLAYER_DEAD': '只能對還活著的玩家反揭露',
+        'ALREADY_HIDDEN': '角色已經是隱藏狀態',
+        # 2026-10-22 新增：GM 裝備管理（丟棄／給予）的錯誤訊息。
+        'EQUIPMENT_NOT_FOUND': '找不到這件裝備',
+        'INVALID_SOURCE': '來源無效（只能是牌庫或棄牌堆）',
+        'NOT_EQUIPMENT_CARD': '這張卡片不是裝備，不能用這個功能給玩家',
+    }
+
+    def api_gm_boom_player(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        game_room, requester, target_player, account, target_account, error_response = self._api_require_gm_target('gm_boom_player', payload)
+        if error_response is not None:
+            return error_response
+        ok, error_code = game_room.gm_boom_player(target_account)
+        if not ok:
+            return self._error('gm_boom_player', error_code, self._GM_ADJUST_ERROR_MESSAGES.get(error_code, '操作失敗'), 400)
+        return self._success('gm_boom_player', self._serialize_room_state(game_room, viewer_account=account))
+
+    def api_gm_adjust_player_hp(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        # 2026-10-21 修正：欄位改名為 damage（對應玩家目前累積傷害值），跟
+        # room.gm_adjust_player_hp() 的語意修正（達到角色血量上限才死亡，不是歸零才死亡）對齊。
+        new_damage = payload.get('damage')
+        if new_damage is None:
+            return self._error('gm_adjust_player_hp', 'INVALID_PAYLOAD', 'damage is required', 400)
+        game_room, requester, target_player, account, target_account, error_response = self._api_require_gm_target('gm_adjust_player_hp', payload)
+        if error_response is not None:
+            return error_response
+        ok, error_code = game_room.gm_adjust_player_hp(target_account, new_damage)
+        if not ok:
+            return self._error('gm_adjust_player_hp', error_code, self._GM_ADJUST_ERROR_MESSAGES.get(error_code, '操作失敗'), 400)
+        return self._success('gm_adjust_player_hp', self._serialize_room_state(game_room, viewer_account=account))
+
+    def api_gm_reveal_player_character(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        game_room, requester, target_player, account, target_account, error_response = self._api_require_gm_target('gm_reveal_player_character', payload)
+        if error_response is not None:
+            return error_response
+        ok, error_code = game_room.gm_reveal_player_character(target_account)
+        if not ok:
+            return self._error('gm_reveal_player_character', error_code, self._GM_ADJUST_ERROR_MESSAGES.get(error_code, '操作失敗'), 400)
+        return self._success('gm_reveal_player_character', self._serialize_room_state(game_room, viewer_account=account))
+
+    def api_gm_unreveal_player_character(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        game_room, requester, target_player, account, target_account, error_response = self._api_require_gm_target('gm_unreveal_player_character', payload)
+        if error_response is not None:
+            return error_response
+        ok, error_code = game_room.gm_unreveal_player_character(target_account)
+        if not ok:
+            return self._error('gm_unreveal_player_character', error_code, self._GM_ADJUST_ERROR_MESSAGES.get(error_code, '操作失敗'), 400)
+        return self._success('gm_unreveal_player_character', self._serialize_room_state(game_room, viewer_account=account))
+
+    def api_gm_discard_player_equipment(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        equipment_name = str(payload.get('equipment_name') or '').strip()
+        if not equipment_name:
+            return self._error('gm_discard_player_equipment', 'INVALID_PAYLOAD', 'equipment_name is required', 400)
+        game_room, requester, target_player, account, target_account, error_response = self._api_require_gm_target('gm_discard_player_equipment', payload)
+        if error_response is not None:
+            return error_response
+        ok, error_code = game_room.gm_discard_player_equipment(target_account, equipment_name)
+        if not ok:
+            return self._error('gm_discard_player_equipment', error_code, self._GM_ADJUST_ERROR_MESSAGES.get(error_code, '操作失敗'), 400)
+        return self._success('gm_discard_player_equipment', self._serialize_room_state(game_room, viewer_account=account))
+
+    def api_gm_give_equipment(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        source = str(payload.get('source') or '').strip()
+        equipment_name = str(payload.get('equipment_name') or '').strip()
+        if source not in ('deck', 'discard') or not equipment_name:
+            return self._error('gm_give_equipment', 'INVALID_PAYLOAD', "source ('deck' or 'discard') and equipment_name are required", 400)
+        game_room, requester, target_player, account, target_account, error_response = self._api_require_gm_target('gm_give_equipment', payload)
+        if error_response is not None:
+            return error_response
+        ok, error_code = game_room.gm_give_equipment(target_account, source, equipment_name)
+        if not ok:
+            return self._error('gm_give_equipment', error_code, self._GM_ADJUST_ERROR_MESSAGES.get(error_code, '操作失敗'), 400)
+        return self._success('gm_give_equipment', self._serialize_room_state(game_room, viewer_account=account))
+
     def api_next_step(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         room_id = payload.get('room_id')
         action = bool(payload.get('action', False))
@@ -1814,16 +2109,32 @@ class RoomManager:
         color = str(payload.get('color') or '').strip()
         if room_id is None or not account or not color:
             return self._error('change_color', 'INVALID_PAYLOAD', '缺少必要參數', 400)
-        if color not in PLAYER_COLORS:
-            return self._error('change_color', 'INVALID_COLOR', '無效的顏色', 400)
         game_room = self.get_room(room_id)
         if not game_room:
             return self._error('change_color', 'ROOM_NOT_FOUND', '房間不存在', 404)
+        # 2026-10-23 修正：Mike 回報聊天村點開色塊「還是用選的」——之前這支 API 不分房間
+        # 類型，一律要求 color 必須是 PLAYER_COLORS 那固定 9 色代號之一，聊天村玩家原本就是
+        # 存完整色碼（見 room.py 的 _random_chat_token_color()），就算前端真的送出任意色碼
+        # 過來，也會被這裡擋下來變成 INVALID_COLOR。聊天村改成驗證是不是合法的 #rrggbb 色碼
+        # 格式（跟前端 constants.js 的 HEX_COLOR_PATTERN 同一套規則），一般遊戲村維持原本的
+        # 9 色代號驗證不變。
+        is_chat_room = bool(getattr(game_room, 'is_chat_room', False))
+        if is_chat_room:
+            if not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
+                return self._error('change_color', 'INVALID_COLOR', '無效的色碼', 400)
+            color = color.lower()
+        else:
+            if color not in PLAYER_COLORS:
+                return self._error('change_color', 'INVALID_COLOR', '無效的顏色', 400)
         if int(getattr(game_room, 'room_status', 0) or 0) != 1:
             return self._error('change_color', 'NOT_RECRUITING', '僅招募中可更換顏色', 400)
-        for p_acc, p in game_room.players.items():
-            if p_acc != account and p.color == color:
-                return self._error('change_color', 'COLOR_TAKEN', '此顏色已被他人選用', 400)
+        # 2026-10-23：聊天村的隨機配色本來就不要求跟其他玩家不重複（Mike 先前主動撤回過
+        # 這個限制：「色碼不能重複好像沒意思」），玩家自己手動設定色碼時延續同一個決定，
+        # 跳過這段「顏色已被使用」的檢查；一般遊戲村的固定 9 色代號維持原本必須互斥。
+        if not is_chat_room:
+            for p_acc, p in game_room.players.items():
+                if p_acc != account and p.color == color:
+                    return self._error('change_color', 'COLOR_TAKEN', '此顏色已被他人選用', 400)
         target_player = game_room.players.get(account)
         if not target_player:
             return self._error('change_color', 'PLAYER_NOT_FOUND', '玩家不存在', 404)
@@ -1900,6 +2211,8 @@ class RoomManager:
                 return self._error('vote_kick', 'KICK_FAILED', '剔除失敗', 400)
             game_room.add_system_message(f"村長 [{voter.name or voter_account}] 剔除了 [{target.name or target_account}]")
             game_room.clear_all_kick_votes()
+            # 2026-10-23 新增：剔除玩家也算「有人離開村莊」，跟 leave_room() 一樣把廢村投票整組重計。
+            game_room.clear_abolish_votes()
             # 剔除玩家後所有人需要重新準備，跟「重新點名」一樣用音效提醒大家。
             game_room.record_roll_call(voter_account, voter.name or voter_account)
             return self._success('vote_kick', self._serialize_room_state(game_room, viewer_account=voter_account))
@@ -1911,6 +2224,8 @@ class RoomManager:
                 return self._error('vote_kick', 'KICK_FAILED', '剔除失敗', 400)
             game_room.add_system_message(f"[{target.name or target_account}] 已被投票剔除")
             game_room.clear_all_kick_votes()
+            # 2026-10-23 新增：剔除玩家也算「有人離開村莊」，跟 leave_room() 一樣把廢村投票整組重計。
+            game_room.clear_abolish_votes()
             # 剔除玩家後所有人需要重新準備，跟「重新點名」一樣用音效提醒大家。
             game_room.record_roll_call(voter_account, voter.name or voter_account)
 
@@ -2063,8 +2378,8 @@ class RoomManager:
             nearest = min(allowed_timeouts, key=lambda value: abs(value - timeout_minutes))
             timeout_minutes = int(nearest)
 
-        # 2026-10-13：村長可以調低房間人數上限（例如 4~8 之間），等於把多出來的
-        # 空位關掉，不用開到滿 8 人也能玩；聊天室 (is_chat_room) 不受這個 4~8
+        # 2026-10-13：村長可以調低房間人數上限（例如 4~10 之間），等於把多出來的
+        # 空位關掉，不用開到滿上限也能玩；聊天室 (is_chat_room) 不受這個 4~10
         # 限制，上限固定維持 50，不開放調整。
         is_chat_room = bool(getattr(game_room, 'is_chat_room', False))
         if is_chat_room:
@@ -2075,8 +2390,8 @@ class RoomManager:
                 max_players = int(max_players_raw)
             except (TypeError, ValueError):
                 return self._error('update_room_settings', 'INVALID_MAX_PLAYERS', '房間人數上限格式錯誤', 400)
-            if max_players < 4 or max_players > 8:
-                return self._error('update_room_settings', 'INVALID_MAX_PLAYERS', '房間人數上限必須在 4~8 人之間', 400)
+            if max_players < 4 or max_players > 10:
+                return self._error('update_room_settings', 'INVALID_MAX_PLAYERS', '房間人數上限必須在 4~10 人之間', 400)
             current_non_gm_count = len(self._non_gm_players(game_room))
             if max_players < current_non_gm_count:
                 return self._error(
@@ -2188,10 +2503,51 @@ class RoomManager:
         requester = game_room.players.get(account)
         if not requester or not bool(requester.profile.get('is_village_manager', False)):
             return self._error('abolish_room', 'NOT_VILLAGE_MANAGER', '只有村長可以廢除村莊', 403)
-        removed = self.remove_room(room_id)
-        if not removed:
-            return self._error('abolish_room', 'ABOLISH_FAILED', '廢除村莊失敗', 400)
-        return self._success('abolish_room', {'room_id': room_id})
+        # 2026-10-20 修正：原本會直接用 remove_room() 把整個房間砍掉，所有玩家都會被踢出房間。
+        # Mike 要求改成跟遊戲正常結束（status 3）一樣對待：房間繼續存在，玩家不會
+        # 被踢出，仍然可以聊天、回顧紀錄，改呼叫 game_room.abolish() 只把狀態改成「已廢除」（4）。
+        if int(getattr(game_room, 'room_status', 0) or 0) == 4:
+            return self._error('abolish_room', 'ALREADY_ABOLISHED', '村莊已經廢除了', 400)
+        game_room.abolish()
+        return self._success('abolish_room', self._serialize_room_state(game_room, viewer_account=account))
+
+    def api_vote_abolish_room(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        # 2026-10-23 新增：投票廢村。背景是聊天村建立時如果沒設村長 Trip，就永遠不會有
+        # 任何人符合 is_village_manager，api_abolish_room() 又寫死只有村長能廢村，等於
+        # 這種房間永遠廢不掉（連閒置自動廢村都排除聊天村）。這裡補一個跟 api_vote_kick()
+        # 同樣邏輯的表決機制：非村長的已加入玩家可以投票，達到門檻就直接廢村；村長呼叫
+        # 這支 API 的話比照村長可以直接剔除的邏輯，不用等投票，直接廢村。
+        room_id = payload.get('room_id')
+        voter_account = str(payload.get('voter_account') or payload.get('account') or '').strip()
+        if room_id is None or not voter_account:
+            return self._error('vote_abolish_room', 'INVALID_PAYLOAD', 'room_id and voter_account are required', 400)
+        game_room = self.get_room(room_id)
+        if not game_room:
+            return self._error('vote_abolish_room', 'ROOM_NOT_FOUND', '房間不存在', 404)
+        if int(getattr(game_room, 'room_status', 0) or 0) == 4:
+            return self._error('vote_abolish_room', 'ALREADY_ABOLISHED', '村莊已經廢除了', 400)
+        voter = game_room.players.get(voter_account)
+        if not voter:
+            return self._error('vote_abolish_room', 'PLAYER_NOT_FOUND', '玩家不存在', 404)
+
+        if bool(voter.profile.get('is_village_manager', False)):
+            game_room.abolish()
+            return self._success('vote_abolish_room', self._serialize_room_state(game_room, viewer_account=voter_account))
+
+        # 聊天村最多 50 人，門檻拉高避免太容易被少數幾個人表決掉；一般遊戲村 4~10 人，
+        # 門檻維持 Mike 指定的 3 票。
+        threshold = (
+            self._ABOLISH_VOTE_THRESHOLD_CHAT
+            if bool(getattr(game_room, 'is_chat_room', False))
+            else self._ABOLISH_VOTE_THRESHOLD
+        )
+        vote_count = game_room.cast_abolish_vote(voter_account)
+        if vote_count >= threshold:
+            game_room.abolish()
+            game_room.clear_abolish_votes()
+        else:
+            game_room.add_system_message(f"[{voter.name or voter_account}] 投票廢村（目前 {vote_count}/{threshold} 票）")
+        return self._success('vote_abolish_room', self._serialize_room_state(game_room, viewer_account=voter_account))
 
     def api_loot_from_kill(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         room_id = payload.get('room_id')

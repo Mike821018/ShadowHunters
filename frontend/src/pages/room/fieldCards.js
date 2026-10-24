@@ -68,6 +68,7 @@ export function renderStageFieldCards({
   state,
   refs,
   PLAYER_COLOR_HEX,
+  resolvePlayerColorHex,
   getMoveAreaPromptState,
   getAbilityAreaPromptState,
   showOccupantNamePopup,
@@ -243,7 +244,10 @@ export function renderStageFieldCards({
       occupantsEl.innerHTML = slots
         .map((occupant) => {
           if (!occupant) return '<span class="stage-field-occupant is-empty" aria-hidden="true"></span>';
-          const fill = PLAYER_COLOR_HEX[occupant.color] || '#c9d8e4';
+          // 2026-10-22 修正：聊天村玩家顏色改存完整色碼，改呼叫共用的
+          // resolvePlayerColorHex()（場地卡目前聊天村不會顯示，但保持跟其他
+          // 顏色讀取點一致，避免以後場地卡也開放給聊天村時又漏改這裡）。
+          const fill = resolvePlayerColorHex(occupant.color, '#c9d8e4');
           // 原本顏色代號還是 White/Black/... 時，白色色塊 (#f0f0f0) 太淺、需要額外加深色外框
           // 才看得清楚；2026-10-03 顏色代號改成 Color1~Color9、原本的白色也換成玫紅色後，
           // 9 種顏色本身都夠深、不再需要這個特例，統一用原本給其他顏色的外框即可。

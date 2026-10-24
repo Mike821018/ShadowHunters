@@ -32,7 +32,9 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
       ? t('room.info.status_playing')
       : status === 3
         ? t('room.info.status_finished')
-        : String(room.room_status ?? '-');
+        : status === 4
+          ? t('room.info.status_abolished')
+          : String(room.room_status ?? '-');
   const statusClass = status === 1 ? 'room-status recruiting' : status === 2 ? 'room-status playing' : 'room-status';
   const selfPlayer = state?.account ? data?.players?.[state.account] : null;
   const hasJoined = Boolean(selfPlayer);
@@ -47,6 +49,11 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
   // 按鈕（搭配 room.js 裡新補上的二次確認，避免誤觸），遊戲結束（status 3）後
   // 房間本身已經沒有在運作，維持不顯示。
   const canAbolish = isVillageManager && (status === 1 || status === 2);
+  // 2026-10-23 新增：房間如果建立時沒設村長 Trip，就永遠不會有人符合 isVillageManager，
+  // canAbolish 永遠是 false，等於這種房間完全沒有人能廢村。補一個「投票廢村」給非村長的
+  // 已加入玩家使用，不限房間是否真的有村長（村長本來就有自己的直接廢村按鈕）。
+  const canVoteAbolish = hasJoined && !isVillageManager && (status === 1 || status === 2);
+  const abolishVoteThreshold = isChatRoom ? 5 : 3;
   const canRollCall = isVillageManager && status === 1 && !isChatRoom;
   const canExtendTurnTimeout = isVillageManager && status === 2 && !isChatRoom;
   // 2026-10-20 修正：原本這裡還會算「GM 可以按開始遊戲」（canGmStartGame），跟非 GM
@@ -191,6 +198,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
       <li>
         <strong>${esc(t('room.info.room_id'))}</strong>${room.room_id ?? '-'}
         ${canAbolish ? `<button id="btnAbolishVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.abolish'))}</button>` : ''}
+        ${canVoteAbolish ? `<button id="btnVoteAbolishVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.vote_abolish', { n: abolishVoteThreshold }))}</button>` : ''}
       </li>
       <li>
         <strong>${esc(t('room.info.status'))}</strong><span class="${statusClass}">${esc(statusText)}</span>
@@ -243,6 +251,7 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
       ${canExtendTurnTimeout ? `<button id="btnExtendTurnTimeoutInline" class="btn btn-inline" type="button">${esc(t('room.ops.extend_turn_timeout'))}</button>` : ''}
       ${canGmReleaseStart ? `<button id="btnGmReleaseStartInline" class="btn btn-inline" type="button">${esc(t('room.ops.gm_release_start'))}</button>` : ''}
       ${canAbolish ? `<button id="btnAbolishVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.abolish'))}</button>` : ''}
+      ${canVoteAbolish ? `<button id="btnVoteAbolishVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.vote_abolish', { n: abolishVoteThreshold }))}</button>` : ''}
     </li>
     ${settingsDialog}
     ${timeoutWarnRow}

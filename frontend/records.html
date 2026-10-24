@@ -40,6 +40,10 @@
           <fieldset>
             <legend><strong data-i18n="records.table_title">村莊紀錄表</strong></legend>
             <div class="card-body">
+              <ul class="menu-tabs identity-page-tabs records-kind-tabs" role="tablist" aria-label="紀錄分類">
+                <li><button id="recordsTabBtnGame" class="tab current" type="button" role="tab" aria-selected="true" data-room-kind="game" data-i18n="records.tab_game">一般紀錄</button></li>
+                <li><button id="recordsTabBtnChat" class="tab" type="button" role="tab" aria-selected="false" data-room-kind="chat" data-i18n="records.tab_chat">聊天村紀錄</button></li>
+              </ul>
               <div class="records-toolbar">
                 <div class="records-page-controls">
                   <button id="recordsPrevPage" class="btn" type="button" data-i18n="identity.prev_page">上一頁</button>

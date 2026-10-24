@@ -1,11 +1,14 @@
 import { t } from './i18n.js';
-import { PLAYER_COLORS, PLAYER_COLOR_HEX } from './constants.js';
+import { PLAYER_COLORS, PLAYER_COLOR_HEX, resolvePlayerColorHex } from './constants.js';
 import { getCharacterLocalizedName, getCharacterTooltipInfo, getCurrentUiLang } from './characterInfo.js';
 import { getAvatarColorById, getAvatarImageSrcById } from './avatarConfig.js';
 import { apiFetch } from './utils.js';
 
 function colorHex(color) {
-  return PLAYER_COLOR_HEX[color] || '#cccccc';
+  // 2026-10-22 修正：聊天村玩家顏色改存完整色碼（例如 '#3fae7d'），不再限制在
+  // PLAYER_COLOR_HEX 這 9 色代號裡，這裡改呼叫共用的 resolvePlayerColorHex()
+  // 判斷是不是已經是完整色碼。
+  return resolvePlayerColorHex(color, '#cccccc');
 }
 
 const EQUIPMENT_ICON = {

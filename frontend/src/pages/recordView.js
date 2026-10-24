@@ -94,7 +94,17 @@ export async function initRecordViewPage({ toast }) {
     if (title) title.textContent = `${Number(data.room_id || 0)}${t('records.village_suffix')} - ${t('records.col_end_time')}`;
     if (meta) {
       const winners = Array.isArray(data.winner_players) ? data.winner_players.length : 0;
-      meta.textContent = `${t('records.col_end_time')}: ${data.game_date || '-'} / ${t('records.col_winner')}: ${campLabel(data.winner_camp)} / ${t('records.col_player_count')}: ${Array.isArray(data.players) ? data.players.length : 0} / Winners: ${winners}`;
+      // 2026-10-22 新增：廢村產生的紀錄沒有真正的勝利結果（campLabel 只會顯示 '-'），
+      // 補上「已廢除」提示，避免看起來像是資料缺漏。
+      const abolishedSuffix = data.is_abolished ? ` / ${t('room.status_abolished')}` : '';
+      // 2026-10-22 新增：聊天村保留下來的紀錄沒有陣營／勝負這些概念，直接顯示
+      // 「Winner: -」、「陣營: -」會讓人誤以為資料缺漏，改成用大廳同一個聊天村
+      // 分類標籤取代整段勝負資訊，只保留結束時間／人數這兩個仍有意義的欄位。
+      if (data.room_kind === 'chat') {
+        meta.textContent = `${t('records.col_end_time')}: ${data.game_date || '-'} / ${t('lobby.rooms.chat_tag')} / ${t('records.col_player_count')}: ${Array.isArray(data.players) ? data.players.length : 0}${abolishedSuffix}`;
+      } else {
+        meta.textContent = `${t('records.col_end_time')}: ${data.game_date || '-'} / ${t('records.col_winner')}: ${campLabel(data.winner_camp)} / ${t('records.col_player_count')}: ${Array.isArray(data.players) ? data.players.length : 0} / Winners: ${winners}${abolishedSuffix}`;
+      }
     }
     renderPlayers(data.players || []);
   } catch {

@@ -191,10 +191,14 @@ class GameRecordsAPI:
         import time
         self.game_start_times[room.room_id] = time.time()
     
-    def on_game_end(self, room: 'GameRoom') -> Optional[str]:
+    def on_game_end(self, room: 'GameRoom', abolished: bool = False) -> Optional[str]:
         """
         Called when game ends (room_status becomes 3)
         Returns the record_id if successful, None otherwise
+
+        2026-10-22 新增 abolished 參數：Mike 要求廢村（room_status 變成 4）時
+        也要建立一筆紀錄（餵玩家統計、房間頁點進去還能看），但不要出現在
+        對戰紀錄列表裡——沿用 on_room_abolished() 呼叫這裡，標記 abolished=True。
         """
         import time
         
@@ -223,10 +227,15 @@ class GameRecordsAPI:
                     damage_taken=getattr(player_obj, 'damage', 0),
                     cards_played=getattr(player_obj, 'cards_played_count', 0),
                     trip_display=str(getattr(player_obj, 'trip_display', '') or ''),
-                    account_password_hash=self.record_store.hash_account_password(
-                        account,
-                        str(getattr(player_obj, 'password', '') or profile.get('password', '') or ''),
-                    ),
+                    # 2026-10-22 修正：profile.get('password') 現在存的已經是
+                    # room.py 的 GameRoom._hash_login_password() 在玩家加入房間當下
+                    # 就算好的雜湊值（sha256(account + '\0' + 密碼明碼)），不再是明碼，
+                    # 所以這裡不能再呼叫 hash_account_password() 重新雜湊一次——兩邊公式
+                    # 雖然完全一樣，但輸入已經不是原始密碼而是雜湊值，再雜湊一次會得到
+                    # 不同的結果，之後玩家用原始帳密透過 claim_trip_records／
+                    # modify_trip_records 認領這筆紀錄時會對不起來。直接沿用這裡已經算好
+                    # 的雜湊值即可。
+                    account_password_hash=str(getattr(player_obj, 'password', '') or profile.get('password', '') or ''),
                     avatar_no=int(profile.get('avatar_no', 1) or 1),
                     cards_equipped=[c.name for c in (getattr(player_obj, 'equipment_list', None) or getattr(player_obj, 'equipments', []))],
                     boomed=bool(getattr(player_obj, 'is_boomed', False)),
@@ -256,12 +265,13 @@ class GameRecordsAPI:
                 players=player_records,
                 winner_camp=winner_camp,
                 winner_players=list(room.winner_accounts),
-                end_reason=self._get_end_reason(room),
+                end_reason=self._get_end_reason(room, abolished=abolished),
                 total_actions=self._count_total_actions(room),
                 total_damage_dealt=self._count_total_damage(room),
                 kills_count=self._count_kills(room, player_records),
                 chat_messages=list(getattr(room, 'chat_messages', []) or []),
                 final_state=self._build_final_state_snapshot(room),
+                is_abolished=bool(abolished),
             )
             
             # Save game record
@@ -290,6 +300,83 @@ class GameRecordsAPI:
         
         except Exception as e:
             print(f"Error recording game: {e}")
+            return None
+
+    def on_room_abolished(self, room: 'GameRoom') -> Optional[str]:
+        """
+        2026-10-22 新增：村長／GM 中途廢村時呼叫。聊天村另外走 _record_chat_room_abolish()
+        （聊天村不會開局，game_start_times 永遠不會有記錄，照一般流程一定會被下面的
+        檢查擋掉，所以必須在這裡單獨分支處理）。一般遊戲村只有已經開局過（on_game_start
+        記錄過 game_start_times）才建立紀錄——還在招募階段就廢村沒有角色配置可記，
+        建了也沒意義。沿用 on_game_end() 的完整建檔流程（玩家統計、房間歷史、
+        排行榜都照常更新），只是標記 is_abolished=True，讓對戰紀錄列表把它濾掉，
+        但單筆查詢（房間頁點進去回放）跟玩家統計不受影響。
+        """
+        if bool(getattr(room, 'is_chat_room', False)):
+            return self._record_chat_room_abolish(room)
+        if room.room_id not in self.game_start_times:
+            return None
+        return self.on_game_end(room, abolished=True)
+
+    def _record_chat_room_abolish(self, room: 'GameRoom') -> Optional[str]:
+        """
+        2026-10-22 新增：聊天村被廢村時建立一筆紀錄。聊天村沒有角色／陣營／勝負這些
+        遊戲概念（玩家 player_obj.character 永遠是 None），不能沿用 on_game_end() ——
+        那邊會直接把沒有 character 的玩家整個濾掉（if not player_obj.character: continue），
+        對聊天村來說等於濾掉所有人。這裡改成直接手動建一筆精簡版的 GameRecord：
+        玩家名單／trip／帳號雜湊照實記錄（方便之後用 trip 認領），角色／陣營／勝負
+        欄位留空（前端用 room_kind == 'chat' 判斷要不要顯示這些欄位），而且完全不呼叫
+        update_player_stats()／update_leaderboards()——聊天村紀錄不該、也不能混進玩家的
+        勝率等統計（rebuild_player_stats() 那邊也用同一個 room_kind 欄位擋掉，雙重保險）。
+        """
+        try:
+            player_records = []
+            for account, player_obj in room.players.items():
+                if not player_obj:
+                    continue
+                profile = getattr(player_obj, 'profile', {}) or {}
+                player_records.append(PlayerRecord(
+                    player_id=account,
+                    player_name=str(profile.get('name') or getattr(player_obj, 'name', '') or account),
+                    character_name='',
+                    character_camp='',
+                    is_alive=True,
+                    final_hp=0,
+                    damage_taken=0,
+                    cards_played=0,
+                    trip_display=str(getattr(player_obj, 'trip_display', '') or ''),
+                    account_password_hash=str(getattr(player_obj, 'password', '') or profile.get('password', '') or ''),
+                    avatar_no=int(profile.get('avatar_no', 1) or 1),
+                    cards_equipped=[],
+                    boomed=False,
+                ))
+
+            game_record = GameRecord(
+                record_id=str(uuid.uuid4()),
+                room_id=room.room_id,
+                game_date=datetime.now().isoformat(),
+                game_duration_seconds=0,
+                game_settings={},
+                players=player_records,
+                winner_camp='',
+                winner_players=[],
+                end_reason='ChatRoomAbolished',
+                total_actions=0,
+                total_damage_dealt=0,
+                kills_count={},
+                chat_messages=list(getattr(room, 'chat_messages', []) or []),
+                final_state=self._build_final_state_snapshot(room),
+                is_abolished=True,
+                room_kind='chat',
+            )
+
+            record_id = self.record_store.save_game_record(game_record)
+            self.record_store.add_game_to_room_history(room.room_id, game_record)
+            # 注意：故意不呼叫 update_player_stats()／update_leaderboards()——
+            # 聊天村紀錄不計入玩家統計／排行榜。
+            return record_id
+        except Exception as e:
+            print(f"Error recording chat room abolish: {e}")
             return None
 
     def on_chat_message(self, room: 'GameRoom', message: Dict[str, Any]) -> bool:
@@ -405,6 +492,8 @@ class GameRecordsAPI:
             'kills_count': record.kills_count,
             'chat_messages': list(getattr(record, 'chat_messages', []) or []),
             'final_state': dict(getattr(record, 'final_state', {}) or {}),
+            'is_abolished': bool(getattr(record, 'is_abolished', False)),
+            'room_kind': str(getattr(record, 'room_kind', 'game') or 'game'),
         }
 
     def api_get_game_record_by_room_id(self, room_id: int) -> Dict[str, Any]:
@@ -484,6 +573,13 @@ class GameRecordsAPI:
                     or str(getattr(p, 'eqp_immortal_source', '') or '')
                 ),
                 'equipment': [str(getattr(eq, 'name', '') or '') for eq in (getattr(p, 'equipment_list', []) or [])],
+                # 2026-10-21 新增：這個 final_state 快照是遊戲結束當下存一次的獨立序列化邏輯，
+                # 跟 room_manager.py 的 _serialize_room_state（即時房間狀態用的那份）完全是兩套
+                # 各自維護的程式碼，彼此不會互相套用欄位——Mike 發現舊的回放看不出暴斃顏色，
+                # 就是因為這裡原本沒有存 boomed/is_boomed，不是前端判斷邏輯的問題。已存檔的
+                # 舊紀錄本來就沒有這個欄位，照 Mike 的意思不特地回補；這裡只確保從現在開始
+                # 結束的新對局，回放也能正確顯示暴斃顏色。
+                'boomed': bool(getattr(p, 'is_boomed', False)),
             }
 
         return {
@@ -558,11 +654,18 @@ class GameRecordsAPI:
         summary = self.record_store.get_summary_stats()
         return summary
 
-    def api_get_game_records(self, limit: int = 100, page: int = 1, page_size: int = 20, search: str = '') -> Dict[str, Any]:
-        """API: List game records in reverse chronological order (paged)."""
+    def api_get_game_records(self, limit: int = 100, page: int = 1, page_size: int = 20, search: str = '', room_kind: str = '') -> Dict[str, Any]:
+        """API: List game records in reverse chronological order (paged).
+
+        2026-10-22 新增 room_kind 參數：Mike 要求紀錄閱覽頁要把「一般紀錄」跟「聊天村紀錄」
+        拆成子分頁分開顯示，不要混在同一份列表裡——傳 'game' 只回傳一般對戰紀錄（跟原本
+        行為一樣，廢村產生的一般紀錄依然不顯示）；傳 'chat' 只回傳聊天村紀錄；不傳（空字串）
+        維持舊行為，兩種都回傳在同一份列表裡（供既有呼叫端／測試相容）。
+        """
         safe_page_size = max(1, min(int(page_size or 20), 100))
         safe_page = max(1, int(page or 1))
         keyword = str(search or '').strip().lower()
+        kind_filter = str(room_kind or '').strip().lower()
         records = sorted(
             self.record_store.game_records.values(),
             key=lambda r: (int(getattr(r, 'room_id', 0) or 0), str(getattr(r, 'game_date', '') or '')),
@@ -575,6 +678,15 @@ class GameRecordsAPI:
 
         all_entries = []
         for record in records:
+            # 2026-10-22 新增：廢村產生的紀錄不主動顯示在這份列表裡（Mike 要求），
+            # 但玩家統計跟單筆查詢（api_get_game_record／api_get_game_record_by_room_id）
+            # 不受影響，照常可以查到。聊天村的廢村紀錄是例外——Mike 要求聊天村紀錄
+            # 要能在列表裡看到（用分類標籤區分），所以 room_kind == 'chat' 的不濾掉。
+            record_kind = str(getattr(record, 'room_kind', 'game') or 'game')
+            if bool(getattr(record, 'is_abolished', False)) and record_kind != 'chat':
+                continue
+            if kind_filter and record_kind != kind_filter:
+                continue
             options = []
             settings = self._get_normalized_game_settings(record, persist=True)
             village_name = str(settings.get('room_name') or '').strip() or f"{record.room_id}村"
@@ -617,6 +729,9 @@ class GameRecordsAPI:
                 # 字串。之後再新增設定只要 _get_normalized_game_settings 的
                 # defaults 清單裡有定義，這裡就會自動帶出來，不用額外改這段。
                 'game_settings': settings,
+                # 2026-10-22 新增：紀錄種類（'game' 一般對戰／'chat' 聊天村），前端
+                # 用這個欄位在列表裡顯示聊天村分類標籤，不要用遊戲的勝負欄位去呈現。
+                'room_kind': record_kind,
             })
 
         total = len(all_entries)
@@ -1097,8 +1212,12 @@ class GameRecordsAPI:
         else:
             return 'Mixed'
     
-    def _get_end_reason(self, room: 'GameRoom') -> str:
+    def _get_end_reason(self, room: 'GameRoom', abolished: bool = False) -> str:
         """Determine the reason the game ended"""
+        # 2026-10-22 新增：廢村產生的紀錄回傳 'Abolished'，方便之後需要時區分；
+        # 目前前端沒有讀這個欄位，純粹是資料完整性。
+        if abolished:
+            return 'Abolished'
         # This would need to be added to room.py to track the end reason
         return 'Normal'
     

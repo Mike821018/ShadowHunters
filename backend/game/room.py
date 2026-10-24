@@ -1,7 +1,9 @@
 from . import board
 from . import player
 
+import hashlib
 import random
+import colorsys
 from threading import Thread
 import time
 from typing import Any
@@ -25,7 +27,7 @@ class room(Thread):
         self.stop = False
         self.room_id = 0
         self.room_name = ''
-        self.room_status = 0 # 1:before game, 2:in game, 3:after game
+        self.room_status = 0 # 1:before game, 2:in game, 3:after game(finished), 4:abolished
         self.board: Any = None
         self.players = {}
         self.action_order = [] # list of player account in action order
@@ -71,6 +73,12 @@ class room(Thread):
         self.last_message_at: float = self.last_activity_at
         self.manager_ref = None
         self.kick_votes = {}  # {target_account: set(voter_account)}
+        # 2026-10-23 新增：Mike 要求補上「投票廢村」機制——原本廢村（abolish_room）
+        # 寫死只有村長能按，但房間如果建立時沒設村長 Trip，就永遠不會有人符合
+        # is_village_manager，等於這個房間永遠廢不掉（連閒置自動廢村都排除聊天村）。
+        # 跟 kick_votes 不同，廢村是整個房間層級的單一表決，不需要分 target，用一個
+        # set 記錄投過票的帳號即可。
+        self.abolish_votes = set()  # set(voter_account)
         self.private_character_visibility = {}  # {viewer_account: set(target_account)}
         self._join_seq: int = 0
         self._initial_green_card_executed: bool = False  # 初始綠卡流程是否進行中
@@ -225,6 +233,12 @@ class room(Thread):
     def should_auto_abolish(self):
         if self.room_status not in (1, 2):
             return False
+        # 2026-10-22 新增：Mike 要求聊天村不適用「一小時無活動自動廢村」規則，
+        # 前端 locales 其實早就承諾這件事（chat_room_hint），但後端一直沒有實際
+        # 擋下這點。聊天村不會開局（start_game 會擋下），所以不需要擔心遊戲
+        # 進行中被誤判成閒置。
+        if bool(getattr(self, 'is_chat_room', False)):
+            return False
         timeout_seconds = int(getattr(self, 'idle_timeout_seconds', 0) or 0)
         if timeout_seconds <= 0:
             return False
@@ -234,6 +248,31 @@ class room(Thread):
             or 0
         )
         return (time.time() - last_change_at) >= timeout_seconds
+
+    def abolish(self):
+        # 2026-10-20 新增：原本村長手動廢除村莊會直接把整個房間物件砍掉（room_manager.py 裡的
+        # remove_room()），所有玩家都會被踢出房間。Mike 要求改成跟遊戲正常結束
+        # （status 3）一樣的對待：房間繼續存在，玩家不會被踢出，仍然可以在房間裡聊天、回顧
+        # 紀錄，只是把狀態改成「已廢除」（4）。遊戲內操作多數判斷都是卡 room_status==2
+        # 才會執行，狀態切走後自然就擋下來；聊天不受 room_status 限制，不用另外處理。
+        self.room_status = 4
+        self.awaiting_gm_release = False
+        self.active_card = None
+        self._attack_target = None
+        self._compass_areas = []
+        self._move_area_options = []
+        self._pending_kill_loot = None
+        self._pending_steal = None
+        self._pending_green_card = None
+        self._pending_counter_attack = None
+        self.add_system_message('村莊已廢除')
+        # 2026-10-22 新增：Mike 要求廢村時如果遊戲已經開局過，也要照一般遊戲結束的
+        # 流程建一筆對戰紀錄（餵玩家統計、房間頁點進去還能看回放），只是這筆紀錄
+        # 標記成 is_abolished，對戰紀錄列表會把它濾掉不主動顯示。還在招募階段
+        # （沒開局過）就廢村的話，on_room_abolished() 內部會自己判斷沒有紀錄可建。
+        if self.manager_ref and hasattr(self.manager_ref, 'records_api'):
+            self.manager_ref.records_api.on_room_abolished(self)
+        self.touch_activity()
 
     def run(self):
         while not self.stop:
@@ -284,7 +323,8 @@ class room(Thread):
     def add_chat_message(self, account, name, text):
         self._push_message('chat', text=text, account=account, name=name)
         # 遊戲結束後的聊天要盡量同步進最新戰報，避免回放只停在勝利宣告。
-        should_archive_chat = bool(self.is_chat_archived) or int(getattr(self, 'room_status', 0) or 0) == 3
+        # 2026-10-20 修正：房間被廢除（status 4）之後也在還能聊天，跟遊戲正常結束（status 3）一樣，也應該同步進戰報。
+        should_archive_chat = bool(self.is_chat_archived) or int(getattr(self, 'room_status', 0) or 0) in (3, 4)
         if should_archive_chat and self.manager_ref and hasattr(self.manager_ref, 'records_api'):
             try:
                 latest_msg = self.chat_messages[-1] if self.chat_messages else None
@@ -307,11 +347,42 @@ class room(Thread):
             normalized_player_info['trip'] = internal_account
             normalized_player_info['trip_display'] = requested_trip_display
             normalized_player_info['join_order'] = self._join_seq
+            # 2026-10-22 修正：Mike 發現這組房間暫時登入密碼（中途斷線後憑帳密重連用，
+            # 生命週期跟房間一樣）原本是明碼直接存進 profile，而且伺服器重啟用的房間快照
+            # （room_manager.py 的 _persist_room_snapshots，pickle+base64 存到
+            # backend/data/live_room_snapshots.json）會把整個房間物件（含這組明碼密碼）
+            # 一起寫進磁碟。這裡改成一進房就雜湊掉，profile 裡從頭到尾都不會出現明碼；
+            # 雜湊公式刻意跟 records_system.py 的 hash_account_password() 完全一致
+            # （sha256(account + '\0' + password)），因為 game_records_api.py 存檔戰績時
+            # 會直接沿用這裡算好的雜湊值當作 account_password_hash（不會重複雜湊一次），
+            # 兩邊公式對不起來的話，玩家事後用原始帳密認領/修改歷史紀錄會失敗。
+            normalized_player_info['password'] = self._hash_login_password(
+                internal_account, normalized_player_info.get('password')
+            )
             self.players[internal_account] = player.player(self, normalized_player_info)
+            # 2026-10-22 新增：Mike 要求聊天村玩家的 token 顏色改成加入時隨機產生一組
+            # 完整色碼（不是一般遊戲村那固定 9 色代號），玩家之後還能自己點了改成任意
+            # 色碼（見 room_manager.py 的 api_change_color）。一般遊戲村玩家色碼要等
+            # 開局時 room_manager.py 的 _assign_colors() 才會分配，這裡不動它。
+            if bool(getattr(self, 'is_chat_room', False)):
+                self.players[internal_account].choose_color(self._random_chat_token_color())
             self.clear_votes_for_account(internal_account)
             self.touch_activity()
             ret = True
         return ret
+
+    def _random_chat_token_color(self):
+        # 2026-10-22 新增：聊天村玩家加入時隨機配一組完整色碼（不是一般遊戲村那固定
+        # 9 色代號），用 HLS 隨機 hue、固定中等飽和度與亮度，確保顏色看起來夠鮮明、
+        # 不會太暗或太淺導致看不清楚（文字用色的可讀性由前端 toReadableTextHex() 另外
+        # 處理，這裡只負責產生一個觀感正常的底色）。Mike 原本要求顏色不能跟其他玩家
+        # 重複，但後來主動撤回這個限制（「色碼不能重複好像沒意思」），所以這裡刻意
+        # 不做跟其他玩家比對/重試的邏輯。
+        hue = random.random()
+        saturation = random.uniform(0.55, 0.85)
+        lightness = random.uniform(0.45, 0.6)
+        r, g, b = colorsys.hls_to_rgb(hue, lightness, saturation)
+        return '#{:02x}{:02x}{:02x}'.format(int(round(r * 255)), int(round(g * 255)), int(round(b * 255)))
 
     def has_trip(self, trip):
         if not trip:
@@ -355,6 +426,20 @@ class room(Thread):
             if kept:
                 next_votes[target] = kept
         self.kick_votes = next_votes
+        # 2026-10-23 新增：帳號離開房間（kick/leave）或重新加入時，順便把這個帳號
+        # 殘留的廢村票也清掉，跟 kick_votes 的清票邏輯對齊，避免已經不在房間裡的
+        # 帳號還算在廢村票數裡。
+        self.abolish_votes.discard(account)
+
+    def clear_abolish_votes(self):
+        self.abolish_votes = set()
+
+    def cast_abolish_vote(self, voter_account):
+        if not voter_account:
+            return 0
+        self.abolish_votes.add(voter_account)
+        self.touch_activity()
+        return len(self.abolish_votes)
 
     def cast_kick_vote(self, voter_account, target_account):
         if not voter_account or not target_account:
@@ -394,14 +479,25 @@ class room(Thread):
             'timestamp': int(time.time()),
         }
 
+    @staticmethod
+    def _hash_login_password(account, password):
+        # 2026-10-22 新增：跟 records_system.py 的 hash_account_password() 用同一條公式，
+        # 理由見 join() 那邊的說明。這裡獨立複製一份而不是直接呼叫 records_system，是沿用
+        # 這個檔案既有的作法（encrypt_trip_like_higu 也是在 game_records_api.py、
+        # records_system.py、room_manager.py 三邊各自複製一份）——GameRoom 是純遊戲邏輯，
+        # 本來就不持有 records_api 的參照，不想為了一個雜湊公式額外接起兩邊的耦合。
+        raw = f"{str(account or '').strip()}\0{str(password or '')}"
+        return hashlib.sha256(raw.encode('utf-8')).hexdigest()
+
     def login(self, account, password):
         """
         認證現有住民。以帳號 + 密碼比對已登記玩家。
         找到匹配者回傳其 account，否則回傳 None。
         """
+        hashed_password = self._hash_login_password(account, password)
         for player_account, p in self.players.items():
             profile = p.profile
-            if profile.get('account') == account and profile.get('password') == password:
+            if profile.get('account') == account and profile.get('password') == hashed_password:
                 self.touch_activity()
                 return player_account
         return None
@@ -464,7 +560,9 @@ class room(Thread):
         # 改成一開局（room_status 剛切成 2）就在這裡發一次，兩條開局路徑共用同一份，
         # 不用各自維護一份、也不會因為忘了改其中一邊而漏掉或重複。
         self.add_system_message('遊戲開始，發放角色並進入回合流程')
-        self.add_system_message(f'本場配置：{self._format_start_camp_summary()}')
+        # 2026-10-20 修正：開啟 GM 功能的房間，「本場配置」這則公告改成延後到 GM 按下「開始遊戲」放行之後才發出（見 gm_release_game_start()），方便 GM 在暫停期間檢查、必要時調整角色後，公告出來的才是最終敲定的配置；非 GM 房間不受影響，仍然開局就立刻公告。
+        if not self.gm_enabled:
+            self.add_system_message(f'本場配置：{self._format_start_camp_summary()}')
         if self.manager_ref and hasattr(self.manager_ref, 'records_api'):
             self.manager_ref.records_api.on_game_start(self)
         for p in self.players.values():
@@ -519,7 +617,17 @@ class room(Thread):
     def gm_release_game_start(self):
         # GM 按下「開始遊戲流程」，解除開局後的暫停，正式進入初始綠卡／常規回合流程。
         self.awaiting_gm_release = False
+        # 2026-10-20 修正：「本場配置」從 game_start() 移過來這裡發：GM 在暫停期間可以檢查、必要時調整玩家角色，所以配置公告要等到真正放行進回合流程的這一刻才發出，才是最終敲定的配置。
+        self.add_system_message(f'本場配置：{self._format_start_camp_summary()}')
         self.add_system_message('GM 開始遊戲')
+        # 2026-10-20 修正：game_start() 一開始就呼叫過 touch_turn_action()，把回合暴斃倒數的起算
+        # 時間點設在「開局當下」；但開 GM 功能時，開局後會先暫停等 GM 檢查／調整角色，
+        # 這段暫停可能拖很久（尤其現在 GM 還能在暫停期間逐一調整玩家角色），
+        # 暫停期間本來就不會被判定暴斃（status 還是 0），但計時基準點沒有跟著重算，
+        # 一旦 GM 真的按下開始、status 切換成可計算暴斃的狀態、暫停經過的時間
+        # 全部會被算進回合超時裡，暫停稍微久一點、一放行第一位玩家就直接被判定超時暴斃，
+        # 非常不合理。在真正放行、進入回合流程前重新蓋一次時間戳記，讓第一位玩家一定拿到完整的一輪回合限時。
+        self.touch_turn_action()
         self._begin_turn_flow()
 
     def _set_next_alive_player_after_trip(self, trip):
@@ -912,11 +1020,234 @@ class room(Thread):
             return False
         if int(getattr(self, 'room_status', 0) or 0) == 3:
             return True
+        # 2026-10-20 修正：GM 旁觀主持、不下場，遊戲一開始就應該能看到所有人的角色身份，方便主持與必要時調整角色。
+        viewer_player = self.players.get(viewer_account) if viewer_account else None
+        if viewer_player and bool(viewer_player.profile.get('is_gm', False)):
+            return True
         if target_player.character_reveal:
             return True
         if viewer_account and viewer_account == target_account:
             return True
         return bool(viewer_account and target_account in self.private_character_visibility.get(viewer_account, set()))
+
+    ####################
+    #  GM 遊戲進行中調整玩家狀態
+    ####################
+
+    def _handle_gm_induced_death(self, player, boomed=False):
+        """
+        共用的 GM 介入死亡流程（暴斃 / 調整血量歸零判定死亡）。
+        2026-10-20 新增：跟 _handle_turn_timeout() 的死亡收尾邏輯對齊——如果死者正好是
+        目前回合玩家，需要清掉懸置狀態（進行中的卡牌、偷竊、綠卡...等）並推進到下一位
+        存活玩家；如果只是場上其他玩家被 GM 介入死亡，不影響目前回合，交由既有的
+        is_alive 檢查自然跳過其回合（_set_next_alive_player_after_trip 等既有邏輯本來
+        就只挑選 is_alive 的玩家）。
+        """
+        was_current = (player == self.current_player)
+        player.is_alive = False
+        if boomed:
+            player.is_boomed = True
+            player.hp = 0
+        player.status = 0
+        if not bool(getattr(player, 'character_reveal', False)):
+            player.reveal_character()
+
+        pending_green = getattr(self, '_pending_green_card', None) or {}
+        pending_target = pending_green.get('to_player')
+        pending_source = pending_green.get('from_player')
+        is_pending_green_target = bool(pending_target and pending_target == player)
+
+        if was_current:
+            cards_to_discard = []
+            if self.active_card is not None:
+                cards_to_discard.append(self.active_card)
+            pending_card = pending_green.get('card')
+            if pending_card is not None and pending_card not in cards_to_discard:
+                cards_to_discard.append(pending_card)
+            for unresolved_card in cards_to_discard:
+                try:
+                    self.board.discard(unresolved_card)
+                except Exception:
+                    pass
+
+            self.active_card = None
+            self._attack_target = None
+            self._compass_areas = []
+            self._move_area_options = []
+            self._pending_kill_loot = None
+            self._pending_steal = None
+            self._pending_green_card = None
+            self._pending_counter_attack = None
+
+        self._handle_death([player])
+
+        if was_current and int(getattr(self, 'room_status', 0) or 0) == 2:
+            if is_pending_green_target and pending_source and bool(getattr(pending_source, 'is_alive', False)):
+                self.current_player = pending_source
+                self.current_player.status = 4
+            elif bool(getattr(self, '_initial_green_card_executed', False)):
+                self._initial_green_card_players_executed.add(str(getattr(player, 'account', '') or ''))
+                self._set_next_alive_player_after_trip(str(getattr(player, 'trip', '') or ''))
+                if self.current_player:
+                    self.current_player.status = 3
+                    self.active_card = self.board.draw('Green')
+                    self._initial_green_card = self.active_card
+            else:
+                self._set_next_alive_player_after_trip(str(getattr(player, 'trip', '') or ''))
+            self.touch_turn_action()
+
+    def gm_boom_player(self, account):
+        """GM 在遊戲進行中強制判定某玩家暴斃（不限是否輪到他）。回傳 (ok, error_code)。"""
+        player = self.players.get(account)
+        if not player:
+            return False, 'PLAYER_NOT_FOUND'
+        if not bool(getattr(player, 'is_alive', False)):
+            return False, 'PLAYER_ALREADY_DEAD'
+        display_name = str(player.name or player.account or '').strip() or '匿名玩家'
+        self.add_system_message(f"[GM] 將 [{display_name}] 判定為暴斃")
+        self._handle_gm_induced_death(player, boomed=True)
+        return True, None
+
+    def gm_adjust_player_hp(self, account, new_damage):
+        """
+        GM 直接調整某玩家目前的累積傷害值，依新傷害值自動判定死亡／復活。回傳 (ok, error_code)。
+        2026-10-21 修正：Mike 指出原本的語意反了——這個遊戲裡「血量」在既有 UI（傷害計量表、
+        角色圖鑑的 HP 欄）一直都是跟 damage 對照：damage 從 0 開始累加，撞到角色的血量上限
+        （player.character.hp）才會死亡，不是「血量歸零才死亡」。這裡改成直接讓 GM 輸入的數字
+        對應 player.damage 本身：0 代表完全沒受傷，數字越高越接近死亡，達到或超過角色血量上限
+        （player.character.hp）就判定死亡，跟戰鬥傷害結算（defence()／check_death()）的
+        「damage >= hp」是同一套判斷，不是另外發明一套相反的門檻。
+        角色血量上限一律取 player.character.hp（角色類別本身的固定值），不取
+        player.hp——玩家暴斃後 player.hp 會被歸零，不能拿來當血量上限使用。
+        """
+        player = self.players.get(account)
+        if not player:
+            return False, 'PLAYER_NOT_FOUND'
+        if not getattr(player, 'character', None):
+            return False, 'NO_CHARACTER'
+        max_hp = int(getattr(player.character, 'hp', 0) or 0)
+        if max_hp <= 0:
+            return False, 'INVALID_MAX_HP'
+        try:
+            new_damage = int(new_damage)
+        except (TypeError, ValueError):
+            return False, 'INVALID_HP_VALUE'
+        new_damage = max(0, min(max_hp, new_damage))
+        display_name = str(player.name or player.account or '').strip() or '匿名玩家'
+        was_alive = bool(getattr(player, 'is_alive', False))
+
+        if was_alive:
+            player.hp = max_hp
+            player.damage = new_damage
+            if new_damage >= max_hp:
+                # 傷害值達到血量上限視為一般死亡（非暴斃），跟角色能力／戰鬥傷害打死是同一種
+                # 死亡，死亡玩家一樣能依角色條件判定勝利（不像暴斃被排除在外）。
+                self.add_system_message(f"[GM] 調整 [{display_name}] 血量為 {new_damage}/{max_hp}，判定死亡")
+                self._handle_gm_induced_death(player, boomed=False)
+            else:
+                self.add_system_message(f"[GM] 調整 [{display_name}] 血量為 {new_damage}/{max_hp}")
+                self.touch_activity()
+        else:
+            player.hp = max_hp
+            player.damage = new_damage
+            if new_damage < max_hp:
+                # 復活：清掉死亡／暴斃旗標，status 設回待機（0），讓既有的回合輪轉
+                # （_set_next_alive_player_after_trip 等）在下一輪自然把他排進去，
+                # 不需要另外插入 action_order。身分揭露狀態維持不變，不因復活而改變。
+                player.is_alive = True
+                player.is_boomed = False
+                player.status = 0
+                self.add_system_message(f"[GM] 將 [{display_name}] 復活，血量設為 {new_damage}/{max_hp}")
+            self.touch_activity()
+        return True, None
+
+    def gm_reveal_player_character(self, account):
+        """GM 在遊戲進行中強制揭露某玩家的角色身分。回傳 (ok, error_code)。"""
+        player = self.players.get(account)
+        if not player:
+            return False, 'PLAYER_NOT_FOUND'
+        if not player.character:
+            return False, 'NO_CHARACTER'
+        if player.character_reveal:
+            return False, 'ALREADY_REVEALED'
+        player.reveal_character()
+        if self.current_player == player and int(getattr(player, 'status', 0) or 0) == 1:
+            self.trigger_start_passive_ability(player)
+        role_name = str(getattr(player.character, 'name', '') or '未知角色')
+        display_name = str(player.name or player.account or '').strip() or '匿名玩家'
+        self.add_system_message(f"[GM] 強制揭露 [{display_name}] 的身分：{role_name}")
+        self.touch_activity()
+        return True, None
+
+    def gm_unreveal_player_character(self, account):
+        """GM 在遊戲進行中把已揭露的玩家身分重新隱藏；只允許對還活著的玩家使用。"""
+        player = self.players.get(account)
+        if not player:
+            return False, 'PLAYER_NOT_FOUND'
+        if not player.character:
+            return False, 'NO_CHARACTER'
+        if not bool(getattr(player, 'is_alive', False)):
+            return False, 'PLAYER_DEAD'
+        if not player.character_reveal:
+            return False, 'ALREADY_HIDDEN'
+        player.unreveal_character()
+        display_name = str(player.name or player.account or '').strip() or '匿名玩家'
+        self.add_system_message(f"[GM] 將 [{display_name}] 的身分重新隱藏")
+        self.touch_activity()
+        return True, None
+
+    def gm_discard_player_equipment(self, account, equipment_name):
+        """
+        2026-10-22 新增：GM 把某玩家身上的一件裝備直接丟到棄牌堆（不經過戰鬥／卡片效果）。
+        回傳 (ok, error_code)。
+        """
+        player = self.players.get(account)
+        if not player:
+            return False, 'PLAYER_NOT_FOUND'
+        target_name = str(equipment_name or '')
+        equipment = next(
+            (eq for eq in list(getattr(player, 'equipment_list', []) or []) if str(getattr(eq, 'name', '') or '') == target_name),
+            None,
+        )
+        if equipment is None:
+            return False, 'EQUIPMENT_NOT_FOUND'
+        player.divest(equipment)
+        self.board.discard(equipment)
+        display_name = str(player.name or player.account or '').strip() or '匿名玩家'
+        self.add_system_message(f"[GM] 將 [{display_name}] 的裝備「{equipment.name}」丟棄到棄牌堆")
+        self.touch_activity()
+        return True, None
+
+    def gm_give_equipment(self, account, source, equipment_name):
+        """
+        2026-10-22 新增：GM 從牌庫（'deck'）或棄牌堆（'discard'）把一件指定的裝備直接
+        給某玩家裝備上。沿用 steal_equipment() 的既有慣例：裝備到手後若觸發
+        check_win_timing == 2（例如 Franklin），一併檢查勝利條件。回傳 (ok, error_code)。
+        """
+        player = self.players.get(account)
+        if not player:
+            return False, 'PLAYER_NOT_FOUND'
+        if not bool(getattr(player, 'is_alive', False)):
+            return False, 'PLAYER_ALREADY_DEAD'
+        pile_key = 'White' if source == 'deck' else ('White Discard' if source == 'discard' else None)
+        if pile_key is None:
+            return False, 'INVALID_SOURCE'
+        equipment = self.board.take_card_by_name(pile_key, equipment_name)
+        if equipment is None:
+            return False, 'EQUIPMENT_NOT_FOUND'
+        if str(getattr(equipment, 'type', '') or '') != 'Equipment':
+            # 理論上前端只會列出 Equipment 類卡片給 GM 選，這裡再保險檢查一次，
+            # 避免誤把一次性 Action 卡當裝備發給玩家（Action 卡沒有 equip()/divest() 語意）。
+            self.board.discard(equipment)
+            return False, 'NOT_EQUIPMENT_CARD'
+        player.equip(equipment)
+        display_name = str(player.name or player.account or '').strip() or '匿名玩家'
+        source_label = '牌庫' if source == 'deck' else '棄牌堆'
+        self.add_system_message(f"[GM] 從{source_label}將裝備「{equipment.name}」給予 [{display_name}]")
+        if player.check_win_timing == 2:
+            self._check_all_victory(equip_trigger=player)
+        self.touch_activity()
+        return True, None
 
     ####################
     #  in game

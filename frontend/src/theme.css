@@ -2334,6 +2334,13 @@ legend {
   box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.42);
 }
 
+/* 2026-10-20 新增：開局後、GM 按下「開始遊戲」放行前這段暫停期間，GM 自己看到的每張其他玩家卡片都能點開改角色，用藍紫色的靜態高亮跟攻擊／場地效果的紅／橙區分開；同時所有卡片都可點，所以故意不加閃爍動畫（避免同時一堆卡片一起閃眼花）。 */
+.player-card.gm-edit-target-prompt {
+  cursor: pointer;
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.4);
+}
+
 .player-card.ready {
   background: #f3e8ff;
   border-color: #c084fc;
@@ -2344,6 +2351,17 @@ legend {
   border-color: #9ca3af;
   opacity: 1;
   filter: grayscale(0.3);
+}
+
+/* 2026-10-21 新增：Mike 要求暴斃死亡的玩家卡片要跟一般死亡區分出不一樣的顏色。
+   疊加在既有 .player-card.dead 上面（class 順序是 player-card dead boomed，
+   見 ui.js），用偏紅橙色系跟一般死亡的灰色做區隔，呼應「暴斃」這個詞本身帶有
+   爆炸/意外死亡的語感；邊框跟底色都要比一般死亡更醒目一點，但不要太刺眼，
+   避免在卡片堆疊時喧賓奪主。 */
+.player-card.dead.boomed {
+  background: #fde1d3;
+  border-color: #ea580c;
+  filter: grayscale(0.1);
 }
 
 @keyframes attack-target-pulse {
@@ -2483,6 +2501,107 @@ legend {
 
 .equipment-choice-actions {
   grid-template-columns: 1fr;
+}
+
+/* 2026-10-20 新增：GM 更改玩家角色視窗改成分陣營分組顯示（20 位角色），比原本的
+   .equipment-choice-dialog 高得多，所以陣需作宽度調寬一點。超過
+   高度時改成整個對話框內搲桕（而不是整個頁面），標題、提示訊息、取消按鈕
+   還是會固定在最上面。 */
+.gm-character-choice-dialog {
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(78vh, 640px);
+  overflow-y: auto;
+}
+
+/* 2026-10-20 新增：暗影／獵人／中立三個陣營分組用不同的
+   邊框色區分，跟遊戲內現有的陣營配色沒有特別綁定，隨意選三種
+   不易淆淆、整體風格一致的顏色。 */
+.gm-character-choice-group {
+  display: grid;
+  gap: 6px;
+}
+
+.gm-character-choice-group + .gm-character-choice-group {
+  margin-top: 4px;
+}
+
+.gm-character-choice-group-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #52708a;
+  padding-left: 8px;
+  border-left: 3px solid #b5cbda;
+}
+
+.gm-character-choice-group[data-camp="Shadow"] .gm-character-choice-group-label {
+  border-left-color: #7c3aed;
+  color: #5b21b6;
+}
+
+.gm-character-choice-group[data-camp="Hunter"] .gm-character-choice-group-label {
+  border-left-color: #1a6bcc;
+  color: #15508f;
+}
+
+.gm-character-choice-group[data-camp="Civilian"] .gm-character-choice-group-label {
+  border-left-color: #16845a;
+  color: #166534;
+}
+
+.gm-character-choice-group-options {
+  gap: 6px;
+}
+
+.gm-player-adjust-dialog {
+  width: min(360px, calc(100vw - 32px));
+}
+
+.gm-player-adjust-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.gm-player-adjust-actions .area-choice-button {
+  min-height: 40px;
+}
+
+.gm-player-adjust-hp-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.gm-player-adjust-hp-row label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #52708a;
+  white-space: nowrap;
+}
+
+.gm-player-adjust-hp-input {
+  width: 100%;
+  min-height: 36px;
+  border-radius: 8px;
+  border: 1px solid #b5cbda;
+  padding: 4px 8px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.gm-player-adjust-hp-row .area-choice-button {
+  min-height: 36px;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.gm-character-choice-group-options .equipment-choice-option {
+  min-height: 36px;
+  text-align: left;
+  padding-left: 12px;
 }
 
 .player-card-head {
@@ -2971,6 +3090,38 @@ legend {
   opacity: 0.25;
   cursor: not-allowed;
   transform: none;
+}
+
+/* 2026-10-23 新增：聊天村的色碼輸入——原生色盤 + 可直接打字的文字框，取代一般
+   遊戲村用的九色色塊（見 ui.js 的 isChatRoom 分支）。 */
+.color-hex-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.color-hex-swatch-input {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
+.color-hex-text-input {
+  width: 76px;
+  font-family: monospace;
+  font-size: 0.85em;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.color-hex-text-input.invalid {
+  border-color: #e74c3c;
+  outline-color: #e74c3c;
 }
 
 .data-table {

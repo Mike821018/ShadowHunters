@@ -88,6 +88,29 @@ class player():
             self.ability_status = 'ready' if bool(self.can_use_ability) else 'disabled'
         # update
 
+    def unreveal_character(self):
+        # 2026-10-20 新增：GM「反揭露」用，是 reveal_character() 的相反操作；只允許對
+        # 還活著的玩家使用（死亡玩家一律維持永久揭露，由呼叫端的 room.py 負責擋下）。
+        if not self.character or not self.character_reveal:
+            return
+        self.character.unreveal(self)
+        self._sync_longinus_bonus()
+        # 2026-10-22 修正：Mike 回報反揭露過的玩家（例如 GM 暴斃/復活流程中順手反揭露過
+        # 的查理斯）即使之後重新揭露，能力徽章還是會卡在「🚫 已禁用」，而且是永久卡住，
+        # 再怎麼重新揭露都不會恢復。原因出在這裡曾經硬把 ability_status 改成 'disabled'：
+        # reveal_character() 的還原邏輯是 `if ability_status not in ('used', 'disabled')`
+        # 才會重算——'disabled' 正好也在排除名單裡，所以一旦被這裡設成 'disabled'，
+        # 之後不管重新揭露幾次都不會再被重算，變成永久卡死。
+        # 這段其實是多餘的：character.unreveal()（上面那行）已經會把 can_use_ability
+        # 設成 False，前端的「⚡ 準備就緒」徽章本來就是用 can_use_ability 判斷要不要顯示
+        # （見 ui.js 的 canUseAbility／showsReady），未揭露時早就不會顯示準備就緒；
+        # 真正能不能發動能力（_can_activate_ability()）也是直接檢查 character_reveal，
+        # 完全不吃 ability_status。所以不需要在這裡額外把 ability_status 蓋成 'disabled'，
+        # 保留原值即可：如果原本是 'used'（一次性能力已用掉）或角色本來就不能用能力
+        # 導致的 'disabled'，維持不變；如果是 'ready'，重新揭露時 reveal_character()
+        # 會用當下最新的 can_use_ability 重新算一次，自然恢復成 'ready'。
+        # update
+
     def _sync_longinus_bonus(self):
         is_hunter = bool(getattr(self.character, 'camp', '') == 'Hunter')
         desired_bonus = (self.eqp_longinus_count * 2) if (is_hunter and self.character_reveal) else 0
