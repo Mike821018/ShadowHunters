@@ -568,7 +568,12 @@ class room(Thread):
         for p in self.players.values():
             p.status = 0
         self.current_player = self.players[self.action_order[0]] if self.action_order else None
-        if self.current_player:
+        # 2026-10-29 修正：開 GM 功能的房間，開局後 GM 還能在暫停期間用
+        # gm_set_player_order() 調整行動順序，這則「首位行動玩家」公告如果在這裡
+        # 就先發出去，GM 之後一旦調整順序，公告內容就變成錯的。改成只有非 GM 房間
+        # （開局後不會再變動行動順序）才在這裡公告；GM 房間延後到 gm_release_game_start()
+        # 真正放行、順序確定之後才發，跟「本場配置」那則公告同一個邏輯。
+        if self.current_player and not self.gm_enabled:
             self.add_system_message(f"首位行動玩家：[{self.current_player.name or self.current_player.account}]")
 
         # 2026-10-15：開啟 GM 功能時，發完角色、判定完首位玩家後先暫停，不馬上進入
@@ -619,6 +624,10 @@ class room(Thread):
         self.awaiting_gm_release = False
         # 2026-10-20 修正：「本場配置」從 game_start() 移過來這裡發：GM 在暫停期間可以檢查、必要時調整玩家角色，所以配置公告要等到真正放行進回合流程的這一刻才發出，才是最終敲定的配置。
         self.add_system_message(f'本場配置：{self._format_start_camp_summary()}')
+        # 2026-10-29 新增：「首位行動玩家」公告延後到這裡才發（見 game_start() 同一天的
+        # 修正說明），確保公告的是 GM 暫停期間調整完順序之後、真正確定下來的首位玩家。
+        if self.current_player:
+            self.add_system_message(f"首位行動玩家：[{self.current_player.name or self.current_player.account}]")
         self.add_system_message('GM 開始遊戲')
         # 2026-10-20 修正：game_start() 一開始就呼叫過 touch_turn_action()，把回合暴斃倒數的起算
         # 時間點設在「開局當下」；但開 GM 功能時，開局後會先暫停等 GM 檢查／調整角色，
@@ -629,6 +638,27 @@ class room(Thread):
         # 非常不合理。在真正放行、進入回合流程前重新蓋一次時間戳記，讓第一位玩家一定拿到完整的一輪回合限時。
         self.touch_turn_action()
         self._begin_turn_flow()
+
+    def gm_set_player_order(self, target_account, position):
+        # 2026-10-29 新增：開局後、GM 按下「開始遊戲」放行前這段暫停期間，GM 可以手動
+        # 調整玩家行動順序（Mike 要求）：position 是 1-indexed，1 代表排到最前面，
+        # 2 代表排到目前第 1 位玩家之後，依此類推——做法是先把 target_account 從
+        # action_order 拿掉，再插回第 position-1 個位置（插入點以「拿掉之後」的清單
+        # 為準，所以「選 2」永遠是插到『扣掉自己以外』現在排第一的那個人後面，
+        # 不會因為自己原本排在哪裡而跑掉）。GM 本來就不下場、不在 action_order 裡，
+        # 這裡的順位範圍只會落在非 GM 玩家之間，不會也不可能把人插到「GM 後面」。
+        if target_account not in self.action_order:
+            return False
+        order = [acc for acc in self.action_order if acc != target_account]
+        position = max(1, min(int(position), len(order) + 1))
+        order.insert(position - 1, target_account)
+        self.action_order = order
+        # 這段暫停期間遊戲還沒真的開始跑回合，current_player 只是「預定」的首位玩家，
+        # 順序改了要跟著同步，GM 之後按下開始、_begin_turn_flow() 才會抓到正確的人。
+        if self.action_order:
+            self.current_player = self.players.get(self.action_order[0], self.current_player)
+        self.touch_activity()
+        return True
 
     def _set_next_alive_player_after_trip(self, trip):
         if not self.action_order:
@@ -1018,7 +1048,13 @@ class room(Thread):
         target_player = self.players.get(target_account)
         if not target_player:
             return False
-        if int(getattr(self, 'room_status', 0) or 0) == 3:
+        # 2026-10-29 修正：Mike 要求廢村（room_status 4）視為完村（room_status 3），
+        # 一樣把所有人身分揭露——原本只有 ==3 這條路會讓全員互相看得到彼此角色，
+        # 廢村（4）走的是另一條路（abolish()），不會經過勝利判定，導致廢村後
+        # 還沒揭露過的角色在聊天室／村民卡片上繼續顯示「(???)」，跟完村後應該
+        # 全部揭露的預期不一致。這裡兩個狀態一起放進來，廢村後也會跟完村一樣
+        # 全員互相可見（hp／character／character_camp 等欄位都共用這個判斷）。
+        if int(getattr(self, 'room_status', 0) or 0) in (3, 4):
             return True
         # 2026-10-20 修正：GM 旁觀主持、不下場，遊戲一開始就應該能看到所有人的角色身份，方便主持與必要時調整角色。
         viewer_player = self.players.get(viewer_account) if viewer_account else None
@@ -1452,7 +1488,10 @@ class room(Thread):
             attacker_zone = int(getattr(attacker_area, 'zone', 0) or 0)
 
         for t in self.players.values():
-            if not t.is_alive or t == attacker:
+            # 2026-10-29 修正：GM 旁觀主持、不下場，一般情況下 zone 一直是 0，
+            # 不會湊到跟任何玩家同／不同 zone 的條件，自然不會被選進攻擊目標清單；
+            # 這裡還是明講排除 is_gm，不要只依賴 zone 剛好是 0 這個間接效果。
+            if not t.is_alive or t == attacker or bool(t.profile.get('is_gm', False)):
                 continue
 
             target_zone = int(getattr(t, 'zone', 0) or 0)
@@ -1939,7 +1978,8 @@ class room(Thread):
                         target_area = getattr(self._attack_target, 'area', None)
                         target_zone = int(getattr(target_area, 'zone', 0) or 0)
                     for candidate in self.players.values():
-                        if not bool(getattr(candidate, 'is_alive', False)) or candidate == p:
+                        # 2026-10-29 修正：範圍武器的濺射傷害一樣不該波及 GM。
+                        if not bool(getattr(candidate, 'is_alive', False)) or candidate == p or bool(candidate.profile.get('is_gm', False)):
                             continue
                         candidate_zone = int(getattr(candidate, 'zone', 0) or 0)
                         if not candidate_zone:

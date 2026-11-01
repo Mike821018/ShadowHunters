@@ -960,15 +960,36 @@ export function renderState({
     // 跳過場地按鈕還是可以按」這兩個選項都存在。只在剛好從沒有變成有的那一刻
     // 跳一次，之後玩家在這塊地上繼續互動（例如重新整理頁面、背景更新）不會
     // 重複跳出來吵人。
+    // 2026-10-24 修正：Mike 回報擲完骰子移動進來後，這則提示只是一則 toast，手機上
+    // 很容易沒注意到就自動消失，變成猜不出自己剛好移動到哪、該做什麼。改成套用
+    // showConfirmDialog（hideCancel: true，跳過「取消」這個按鈕，只留一個「了解」把
+    // 它按掉），跟 confirmDialog 其他二次確認用的是同一個共用 <dialog>，不會被目前
+    // 頁面捲到哪裡影響，強迫玩家一定要主動按掉才能繼續，跟 toast 只停留短短幾秒會
+    // 自動消失不同。不 await 這個 Promise：renderState 本身不是 async，後面也沒有
+    // 任何步驟需要等玩家按掉這個通知才能繼續。
     if (selfAccount) {
       const previousAreaPrompt = getAreaPromptState(state, previousRoomSnapshot);
       const nextAreaPrompt = getAreaPromptState(state, data);
       if (nextAreaPrompt.active && !previousAreaPrompt.active) {
         const skipLabel = t('room.table_next_step.skip_area');
         if (nextAreaPrompt.kind === 'weird-woods') {
-          toast(t('toast.area_action_weird_woods', { area: t('room.active_card.names.Weird Woods'), skip: skipLabel }));
+          const areaName = t('room.active_card.names.Weird Woods');
+          showConfirmDialog({
+            el,
+            title: areaName,
+            message: t('toast.area_action_weird_woods', { area: areaName, skip: skipLabel }),
+            confirmLabel: t('room.confirm.acknowledge'),
+            hideCancel: true,
+          });
         } else if (nextAreaPrompt.kind === 'altar') {
-          toast(t('toast.area_action_altar', { area: t('room.active_card.names.Erstwhile Altar'), skip: skipLabel }));
+          const areaName = t('room.active_card.names.Erstwhile Altar');
+          showConfirmDialog({
+            el,
+            title: areaName,
+            message: t('toast.area_action_altar', { area: areaName, skip: skipLabel }),
+            confirmLabel: t('room.confirm.acknowledge'),
+            hideCancel: true,
+          });
         }
       }
     }
@@ -978,6 +999,9 @@ export function renderState({
     // 說明用的 toast：講清楚「點誰的卡片」才能拿到他們的裝備。這一步目前沒有「跳過」選項
     // （擊殺後掠奪裝備是強制要選的），所以提示文字裡不提跳過按鈕。同樣只在剛好從沒有變成
     // 有的那一刻跳一次，避免背景更新時重複吵人。
+    // 2026-10-24 修正：跟上面森林／祭壇的通知一樣，原本的 toast 在手機上太容易被忽略，
+    // 改用 showConfirmDialog（hideCancel: true）跳出需要主動按掉的通知，講清楚要點誰
+    // 的卡片才能拿到裝備。
     if (selfAccount) {
       const previousKillLoot = getPendingKillLootState(state, previousRoomSnapshot);
       const nextKillLoot = getPendingKillLootState(state, data);
@@ -986,7 +1010,13 @@ export function renderState({
           .map((account) => String(data?.players?.[account]?.name || account).trim())
           .filter(Boolean);
         if (deadNames.length > 0) {
-          toast(t('toast.area_action_kill_loot', { name: deadNames.join('、') }));
+          showConfirmDialog({
+            el,
+            title: t('toast.area_action_kill_loot_title'),
+            message: t('toast.area_action_kill_loot', { name: deadNames.join('、') }),
+            confirmLabel: t('room.confirm.acknowledge'),
+            hideCancel: true,
+          });
         }
       }
     }
@@ -2284,6 +2314,26 @@ export function bindRoomEvents({
         };
       })
       .filter((group) => group.options.length);
+
+    // 2026-10-29 新增：同一個面板加一組「調整行動順序」，GM 點數字就能把這位玩家
+    // 插到對應順位——1 插到最前面，2 插到目前第 1 位玩家之後，依此類推。
+    // action_order 後端本來就不含 GM，這裡的順位只會列出非 GM 玩家的總數，
+    // 不會、也不可能選到「GM 後面」這種不存在的位置。只有 target 本來就在
+    // action_order 裡（也就是真的有下場、不是 GM）才會顯示這組選項。
+    const ORDER_CHOICE_PREFIX = 'order:';
+    const actionOrder = Array.isArray(snapshot?.action_order) ? snapshot.action_order : [];
+    if (actionOrder.includes(targetAccount) && actionOrder.length > 0) {
+      const orderOptions = [];
+      for (let position = 1; position <= actionOrder.length; position += 1) {
+        orderOptions.push({ value: `${ORDER_CHOICE_PREFIX}${position}`, label: String(position) });
+      }
+      groups.push({
+        camp: 'order',
+        label: t('room.gm_character_choice.order_group_label'),
+        options: orderOptions,
+      });
+    }
+
     if (!groups.length) return;
 
     const chosen = await showGmCharacterChoiceDialog({
@@ -2294,6 +2344,28 @@ export function bindRoomEvents({
       cancelLabel: t('room.area_choice.cancel'),
     });
     if (!chosen) return;
+
+    if (chosen.startsWith(ORDER_CHOICE_PREFIX)) {
+      const position = Number.parseInt(chosen.slice(ORDER_CHOICE_PREFIX.length), 10);
+      if (!Number.isFinite(position)) return;
+      try {
+        const data = await dispatch('gm_set_player_order', {
+          room_id: state.roomId,
+          account: state.account,
+          target_account: targetAccount,
+          position,
+        });
+        renderState(data);
+        toast(t('toast.gm_player_order_changed'));
+      } catch (error) {
+        if (error?.code === 'ROOM_NOT_FOUND') {
+          goToLobbyPage();
+          return;
+        }
+        console.error(error);
+      }
+      return;
+    }
 
     try {
       const data = await dispatch('gm_change_character', {

@@ -18,6 +18,10 @@ import { registerFloatingPanel, notifyFloatingPanelOpened, notifyFloatingPanelCl
 // 的背景保底輪詢（roomEventStream.js 的 ROOM_FALLBACK_POLL_MS）保持一致。
 const POLL_MS = 3000;
 const LS_KEY = 'sh.floatingChat.collapsed';
+// 2026-10-24 修正：原本是「聊天／系統」二選一分頁，Mike 說想要的其實是各自獨立的
+// 開關（可以同時都看、也可以各自關掉），改成兩把各自的開關狀態。
+const LS_SHOW_CHAT_KEY = 'sh.floatingChat.showChat';
+const LS_SHOW_SYSTEM_KEY = 'sh.floatingChat.showSystem';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -43,8 +47,11 @@ function getLocalizedCardNameFallback(cardNameEnglish) {
   return localized && localized !== key ? localized : rawName;
 }
 
-function buildMaskedChatHtml(roomData, account) {
-  const { chatLines } = buildChatStageLines({
+// 2026-10-24 新增：回傳 chatFormatter.js 整理好的聊天／系統訊息（含按時間順序
+// 合併好、各自標好類型的 combinedLines），讓浮動聊天室可以用兩個獨立開關分別
+// 顯示／隱藏聊天或系統訊息，不用再靠 mirrorToChat 把系統訊息硬塞進聊天清單。
+function buildChatAndSystemLines(roomData, account) {
+  return buildChatStageLines({
     messages: Array.isArray(roomData?.chat_messages) ? roomData.chat_messages : [],
     data: roomData || {},
     state: { account: String(account || '').trim() },
@@ -55,7 +62,6 @@ function buildMaskedChatHtml(roomData, account) {
     getCharacterLocalizedName,
     getLocalizedCardName: getLocalizedCardNameFallback,
   });
-  return chatLines;
 }
 
 // ─── DOM construction ────────────────────────────────────────────────────────
@@ -76,6 +82,10 @@ function buildDOM() {
       <div class="sh-fchat-header">
         <span class="sh-fchat-title">聊天室</span>
         <button class="sh-fchat-collapse-btn" type="button" aria-label="收合聊天室">−</button>
+      </div>
+      <div class="sh-fchat-tabs" role="group" aria-label="訊息篩選">
+        <button class="sh-fchat-tab" type="button" aria-pressed="true" data-filter="chat">聊天<span class="sh-fchat-tab-badge" hidden aria-live="polite"></span></button>
+        <button class="sh-fchat-tab" type="button" aria-pressed="true" data-filter="system">系統<span class="sh-fchat-tab-badge" hidden aria-live="polite"></span></button>
       </div>
       <div class="sh-fchat-msgs-wrap">
         <div class="sh-fchat-msgs" role="log" aria-live="polite" aria-label="聊天訊息" tabindex="0"></div>
@@ -103,6 +113,10 @@ function buildDOM() {
     panel:       wrap.querySelector('.sh-fchat-panel'),
     title:       wrap.querySelector('.sh-fchat-title'),
     collapseBtn: wrap.querySelector('.sh-fchat-collapse-btn'),
+    filterChatBtn:   wrap.querySelector('.sh-fchat-tab[data-filter="chat"]'),
+    filterSystemBtn: wrap.querySelector('.sh-fchat-tab[data-filter="system"]'),
+    filterChatBadge:   wrap.querySelector('.sh-fchat-tab[data-filter="chat"] .sh-fchat-tab-badge'),
+    filterSystemBadge: wrap.querySelector('.sh-fchat-tab[data-filter="system"] .sh-fchat-tab-badge'),
     msgs:        wrap.querySelector('.sh-fchat-msgs'),
     scrollBottomBtn: wrap.querySelector('.sh-fchat-scroll-bottom-btn'),
     emojiPanel:  wrap.querySelector('.sh-fchat-emoji-panel'),
@@ -155,8 +169,14 @@ export async function initFloatingChat({ state }) {
 
   // ── state variables ───────────────────────────────────────────────────────
   let collapsed = localStorage.getItem(LS_KEY) !== 'false'; // default: collapsed
+  // 2026-10-24 新增：聊天／系統各自獨立的顯示開關，預設都打開（混合顯示），
+  // 關掉其中一個就只看另一種；各自記住使用者上次的開關狀態。
+  let showChat = localStorage.getItem(LS_SHOW_CHAT_KEY) !== 'false';
+  let showSystem = localStorage.getItem(LS_SHOW_SYSTEM_KEY) !== 'false';
+  let lastRoomData = null;
   let emojiOpen = false;
-  let unread = 0;
+  let unreadChat = 0;
+  let unreadSystem = 0;
   let isSending = false;
   let pollTimer = null;
 
@@ -181,14 +201,56 @@ export async function initFloatingChat({ state }) {
   });
 
   // ── badge ─────────────────────────────────────────────────────────────────
+  function updateTabBadge(badgeEl, count) {
+    if (!badgeEl) return;
+    if (count > 0) {
+      badgeEl.hidden = false;
+      badgeEl.textContent = count > 99 ? '99+' : String(count);
+    } else {
+      badgeEl.hidden = true;
+    }
+  }
+
   function updateBadge() {
-    if (unread > 0) {
+    const total = unreadChat + unreadSystem;
+    if (total > 0) {
       el.badge.hidden = false;
-      el.badge.textContent = unread > 99 ? '99+' : String(unread);
+      el.badge.textContent = total > 99 ? '99+' : String(total);
     } else {
       el.badge.hidden = true;
     }
+    updateTabBadge(el.filterChatBadge, unreadChat);
+    updateTabBadge(el.filterSystemBadge, unreadSystem);
   }
+
+  // ── 聊天／系統顯示開關 ───────────────────────────────────────────────────────
+  // is-off：該類型目前被關掉、不顯示；按鈕本身不互斥，兩個可以同時開、同時關，
+  // 或各開一個——跟最早的「分頁二選一」不同，這裡是各自獨立的篩選開關。
+  function applyFilterUi() {
+    el.filterChatBtn?.classList.toggle('is-off', !showChat);
+    el.filterSystemBtn?.classList.toggle('is-off', !showSystem);
+    el.filterChatBtn?.setAttribute('aria-pressed', String(showChat));
+    el.filterSystemBtn?.setAttribute('aria-pressed', String(showSystem));
+  }
+  applyFilterUi();
+
+  function setFilter(key, nextShown) {
+    if (key === 'chat') {
+      if (showChat === nextShown) return;
+      showChat = nextShown;
+      localStorage.setItem(LS_SHOW_CHAT_KEY, String(showChat));
+      if (showChat) { unreadChat = 0; updateBadge(); }
+    } else {
+      if (showSystem === nextShown) return;
+      showSystem = nextShown;
+      localStorage.setItem(LS_SHOW_SYSTEM_KEY, String(showSystem));
+      if (showSystem) { unreadSystem = 0; updateBadge(); }
+    }
+    applyFilterUi();
+    renderCurrentView({ forceScrollBottom: true });
+  }
+  el.filterChatBtn?.addEventListener('click', () => setFilter('chat', !showChat));
+  el.filterSystemBtn?.addEventListener('click', () => setFilter('system', !showSystem));
 
   // ── emoji panel ───────────────────────────────────────────────────────────
   function setEmojiOpen(open) {
@@ -217,7 +279,10 @@ export async function initFloatingChat({ state }) {
     collapsed = false;
     el.panel.hidden = false;
     el.toggleBtn.setAttribute('aria-expanded', 'true');
-    unread = 0;
+    // 只清掉目前有打開顯示的類型；關掉的那個使用者還沒真的看到，未讀數保留，
+    // 等之後重新打開那個開關時才清掉（見 setFilter）。
+    if (showChat) unreadChat = 0;
+    if (showSystem) unreadSystem = 0;
     updateBadge();
     localStorage.setItem(LS_KEY, 'false');
     notifyFloatingPanelOpened('chat');
@@ -247,14 +312,24 @@ export async function initFloatingChat({ state }) {
   });
 
   // ── message rendering ─────────────────────────────────────────────────────
-  function renderAllMessages(roomData, { forceScrollBottom = false } = {}) {
+  // 2026-10-24 修正：原本只取聊天訊息（含系統訊息鏡像）。後來一度改成聊天／系統
+  // 二選一分頁，但 Mike 要的其實是各自獨立的開關——兩個都開時依原始時間順序合併
+  // 顯示（combinedLines 已經照順序記錄好每筆訊息的類型），關掉其中一個就濾掉那一類；
+  // 切換開關時用 lastRoomData 直接重繪，不用等下一次輪詢。
+  function renderCurrentView({ forceScrollBottom = false } = {}) {
+    if (!lastRoomData) return;
     const wasNearBottom = isNearBottom();
     const prevScrollTop = el.msgs.scrollTop;
-    const chatLines = buildMaskedChatHtml(roomData, account);
-    if (!chatLines.length) {
+    const { combinedLines } = buildChatAndSystemLines(lastRoomData, account);
+    const lines = combinedLines
+      .filter((entry) => (entry.type === 'system' ? showSystem : showChat))
+      .map((entry) => entry.html);
+    if (!showChat && !showSystem) {
+      el.msgs.innerHTML = '<p class="sh-fchat-empty">目前已關閉聊天與系統訊息顯示</p>';
+    } else if (!lines.length) {
       el.msgs.innerHTML = '<p class="sh-fchat-empty">尚無訊息</p>';
     } else {
-      el.msgs.innerHTML = chatLines.join('');
+      el.msgs.innerHTML = lines.join('');
     }
     // 只有原本就在底部附近（或被明確要求）才自動跟到最新訊息，
     // 否則保持使用者原本的捲動位置，避免上滑看歷史訊息時畫面被強制拉回底部。
@@ -264,6 +339,11 @@ export async function initFloatingChat({ state }) {
       el.msgs.scrollTop = prevScrollTop;
     }
     updateScrollBottomBtn();
+  }
+
+  function renderAllMessages(roomData, opts = {}) {
+    lastRoomData = roomData;
+    renderCurrentView(opts);
   }
 
   // ── polling ───────────────────────────────────────────────────────────────
@@ -287,7 +367,10 @@ export async function initFloatingChat({ state }) {
     const newMsgs = messages.filter((m) => Number(m.id || 0) > lastSeenId);
     lastSeenId = maxId;
     if (collapsed) {
-      unread += newMsgs.length;
+      newMsgs.forEach((m) => {
+        if (String(m?.type || 'chat').toLowerCase() === 'system') unreadSystem += 1;
+        else unreadChat += 1;
+      });
       updateBadge();
     }
     renderAllMessages(result.data || {});
@@ -318,6 +401,8 @@ export async function initFloatingChat({ state }) {
       if (result?.ok) {
         el.input.value = '';
         setEmojiOpen(false);
+        // 自己送出聊天訊息時，若目前關掉了「聊天」顯示，自動打開，讓使用者看到剛送出的內容。
+        if (!showChat) setFilter('chat', true);
         const roomData = result?.data || {};
         const messages = Array.isArray(roomData?.chat_messages) ? roomData.chat_messages : [];
         if (messages.length) {

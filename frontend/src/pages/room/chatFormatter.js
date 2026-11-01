@@ -94,7 +94,10 @@ export function buildChatStageLines({
   const playerEntries = Object.entries(data?.players || {});
   const viewerAccount = String(state?.account || '').trim();
   const roomStatus = Number(data?.room?.room_status || 0);
-  const isGameFinished = roomStatus === 3;
+  // 2026-10-29 修正：Mike 要求廢村（room_status 4）視為完村（room_status 3），
+  // 系統訊息角色標示、綠卡名稱等「遮蔽的訊息」廢村後也要一起揭露，不要只有真正
+  // 遊戲結束（3）才揭露、廢村（4）繼續遮著。
+  const isGameFinished = roomStatus === 3 || roomStatus === 4;
   const showRoleInSystemMessages = isGameFinished || isReplayView;
   const replayRoleByName = data?.replay_role_by_name && typeof data.replay_role_by_name === 'object'
     ? data.replay_role_by_name
@@ -739,11 +742,17 @@ export function buildChatStageLines({
 
   const chatLines = [];
   const systemLines = [];
+  // 2026-10-24 新增：combinedLines 把聊天／系統訊息依照原始時間順序放在同一份清單，
+  // 每筆記錄自己的類型（type: 'chat'｜'system'），給右下角浮動聊天室的「聊天／系統」
+  // 開關用——兩個開關都打開時可以照時間順序合併顯示，不是只能二選一的分頁。
+  const combinedLines = [];
   const nowTs = Math.floor(Date.now() / 1000);
   const pushSystemLine = (htmlText, extraClass = '', ts = nowTs, mirrorToChat = false) => {
     const tsLabel = fmtTime(Number(ts) || nowTs);
     const cls = extraClass ? `system-line ${extraClass}` : 'system-line';
-    systemLines.push(`<div class="${cls}">[${esc(tsLabel)}] ${htmlText}</div>`);
+    const lineHtml = `<div class="${cls}">[${esc(tsLabel)}] ${htmlText}</div>`;
+    systemLines.push(lineHtml);
+    combinedLines.push({ type: 'system', html: lineHtml });
     if (mirrorToChat) {
       const chatCls = extraClass ? `chat-line chat-line-system ${extraClass}` : 'chat-line chat-line-system';
       chatLines.push(`<div class="${chatCls}">[${esc(tsLabel)}] ${htmlText}</div>`);
@@ -778,7 +787,9 @@ export function buildChatStageLines({
     const text = String(message?.text || '').trim();
     if (msgType === 'system') {
       const formatted = formatSystem(text, ts);
-      if (formatted) pushSystemLine(formatted, '', ts, true);
+      // 2026-10-24 修正：右下角浮動聊天室現在自己有聊天／系統獨立顯示開關
+      // （見 floatingChat.js），不用再靠這裡把系統訊息鏡像塞進聊天清單。
+      if (formatted) pushSystemLine(formatted, '', ts, false);
       return;
     }
     const account = String(message?.account || '').trim();
@@ -793,7 +804,9 @@ export function buildChatStageLines({
     const senderColorHex = account ? getPlayerLabelColor(account) : null;
     const senderStyleAttr = senderColorHex ? ` style="color:${senderColorHex}"` : '';
     const chatRoleHtml = getChatRoleHtml(account);
-    chatLines.push(`<div class="${cls}"><div class="chat-sender"${senderStyleAttr}>${esc(name || '-')}${chatRoleHtml}<span class="chat-time">(${timeStr})</span>:</div><div class="chat-text">${chatTextHtml}</div></div>`);
+    const chatLineHtml = `<div class="${cls}"><div class="chat-sender"${senderStyleAttr}>${esc(name || '-')}${chatRoleHtml}<span class="chat-time">(${timeStr})</span>:</div><div class="chat-text">${chatTextHtml}</div></div>`;
+    chatLines.push(chatLineHtml);
+    combinedLines.push({ type: 'chat', html: chatLineHtml });
   });
 
   const timeoutRemain = Number(data?.turn_timeout?.remaining_seconds);
@@ -806,27 +819,26 @@ export function buildChatStageLines({
       || (viewerName && timeoutCurrent === viewerName)
     );
     const timeoutClass = isViewerTimeout ? 'system-timeout system-timeout-self' : 'system-timeout';
-    // 2026-10-10 修正：Mike 回報回合暴斃倒數（尤其是輪到自己時顯示的紅色提示）只會
-    // 出現在房間頁主畫面的「系統訊息」面板，右下角浮動聊天室完全看不到；因為浮動
-    // 聊天室（floatingChat.js）只取用 buildChatStageLines() 回傳的 chatLines，原本
-    // 這則倒數訊息只放進 systemLines、沒有 mirrorToChat，所以浮動聊天室看不到。
-    // 補上 mirrorToChat=true，讓它跟其他系統訊息一樣同時鏡像一份進聊天室；
-    // chat-line-system 搭配 system-timeout-self 本來就有對應的紅色樣式可以直接套用。
+    // 2026-10-10 修正：回合暴斃倒數（尤其是輪到自己時顯示的紅色提示）原本只會出現在
+    // 房間頁主畫面的「系統訊息」面板，右下角浮動聊天室完全看不到，一度補上過鏡像機制。
+    // 2026-10-24 修正：浮動聊天室現在自己有聊天／系統獨立顯示開關，改回只放進
+    // systemLines，不再鏡像進聊天清單；chat-line-system 搭配 system-timeout-self
+    // 的紅色樣式維持不變，打開系統顯示開關一樣能看到。
     // 2026-10-19 修正：這裡原本是把 {n} 直接算好代入、整段文字當靜態字串塞進去，
     // 只有房間快照推播進來、這個函式重新整個跑一次時數字才會換，看起來像是跳著
     // 倒數，不是每秒讀秒——跟側欄暴斃倒數之前的問題（見 villageInfoRendering.js
     // 2026-10-13 修正）一樣。改成同一套做法：只把秒數包成帶 data-remain-base／
     // data-remain-synced-at 的 <span>，交給 room.js 裡同一個每秒 tick 的本機倒數
-    // 計時器去算，不用等下一次推播；用 class 不用 id，因為這則訊息系統面板跟
-    // 浮動聊天室各有一份鏡像，同時間 DOM 裡會有兩個，計時器那邊已經改成用
+    // 計時器去算，不用等下一次推播；用 class 不用 id，因為系統面板跟浮動聊天室的
+    // 系統訊息顯示可能同時間都有這則訊息，DOM 裡不只一個，計時器那邊已經改成用
     // querySelectorAll 選取所有符合的元素，不限定單一 id。
     const timeoutRemainDisplay = Math.max(0, timeoutRemain);
     const timeoutRemainSpan = '<span class="chat-turn-timeout-remain" data-remain-base="'
       + timeoutRemainDisplay + '" data-remain-synced-at="' + getRenderSyncedAtMs() + '">' + timeoutRemainDisplay + '</span>';
     const timeoutTextTemplate = esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-' }));
     const timeoutTextHtml = timeoutTextTemplate.replace('{n}', timeoutRemainSpan);
-    pushSystemLine(timeoutTextHtml, timeoutClass, nowTs, true);
+    pushSystemLine(timeoutTextHtml, timeoutClass, nowTs, false);
   }
 
-  return { chatLines, systemLines };
+  return { chatLines, systemLines, combinedLines };
 }

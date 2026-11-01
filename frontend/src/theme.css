@@ -315,6 +315,32 @@ legend {
   border-color: #efd78c;
 }
 
+/* 2026-10-29 新增：未揭露角色卡片上的陣營猜測徽章（村民卡片、見 ui.js 的
+   CAMP_GUESS_STATES）。灰色＝還沒猜；套到 hunter/shadow/civilian 時沿用上面
+   同一組陣營配色；is-exclude（『可能不是』）維持陣營色但改空心虛線，跟『可能是』
+   的實心樣式區分——這組視覺是暫定的，Mike 之後想到更好的表示方式可能會再調整。 */
+.player-camp-guess-badge {
+  color: #7a8793;
+  background: #eef1f3;
+  border-color: #d2dadf;
+  cursor: pointer;
+  user-select: none;
+}
+
+.player-camp-guess-badge:hover {
+  filter: brightness(0.96);
+}
+
+.player-camp-guess-badge:focus-visible {
+  outline: 2px solid #0f78c4;
+  outline-offset: 1px;
+}
+
+.player-camp-guess-badge.is-exclude {
+  background: transparent;
+  border-style: dashed;
+}
+
 .damage-meter-player-chip {
   width: 18px;
   height: 18px;
@@ -2452,6 +2478,11 @@ legend {
   gap: 10px;
 }
 
+.area-choice-actions-single {
+  grid-template-columns: minmax(0, 220px);
+  justify-content: center;
+}
+
 .area-choice-button {
   min-height: 38px;
   border-radius: 10px;
@@ -2602,6 +2633,20 @@ legend {
   min-height: 36px;
   text-align: left;
   padding-left: 12px;
+}
+
+/* 2026-10-29 新增：「調整行動順序」分組是一串數字按鈕（最多 10 個），用跟角色
+   清單一樣逐行列出太佔空間，改成小格子排列、置中顯示數字，比較像數字鍵盤。 */
+.gm-character-choice-group[data-camp="order"] .gm-character-choice-group-options {
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.gm-character-choice-group[data-camp="order"] .equipment-choice-option {
+  min-height: 34px;
+  text-align: center;
+  padding-left: 0;
+  font-size: 14px;
 }
 
 .player-card-head {
@@ -4250,6 +4295,67 @@ legend {
 .sh-fchat-collapse-btn:focus-visible {
   outline: 2px solid #fff;
   outline-offset: 2px;
+}
+
+/* 2026-10-24 新增：聊天／系統訊息各自獨立的顯示開關，改成實心藥丸形按鈕的樣子，
+   讓它更像「按鈕」而不是分頁標籤：預設（未加 is-off）是實心藍底白字，看起來像
+   「已按下／開啟」；按一下關掉後變成 is-off，變成白底灰框的空心樣子，看起來像
+   「沒按下／關閉」。兩個按鈕互不影響，可以同時開、同時關、或各開一個。 */
+.sh-fchat-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px 6px;
+  background: #fff;
+  border-bottom: 1px solid var(--line, #cfe3ee);
+  flex-shrink: 0;
+}
+
+.sh-fchat-tab {
+  flex: 1;
+  border: 1.5px solid var(--primary, #09c);
+  border-radius: 999px;
+  background: var(--primary, #09c);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 8px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(21, 49, 67, 0.25);
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+
+.sh-fchat-tab:hover {
+  background: #0890bb;
+  border-color: #0890bb;
+}
+
+.sh-fchat-tab.is-off {
+  background: #fff;
+  color: #9aa6ad;
+  border-color: #d7dee2;
+  box-shadow: none;
+}
+
+.sh-fchat-tab.is-off:hover {
+  background: #f3f6f8;
+  border-color: #c3ccd1;
+}
+
+.sh-fchat-tab-badge {
+  display: inline-block;
+  margin-left: 4px;
+  background: #f60;
+  color: #fff;
+  border-radius: 10px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 15px;
+  text-align: center;
+}
+
+.sh-fchat-tab-badge[hidden] {
+  display: none !important;
 }
 
 /* Message list */

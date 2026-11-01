@@ -1084,7 +1084,10 @@ class RoomManager:
             area_name = str(getattr(current_area, 'name', '') or '')
             area_target = str(getattr(current_area, 'target', '') or '')
             if getattr(current_area, 'is_action', False) and area_name == 'Weird Woods':
-                target_players = [player for player in game_room.players.values() if bool(getattr(player, 'is_alive', False))]
+                # 2026-10-29 修正：Mike 回報遊戲過程中卡片／攻擊等等的使用對象不應該能選到
+                # GM——GM 旁觀主持、不下場，不該出現在任何玩家能點選的目標清單裡。這裡跟下面
+                # 另外兩處（古代祭壇、卡片目標）補上同一個 is_gm 排除條件。
+                target_players = [player for player in game_room.players.values() if bool(getattr(player, 'is_alive', False)) and not bool(player.profile.get('is_gm', False))]
                 if area_target in ('other', 'others'):
                     target_players = [player for player in target_players if player != current_player]
                 area_prompt = {
@@ -1094,7 +1097,7 @@ class RoomManager:
                     'options': list(getattr(current_area, 'options', []) or []),
                 }
             elif getattr(current_area, 'is_action', False) and area_name == 'Erstwhile Altar':
-                target_players = [player for player in game_room.players.values() if bool(getattr(player, 'is_alive', False)) and bool(getattr(player, 'equipment_list', []))]
+                target_players = [player for player in game_room.players.values() if bool(getattr(player, 'is_alive', False)) and bool(getattr(player, 'equipment_list', [])) and not bool(player.profile.get('is_gm', False))]
                 if area_target in ('other', 'others'):
                     target_players = [player for player in target_players if player != current_player]
                 area_prompt = {
@@ -1116,7 +1119,7 @@ class RoomManager:
             raw_active_card_name = str(getattr(active_card, 'name', '') or '')
             target_accounts = []
             if card_target in ('other', 'one'):
-                target_players = [player for player in game_room.players.values() if bool(getattr(player, 'is_alive', False))]
+                target_players = [player for player in game_room.players.values() if bool(getattr(player, 'is_alive', False)) and not bool(player.profile.get('is_gm', False))]
                 if card_target == 'other':
                     target_players = [player for player in target_players if player != current_player]
                 if raw_active_card_name == 'Moody Goblin':
@@ -1592,6 +1595,8 @@ class RoomManager:
                 result = self.api_gm_release_game_start(payload)
             elif action == 'gm_change_character':
                 result = self.api_gm_change_character(payload)
+            elif action == 'gm_set_player_order':
+                result = self.api_gm_set_player_order(payload)
             elif action == 'gm_boom_player':
                 result = self.api_gm_boom_player(payload)
             elif action == 'gm_adjust_player_hp':
@@ -1968,6 +1973,43 @@ class RoomManager:
         target_player.assign_character(character_cls())
         game_room.touch_activity()
         return self._success('gm_change_character', self._serialize_room_state(game_room, viewer_account=account))
+
+    def api_gm_set_player_order(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        # 2026-10-29 新增：跟 api_gm_change_character 共用同一個暫停時間窗口
+        # （開局後、GM 按下「開始遊戲」放行前），GM 可以點玩家卡片手動調整行動順序：
+        # position 是 1-indexed，選 1 插到最前面，選 2 插到目前第 1 位玩家之後，
+        # 依此類推。action_order 本來就不含 GM，這裡一律只允許對非 GM 玩家操作。
+        room_id = payload.get('room_id')
+        account = str(payload.get('account') or '').strip()
+        target_account = str(payload.get('target_account') or '').strip()
+        position_raw = payload.get('position')
+        if room_id is None or not account or not target_account or position_raw is None:
+            return self._error('gm_set_player_order', 'INVALID_PAYLOAD', 'room_id, account, target_account and position are required', 400)
+        try:
+            position = int(position_raw)
+        except (TypeError, ValueError):
+            return self._error('gm_set_player_order', 'INVALID_POSITION', 'position 必須是數字', 400)
+        game_room = self.get_room(room_id)
+        if not game_room:
+            return self._error('gm_set_player_order', 'ROOM_NOT_FOUND', '房間不存在', 404)
+        requester = game_room.players.get(account)
+        if not requester or not bool(requester.profile.get('is_gm', False)):
+            return self._error('gm_set_player_order', 'ONLY_GM_CAN_CHANGE_ORDER', '只有 GM 可以調整玩家順序', 403)
+        if int(getattr(game_room, 'room_status', 0) or 0) != 2 or not bool(getattr(game_room, 'awaiting_gm_release', False)):
+            return self._error('gm_set_player_order', 'NOT_AWAITING_GM_RELEASE', '只能在開局後、GM 按下開始遊戲之前調整順序', 400)
+        target_player = game_room.players.get(target_account)
+        if not target_player:
+            return self._error('gm_set_player_order', 'PLAYER_NOT_FOUND', '玩家不存在', 404)
+        if bool(target_player.profile.get('is_gm', False)):
+            return self._error('gm_set_player_order', 'CANNOT_REORDER_GM', 'GM 不下場，沒有順位可以調整', 400)
+        action_order_len = len(getattr(game_room, 'action_order', None) or [])
+        if position < 1 or position > action_order_len:
+            return self._error('gm_set_player_order', 'INVALID_POSITION', f'順位必須介於 1 到 {action_order_len} 之間', 400)
+
+        ok = game_room.gm_set_player_order(target_account, position)
+        if not ok:
+            return self._error('gm_set_player_order', 'REORDER_FAILED', '調整順序失敗', 400)
+        return self._success('gm_set_player_order', self._serialize_room_state(game_room, viewer_account=account))
 
     def _api_require_gm_target(self, action, payload):
         """

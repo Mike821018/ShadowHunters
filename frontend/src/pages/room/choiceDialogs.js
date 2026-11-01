@@ -222,6 +222,7 @@ export function showConfirmDialog({
   message,
   confirmLabel,
   cancelLabel,
+  hideCancel = false,
 }) {
   return new Promise((resolve) => {
     const dialog = el.confirmDialog;
@@ -234,6 +235,18 @@ export function showConfirmDialog({
     if (el.confirmDialogMessage) el.confirmDialogMessage.textContent = message;
     if (el.confirmDialogConfirmButton) el.confirmDialogConfirmButton.textContent = confirmLabel;
     if (el.confirmDialogCancelButton) el.confirmDialogCancelButton.textContent = cancelLabel;
+    // 2026-10-24 新增：hideCancel 給「單純通知、沒有真的要二選一」的情境用（例如移動到
+    // 森林／祭壇、擊殺掠奪裝備的提示），只留一顆按鈕給玩家按掉通知，不要讓使用者誤以為
+    // 這是一個可以「取消」的操作。confirmDialog 這個 <dialog> 元素是共用的，離開這個
+    // 呼叫前一定要還原 cancel 按鈕跟版面 class，否則下一次一般的二選一確認視窗會被
+    // 誤殘留成只有一顆按鈕。
+    const actionsRow = el.confirmDialogCancelButton?.closest('.area-choice-actions');
+    if (el.confirmDialogCancelButton) {
+      el.confirmDialogCancelButton.style.display = hideCancel ? 'none' : '';
+    }
+    if (actionsRow instanceof HTMLElement) {
+      actionsRow.classList.toggle('area-choice-actions-single', hideCancel);
+    }
 
     let settled = false;
     const cleanup = () => {

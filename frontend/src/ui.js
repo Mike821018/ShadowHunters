@@ -11,6 +11,65 @@ function colorHex(color) {
   return resolvePlayerColorHex(color, '#cccccc');
 }
 
+// 2026-10-29 新增：Mike 要求未揭露角色的卡片前面補一個可以自己點擊切換的「陣營
+// 猜測」徽章，類似踩地雷標旗子——純粹是自己看的個人標記，不會送到後端、也不會讓
+// 其他玩家看到，所以整套狀態都只存在這台裝置的 localStorage，不是房間資料的一部分。
+// 切換順序：灰？(未知) → 藍？(可能是獵人) → 紅？(可能是暗影) → 黃？(可能是中立) →
+// 藍！(可能不是獵人) → 紅！(可能不是暗影) → 黃！(可能不是中立) → 回到灰？。
+const CAMP_GUESS_STATES = [
+  { symbol: '?', cls: '', labelKey: 'ui.camp_guess_unknown' },
+  { symbol: '?', cls: 'hunter', labelKey: 'ui.camp_guess_maybe_hunter' },
+  { symbol: '?', cls: 'shadow', labelKey: 'ui.camp_guess_maybe_shadow' },
+  { symbol: '?', cls: 'civilian', labelKey: 'ui.camp_guess_maybe_civilian' },
+  // 2026-10-29 修正：後三個『排除』狀態 Mike 確認改用打叉（✕）表示，跟對應陣營
+  // 一樣的顏色＋虛線空心樣式（見 theme.css 的 .player-camp-guess-badge.is-exclude）
+  // 一起用，跟『可能是』的實心問號樣式區分。
+  { symbol: '✕', cls: 'hunter is-exclude', labelKey: 'ui.camp_guess_not_hunter' },
+  { symbol: '✕', cls: 'shadow is-exclude', labelKey: 'ui.camp_guess_not_shadow' },
+  { symbol: '✕', cls: 'civilian is-exclude', labelKey: 'ui.camp_guess_not_civilian' },
+];
+
+const CAMP_GUESS_LS_PREFIX = 'sh.campGuess.';
+
+function readCampGuessMap(roomId) {
+  try {
+    const raw = window.localStorage.getItem(`${CAMP_GUESS_LS_PREFIX}${roomId}`);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeCampGuessMap(roomId, map) {
+  try {
+    window.localStorage.setItem(`${CAMP_GUESS_LS_PREFIX}${roomId}`, JSON.stringify(map));
+  } catch {
+    // 純個人標記，無痕模式等情境下 localStorage 寫入失敗不影響遊戲功能，忽略即可。
+  }
+}
+
+function getCampGuessIndex(roomId, account) {
+  if (roomId == null || !account) return 0;
+  const idx = Number(readCampGuessMap(roomId)[account]);
+  return Number.isInteger(idx) && idx >= 0 && idx < CAMP_GUESS_STATES.length ? idx : 0;
+}
+
+function setCampGuessIndex(roomId, account, index) {
+  if (roomId == null || !account) return;
+  const map = readCampGuessMap(roomId);
+  map[account] = index;
+  writeCampGuessMap(roomId, map);
+}
+
+function clearCampGuessMap(roomId) {
+  if (roomId == null) return;
+  try {
+    window.localStorage.removeItem(`${CAMP_GUESS_LS_PREFIX}${roomId}`);
+  } catch {
+  }
+}
+
 const EQUIPMENT_ICON = {
   'Talisman': '🔮',
   'Fortune Brooch': '💠',
@@ -155,6 +214,12 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
   const targetAccountSet = new Set(Array.isArray(targetAccounts) ? targetAccounts : []);
   const currentAccount = data?.turn?.current_account || null;
   const roomStatus = Number(data?.room?.room_status || 0);
+  // 2026-10-29 新增：陣營猜測標記只對「這一場」遊戲有意義，房間回到招募中（1）
+  // 代表上一場已經結束、要開新的一場了，把這個房間存的舊標記清掉，避免新一場的
+  // 未揭露角色卡片一開始就莫名其妙帶著上一場留下的猜測顏色。
+  if (state?.roomId != null && roomStatus === 1) {
+    clearCampGuessMap(state.roomId);
+  }
   // 2026-10-23 新增：聊天村的 GM 在 room.join() 裡其實也會被分配到一組隨機色碼
   // （見 backend/game/room.py 的 _random_chat_token_color()，那段對聊天村玩家是不分
   // GM 的），但底下 isGm 的色塊排除邏輯原本是為「一般遊戲村 GM 不佔用九色、沒有顏色」
@@ -243,6 +308,11 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       const roleTooltip = roleNameEn ? getCharacterTooltipInfo(roleNameEn, lang) : null;
       const roleCampClass = roleCamp ? String(roleCamp).toLowerCase() : 'civilian';
       const roleBadgeText = roleNameEn ? String(roleNameEn).trim().charAt(0).toUpperCase() || '?' : '?';
+      // 2026-10-29 新增：角色還沒揭露、也不是 GM 的話，前面改放陣營猜測徽章（見
+      // 上面 CAMP_GUESS_STATES），取代原本什麼都不顯示的空白。
+      const campGuessState = (!roleNameEn && !isGm)
+        ? CAMP_GUESS_STATES[getCampGuessIndex(state?.roomId, account)]
+        : null;
       const tooltipNameRaw = String(roleTooltip?.name || roleDisplayName || '-');
       const tooltipNameMatch = tooltipNameRaw.match(/^\(([A-Za-z])\)(.*)$/);
       const tooltipNameHtml = tooltipNameMatch
@@ -336,7 +406,9 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
           <div class="player-card-meta-role">
             <div class="player-role-info">
               <button class="player-role-trigger" type="button" aria-label="${esc(t('ui.role_detail'))}">
-                ${roleNameEn ? `<span class="damage-meter-badge ${esc(roleCampClass)} player-role-badge">${esc(roleBadgeText)}</span>` : ''}
+                ${roleNameEn
+                  ? `<span class="damage-meter-badge ${esc(roleCampClass)} player-role-badge">${esc(roleBadgeText)}</span>`
+                  : (campGuessState ? `<span class="damage-meter-badge player-role-badge player-camp-guess-badge ${esc(campGuessState.cls)}" data-camp-guess-toggle data-player-account="${esc(account)}" role="button" tabindex="0" aria-label="${esc(t(campGuessState.labelKey))}" title="${esc(t(campGuessState.labelKey))}">${esc(campGuessState.symbol)}</span>` : '')}
                 <span class="player-role-name">${esc(roleDisplayName)}</span>
                 <span class="player-role-state">${esc(roleRevealStatusLabel)}</span>
               </button>
@@ -570,6 +642,36 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       });
     });
   }
+
+  // 2026-10-29 新增：陣營猜測徽章是純前端個人標記，點一下／按 Enter 或空白鍵就往下
+  // 一個狀態循環，直接寫 localStorage 並就地更新這顆徽章的樣式跟文字，不需要重新
+  // 整個房間重繪，也完全不經過 dispatch，不會影響其他玩家看到的資料。
+  const advanceCampGuess = (badge) => {
+    if (!(badge instanceof HTMLElement)) return;
+    const targetAccount = String(badge.getAttribute('data-player-account') || '').trim();
+    if (!targetAccount || state?.roomId == null) return;
+    const nextIndex = (getCampGuessIndex(state.roomId, targetAccount) + 1) % CAMP_GUESS_STATES.length;
+    setCampGuessIndex(state.roomId, targetAccount, nextIndex);
+    const nextState = CAMP_GUESS_STATES[nextIndex];
+    badge.className = `damage-meter-badge player-role-badge player-camp-guess-badge ${nextState.cls}`;
+    badge.textContent = nextState.symbol;
+    const label = t(nextState.labelKey);
+    badge.setAttribute('aria-label', label);
+    badge.setAttribute('title', label);
+  };
+  container.querySelectorAll('[data-player-account] [data-camp-guess-toggle]').forEach((badge) => {
+    badge.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      advanceCampGuess(event.currentTarget);
+    });
+    badge.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+      event.preventDefault();
+      event.stopPropagation();
+      advanceCampGuess(event.currentTarget);
+    });
+  });
 
   container.querySelectorAll('.avatar-card-img.dead-previewable').forEach((image) => {
     const deadSrc = String(image.getAttribute('data-dead-avatar-src') || '').trim();
