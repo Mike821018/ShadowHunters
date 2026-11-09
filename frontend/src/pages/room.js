@@ -1050,6 +1050,7 @@ export function renderState({
   const pendingSteal = getPendingStealState(state, data);
   const pendingKillLoot = getPendingKillLootState(state, data);
   const attackPrompt = getAttackPromptState(state, data);
+  const counterAttackPrompt = getCounterAttackPromptState(state, data);
   const pendingDicePromptTargets = Array.isArray(pendingDiceAction?.highlightTargetAccounts)
     ? pendingDiceAction.highlightTargetAccounts.map((value) => String(value || '').trim()).filter(Boolean)
     : [];
@@ -1089,7 +1090,9 @@ export function renderState({
             .filter(Boolean)
         : attackPrompt.active
           ? attackPrompt.targetAccounts
-          : gmEditableAccounts;
+          : counterAttackPrompt.active
+            ? [counterAttackPrompt.originalAccount]
+            : gmEditableAccounts;
   const playerPromptClass = pendingDicePromptTargets.length > 0
     ? String(pendingDiceAction?.highlightPromptClass || 'attack-target-prompt')
     // 2026-10-17 修正：greenConfirm.active 本身沒有區分「這跟我有沒有關係」（見
@@ -1564,6 +1567,44 @@ export function bindRoomEvents({
     }
   };
 
+  // 2026-11-01 新增：Mike 要求攻擊／使用卡片／發動能力這幾種「選完目標後還要
+  // 擲骰結算」的流程，改成選完目標就直接自動丟骰，不用再多點一次中央骰子區塊
+  // （原本的 pendingDiceAction 排隊機制、或是攻擊鎖定目標後停在 status=5 等玩家
+  // 手動擲骰），骰子因此不用再閃爍提示。這裡抽出共用的 runDiceAction()，把
+  // 「送出會回傳骰子結果的 dispatch → 播放骰子動畫 → 等動畫播完 → 套用畫面 →
+  // 顯示提示 → 執行後續收尾」整套流程包成一個函式，attackPlayerTarget()／
+  // useActiveCard()／selectAbilityPlayerTarget() 都改叫這個函式立即執行，不再
+  // 經過 setPendingDiceAction 排隊等待。rollDiceFromCenter() 本身維持不變
+  // （仍然保留給「反擊提示」等還是需要玩家自行決定的情況，以及重新整理頁面後
+  // 還沒擲骰的保險用途）。
+  const runDiceAction = async ({ execute, mode, toastKey, afterRender }) => {
+    diceRollBusy = true;
+    updateStageNextStepButtonState(state);
+    try {
+      const data = await execute();
+      const finalD6 = normalizeDiceValue(data?.dice?.D6, 6);
+      const finalD4 = normalizeDiceValue(data?.dice?.D4, 4);
+      playDiceAnimation(finalD6, finalD4, mode || 'both');
+      await waitDiceAnimationComplete();
+      renderState(data);
+      if (toastKey) toast(t(toastKey));
+      if (typeof afterRender === 'function') {
+        await afterRender(data);
+      }
+      return data;
+    } catch (error) {
+      if (error?.code === 'ROOM_NOT_FOUND') {
+        goToLobbyPage();
+        return null;
+      }
+      console.error(error);
+      return null;
+    } finally {
+      diceRollBusy = false;
+      updateStageNextStepButtonState(state);
+    }
+  };
+
   const attackPlayerTarget = async (targetAccount) => {
     if (!state.roomId || !state.account || stageNextStepBusy) return;
 
@@ -1574,14 +1615,46 @@ export function bindRoomEvents({
     stageNextStepBusy = true;
     updateStageNextStepButtonState(state);
     try {
-      const data = await dispatch('next_step', {
+      const lockData = await dispatch('next_step', {
         room_id: state.roomId,
         account: state.account || undefined,
         action: true,
         target: { kind: 'player', id: normalizedTarget },
       });
-      renderState(data);
-      toast(t('toast.next_step_ok'));
+
+      // 選完攻擊對象後直接自動丟骰，不用再多一次「點擊骰子」的動作。上面這次
+      // next_step 呼叫只是把攻擊對象鎖定、把自己 status 從 4 推進到 5（可以擲
+      // 傷害骰），真正的傷害骰還是要靠下面這次額外的 next_step（target:none）
+      // 才會真的擲骰、算傷害——跟原本手動點擊中央骰子區塊觸發 rollDiceFromCenter()
+      // 時完全一樣，只是現在改成在這裡自動接著做，不等玩家另外點擊。中間故意
+      // 不呼叫 renderState()，避免畫面閃過一次「status=5、骰子在閃爍」的過渡
+      // 畫面。只有在對方緊接著就要面對反擊提示（counter_attack_prompt，例如
+      // 某些角色能選擇要不要反擊）時才例外：這不是單純擲骰，是另一個需要玩家
+      // 自行決定「要不要反擊」的時間點，所以保留原本手動流程，把鎖定目標後的
+      // 結果畫面呈現出來，交給玩家自己用下一步按鈕（跳過攻擊）或點擊原攻擊者
+      // 頭像（反擊，見 playerCardActions.js 的 counterAttackPrompt 分支）決定。
+      const counterAttackPrompt = getCounterAttackPromptState(state, lockData);
+      if (counterAttackPrompt.active) {
+        renderState(lockData);
+        toast(t('toast.next_step_ok'));
+        return;
+      }
+
+      const lockedSelf = lockData?.players?.[state.account] || {};
+      const lockedEquipment = Array.isArray(lockedSelf.equipment) ? lockedSelf.equipment : [];
+      const lockedAtkType = Number(lockedSelf.self_atk_type || 1);
+      const rollMode = (lockedEquipment.includes('Masamune') || lockedAtkType === 2) ? 'd4' : 'both';
+
+      await runDiceAction({
+        execute: () => dispatch('next_step', {
+          room_id: state.roomId,
+          account: state.account || undefined,
+          action: false,
+          target: { kind: 'none' },
+        }),
+        mode: rollMode,
+        toastKey: 'toast.next_step_ok',
+      });
     } catch (error) {
       if (error?.code === 'ROOM_NOT_FOUND') {
         goToLobbyPage();
@@ -1592,6 +1665,38 @@ export function bindRoomEvents({
       stageNextStepBusy = false;
       updateStageNextStepButtonState(state);
     }
+  };
+
+  // 2026-11-01 新增：反擊改成跟攻擊一樣「點頭像→二次確認→自動丟骰」的操作方式
+  // （見 playerCardActions.js 新增的 counterAttackPrompt 分支），取代原本靠中央
+  // 骰子區塊閃爍提示、點骰子才會送出 next_step 的流程。這裡不需要像
+  // attackPlayerTarget() 那樣先送一次「鎖定目標」的 next_step——counter_attack_prompt
+  // 本身已經由後端指定好 original_account，點頭像純粹是給玩家一個二次確認的
+  // UI 手勢，實際送出的 next_step 跟原本 rollDiceFromCenter() 在
+  // counterAttackPrompt.active 時送出的那次完全一樣（action:true, target:none）。
+  const counterAttackPlayerTarget = async (targetAccount) => {
+    if (!state.roomId || !state.account || stageNextStepBusy || diceRollBusy) return;
+
+    const counterAttackPrompt = getCounterAttackPromptState(state);
+    const normalizedTarget = String(targetAccount || '').trim();
+    if (!counterAttackPrompt.active || !normalizedTarget || counterAttackPrompt.originalAccount !== normalizedTarget) return;
+
+    const selfAccount = String(state.account || '').trim();
+    const selfPlayer = latestRoomSnapshot?.players?.[selfAccount] || {};
+    const selfEquipment = Array.isArray(selfPlayer.equipment) ? selfPlayer.equipment : [];
+    const selfAtkType = Number(selfPlayer.self_atk_type || 1);
+    const rollMode = (selfEquipment.includes('Masamune') || selfAtkType === 2) ? 'd4' : 'both';
+
+    await runDiceAction({
+      execute: () => dispatch('next_step', {
+        room_id: state.roomId,
+        account: state.account || undefined,
+        action: true,
+        target: { kind: 'none' },
+      }),
+      mode: rollMode,
+      toastKey: 'toast.next_step_ok',
+    });
   };
 
   const useWeirdWoodsOnTarget = async (targetAccount) => {
@@ -1816,22 +1921,17 @@ export function bindRoomEvents({
     if (optionalChoice) payload.choice = optionalChoice;
 
     if (cardDiceMeta) {
-      const highlightTargetAccounts = target?.kind === 'player' && target?.id
-        ? [String(target.id).trim()].filter(Boolean)
-        : [];
-      setPendingDiceAction({
-        labelKey: cardDiceMeta.labelKey,
+      // 2026-11-01 修正：選完卡片目標（或確認對自己／全部／場地使用）後直接
+      // 自動丟骰結算，不再透過 setPendingDiceAction 排隊等玩家另外點擊中央
+      // 骰子區塊，骰子不用再閃爍提示（見 runDiceAction() 的說明）。
+      await runDiceAction({
+        execute: () => dispatch('card_effect', payload),
         mode: cardDiceMeta.mode,
         toastKey: 'toast.card_effect_ok',
-        highlightTargetAccounts,
-        highlightPromptClass: 'attack-target-prompt',
-        execute: () => dispatch('card_effect', payload),
         afterRender: async (data) => {
           await maybeResolvePendingSteal(data);
         },
       });
-      renderState(latestRoomSnapshot);
-      updateStageNextStepButtonState(state, latestRoomSnapshot);
       return;
     }
 
@@ -2106,22 +2206,21 @@ export function bindRoomEvents({
     if (!pendingAbilityActivation || !state.roomId || !targetAccount) return;
     const abilityDiceMode = getAbilityDiceAnimationMode(pendingAbilityActivation.character);
     if (abilityDiceMode) {
+      // 2026-11-01 修正：跟 useActiveCard() 的 cardDiceMeta 分支同一次需求——選完
+      // 能力目標後直接自動丟骰結算，不再透過 setPendingDiceAction 排隊等玩家
+      // 另外點擊中央骰子區塊，骰子不用再閃爍提示（見 runDiceAction() 的說明）。
       const selectedTarget = { kind: 'player', id: targetAccount };
       clearPendingAbilityActivation();
-      setPendingDiceAction({
-        labelKey: 'room.table_next_step.roll_damage_dice',
-        mode: abilityDiceMode,
-        toastKey: 'toast.character_ability_activated',
-        highlightTargetAccounts: [String(targetAccount || '').trim()].filter(Boolean),
-        highlightPromptClass: 'attack-target-prompt',
+      await runDiceAction({
         execute: () => dispatch('next_step', {
           room_id: state.roomId,
           account: state.account || undefined,
           action: true,
           target: selectedTarget,
         }),
+        mode: abilityDiceMode,
+        toastKey: 'toast.character_ability_activated',
       });
-      renderState(latestRoomSnapshot);
       return;
     }
     try {
@@ -2849,12 +2948,14 @@ export function bindRoomEvents({
       getPendingStealState,
       getPendingKillLootState,
       getAttackPromptState,
+      getCounterAttackPromptState,
       resolvePendingKillLoot,
       maybeResolvePendingSteal,
       useWeirdWoodsOnTarget,
       useErstwhileAltarOnTarget,
       useActiveCard,
       attackPlayerTarget,
+      counterAttackPlayerTarget,
       openConfirmDialog,
       shouldSkipTargetConfirm: () => Boolean(state.skipTargetConfirm),
       isAbilityPlayerTarget,

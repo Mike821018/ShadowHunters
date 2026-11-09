@@ -952,6 +952,7 @@ export default {
     vote_abolish_cast: '已投下廢村票',
     vote_abolish_done: '投票通過，村莊已廢除',
     attack_target_confirm: '要攻擊 {name} 嗎？',
+    counter_attack_target_confirm: '要對 {name} 發動反擊嗎？',
     card_target_confirm: '要對 {name} 使用這張卡嗎？',
     reveal_character_confirm: '要揭露你的角色嗎？揭露後無法取消。',
     character_ability_confirm: '要發動角色能力嗎？',

@@ -1894,7 +1894,8 @@ legend {
 .stage-next-step-button[data-phase='use-card'],
 .stage-next-step-button[data-phase='equip'],
 .stage-next-step-button[data-phase='skip-attack'],
-.stage-next-step-button[data-phase='end-turn'] {
+.stage-next-step-button[data-phase='end-turn'],
+.stage-next-step-button[data-phase='roll-move-dice'] {
   /* 2026-10-09 修正：原本的脈動速度（1.1s）跟顏色（淡紫色、透明度只有 0.32）
      太不明顯，玩家反映這顆按鈕看起來完全沒有閃爍提示；改成跟攻擊／區域目標
      提示（attack-target-pulse／area-target-pulse）一樣的 0.65s 節奏，並換成
@@ -1907,7 +1908,12 @@ legend {
      但這裡的選擇器清單一直沒有同步加進來，所以這兩種情況按鈕完全沒有閃爍提示。
      2026-10-19 補上 data-phase='end-turn'（selfStatus === 6，可以按「結束回合」
      的狀態）：跟上面兩次一樣的漏網狀況——JS 那裡原本完全沒有幫這個狀態設定
-     data-phase，導致結束回合按鈕從來沒有閃爍提示過，Mike 發現後一起補上。 */
+     data-phase，導致結束回合按鈕從來沒有閃爍提示過，Mike 發現後一起補上。
+     2026-11-01 補上 data-phase='roll-move-dice'：剛新增移動擲骰按鈕時，誤用了
+     一組會把整顆按鈕底色直接換成橘色的獨立 keyframes（roll-move-dice-pulse），
+     跟其他階段按鈕「只有橘色外框光暈閃爍、底色不變」的風格不一致，Mike 回報
+     看起來不統一。改成直接併進這份共用清單，統一都用同一套 turn-start-pulse
+     （只有 box-shadow 光暈＋亮度變化），拿掉原本獨立的 roll-move-dice-pulse。 */
   animation: turn-start-pulse 0.65s ease-in-out infinite;
 }
 
@@ -1916,7 +1922,8 @@ legend {
 .stage-next-step-button[data-phase='use-card']:hover:not(:disabled),
 .stage-next-step-button[data-phase='equip']:hover:not(:disabled),
 .stage-next-step-button[data-phase='skip-attack']:hover:not(:disabled),
-.stage-next-step-button[data-phase='end-turn']:hover:not(:disabled) {
+.stage-next-step-button[data-phase='end-turn']:hover:not(:disabled),
+.stage-next-step-button[data-phase='roll-move-dice']:hover:not(:disabled) {
   filter: brightness(1.05);
 }
 
@@ -2544,9 +2551,12 @@ legend {
   overflow-y: auto;
 }
 
-/* 2026-10-20 新增：暗影／獵人／中立三個陣營分組用不同的
-   邊框色區分，跟遊戲內現有的陣營配色沒有特別綁定，隨意選三種
-   不易淆淆、整體風格一致的顏色。 */
+/* 2026-10-20 新增：暗影／獵人／中立三個陣營分組用不同的邊框色區分。
+   2026-11-01 修正：Mike 回報這裡原本是隨意選的三種顏色，跟遊戲內其他地方
+   （傷害計算表的陣營徽章 .damage-meter-badge.shadow/.hunter/.civilian、
+   村民卡片的陣營猜測徽章）看到的陣營配色不一致，改成套用同一組顏色——
+   暗影＝紅（#a61f34）、獵人＝藍（#0f4f93）、中立＝黃（#8a6800），跟整個
+   遊戲畫面上「看到這個顏色＝這個陣營」的視覺語言保持一致。 */
 .gm-character-choice-group {
   display: grid;
   gap: 6px;
@@ -2565,18 +2575,18 @@ legend {
 }
 
 .gm-character-choice-group[data-camp="Shadow"] .gm-character-choice-group-label {
-  border-left-color: #7c3aed;
-  color: #5b21b6;
+  border-left-color: #a61f34;
+  color: #a61f34;
 }
 
 .gm-character-choice-group[data-camp="Hunter"] .gm-character-choice-group-label {
-  border-left-color: #1a6bcc;
-  color: #15508f;
+  border-left-color: #0f4f93;
+  color: #0f4f93;
 }
 
 .gm-character-choice-group[data-camp="Civilian"] .gm-character-choice-group-label {
-  border-left-color: #16845a;
-  color: #166534;
+  border-left-color: #8a6800;
+  color: #8a6800;
 }
 
 .gm-character-choice-group-options {

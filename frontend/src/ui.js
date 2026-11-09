@@ -31,9 +31,17 @@ const CAMP_GUESS_STATES = [
 
 const CAMP_GUESS_LS_PREFIX = 'sh.campGuess.';
 
-function readCampGuessMap(roomId) {
+// 2026-11-01 修正：Mike 回報測試時「改了全部的人都看得到」——這格標記本來就是
+// 純前端 localStorage 標記，不會送到後端，不同使用者的瀏覽器本來就不會互相看到
+// 對方存的東西；問題出在這裡的儲存 key 原本只用房間 id（sh.campGuess.<roomId>），
+// 完全沒有區分「是哪個帳號在看」，同一個瀏覽器裡只要用不同帳號登入同一個房間
+// （例如自己開多個分頁測試不同玩家），就會共用同一份 localStorage、讀到同一組
+// 猜測紀錄，看起來就像是「大家共用同一個標記」。這裡幫 key 加上目前登入帳號
+// （sh.campGuess.<roomId>.<viewerAccount>），讓每個帳號各自存在獨立的
+// localStorage key 底下，才是真正的「只有自己看得到的個人隱藏資訊」。
+function readCampGuessMap(roomId, viewerAccount) {
   try {
-    const raw = window.localStorage.getItem(`${CAMP_GUESS_LS_PREFIX}${roomId}`);
+    const raw = window.localStorage.getItem(`${CAMP_GUESS_LS_PREFIX}${roomId}.${viewerAccount}`);
     const parsed = raw ? JSON.parse(raw) : null;
     return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
@@ -41,31 +49,31 @@ function readCampGuessMap(roomId) {
   }
 }
 
-function writeCampGuessMap(roomId, map) {
+function writeCampGuessMap(roomId, viewerAccount, map) {
   try {
-    window.localStorage.setItem(`${CAMP_GUESS_LS_PREFIX}${roomId}`, JSON.stringify(map));
+    window.localStorage.setItem(`${CAMP_GUESS_LS_PREFIX}${roomId}.${viewerAccount}`, JSON.stringify(map));
   } catch {
     // 純個人標記，無痕模式等情境下 localStorage 寫入失敗不影響遊戲功能，忽略即可。
   }
 }
 
-function getCampGuessIndex(roomId, account) {
-  if (roomId == null || !account) return 0;
-  const idx = Number(readCampGuessMap(roomId)[account]);
+function getCampGuessIndex(roomId, viewerAccount, targetAccount) {
+  if (roomId == null || !viewerAccount || !targetAccount) return 0;
+  const idx = Number(readCampGuessMap(roomId, viewerAccount)[targetAccount]);
   return Number.isInteger(idx) && idx >= 0 && idx < CAMP_GUESS_STATES.length ? idx : 0;
 }
 
-function setCampGuessIndex(roomId, account, index) {
-  if (roomId == null || !account) return;
-  const map = readCampGuessMap(roomId);
-  map[account] = index;
-  writeCampGuessMap(roomId, map);
+function setCampGuessIndex(roomId, viewerAccount, targetAccount, index) {
+  if (roomId == null || !viewerAccount || !targetAccount) return;
+  const map = readCampGuessMap(roomId, viewerAccount);
+  map[targetAccount] = index;
+  writeCampGuessMap(roomId, viewerAccount, map);
 }
 
-function clearCampGuessMap(roomId) {
-  if (roomId == null) return;
+function clearCampGuessMap(roomId, viewerAccount) {
+  if (roomId == null || !viewerAccount) return;
   try {
-    window.localStorage.removeItem(`${CAMP_GUESS_LS_PREFIX}${roomId}`);
+    window.localStorage.removeItem(`${CAMP_GUESS_LS_PREFIX}${roomId}.${viewerAccount}`);
   } catch {
   }
 }
@@ -217,8 +225,8 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
   // 2026-10-29 新增：陣營猜測標記只對「這一場」遊戲有意義，房間回到招募中（1）
   // 代表上一場已經結束、要開新的一場了，把這個房間存的舊標記清掉，避免新一場的
   // 未揭露角色卡片一開始就莫名其妙帶著上一場留下的猜測顏色。
-  if (state?.roomId != null && roomStatus === 1) {
-    clearCampGuessMap(state.roomId);
+  if (state?.roomId != null && state?.account && roomStatus === 1) {
+    clearCampGuessMap(state.roomId, state.account);
   }
   // 2026-10-23 新增：聊天村的 GM 在 room.join() 裡其實也會被分配到一組隨機色碼
   // （見 backend/game/room.py 的 _random_chat_token_color()，那段對聊天村玩家是不分
@@ -311,7 +319,7 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       // 2026-10-29 新增：角色還沒揭露、也不是 GM 的話，前面改放陣營猜測徽章（見
       // 上面 CAMP_GUESS_STATES），取代原本什麼都不顯示的空白。
       const campGuessState = (!roleNameEn && !isGm)
-        ? CAMP_GUESS_STATES[getCampGuessIndex(state?.roomId, account)]
+        ? CAMP_GUESS_STATES[getCampGuessIndex(state?.roomId, state?.account, account)]
         : null;
       const tooltipNameRaw = String(roleTooltip?.name || roleDisplayName || '-');
       const tooltipNameMatch = tooltipNameRaw.match(/^\(([A-Za-z])\)(.*)$/);
@@ -649,9 +657,9 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
   const advanceCampGuess = (badge) => {
     if (!(badge instanceof HTMLElement)) return;
     const targetAccount = String(badge.getAttribute('data-player-account') || '').trim();
-    if (!targetAccount || state?.roomId == null) return;
-    const nextIndex = (getCampGuessIndex(state.roomId, targetAccount) + 1) % CAMP_GUESS_STATES.length;
-    setCampGuessIndex(state.roomId, targetAccount, nextIndex);
+    if (!targetAccount || state?.roomId == null || !state?.account) return;
+    const nextIndex = (getCampGuessIndex(state.roomId, state.account, targetAccount) + 1) % CAMP_GUESS_STATES.length;
+    setCampGuessIndex(state.roomId, state.account, targetAccount, nextIndex);
     const nextState = CAMP_GUESS_STATES[nextIndex];
     badge.className = `damage-meter-badge player-role-badge player-camp-guess-badge ${nextState.cls}`;
     badge.textContent = nextState.symbol;

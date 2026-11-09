@@ -953,6 +953,7 @@ export default {
     vote_abolish_cast: '廃村票を投じました',
     vote_abolish_done: '投票が可決され、村は廃村されました',
     attack_target_confirm: '{name} を攻撃しますか？',
+    counter_attack_target_confirm: '{name} に反撃しますか？',
     card_target_confirm: '{name} にこのカードを使いますか？',
     reveal_character_confirm: '役職を公開しますか？公開後は取り消せません。',
     character_ability_confirm: '役職能力を発動しますか？',

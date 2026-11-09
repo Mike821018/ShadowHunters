@@ -18,12 +18,14 @@ export async function handlePlayerCardClick(targetAccount, ctx) {
     getPendingStealState,
     getPendingKillLootState,
     getAttackPromptState,
+    getCounterAttackPromptState,
     resolvePendingKillLoot,
     maybeResolvePendingSteal,
     useWeirdWoodsOnTarget,
     useErstwhileAltarOnTarget,
     useActiveCard,
     attackPlayerTarget,
+    counterAttackPlayerTarget,
     openConfirmDialog,
     shouldSkipTargetConfirm,
     isAbilityPlayerTarget,
@@ -54,6 +56,7 @@ export async function handlePlayerCardClick(targetAccount, ctx) {
   const pendingSteal = getPendingStealState(state, dataSnapshot);
   const pendingKillLoot = getPendingKillLootState(state, dataSnapshot);
   const attackPrompt = getAttackPromptState(state, dataSnapshot);
+  const counterAttackPrompt = getCounterAttackPromptState(state, dataSnapshot);
   const roomStatus = Number(dataSnapshot?.room?.room_status || 0);
   const isGameOngoing = roomStatus === 2;
   const isGameFinished = roomStatus === 3;
@@ -121,6 +124,25 @@ export async function handlePlayerCardClick(targetAccount, ctx) {
       if (!confirmed) return;
     }
     await attackPlayerTarget(targetAccount);
+    return;
+  }
+
+  // 2026-11-01 新增：Mike 要求反擊改成跟攻擊一樣的操作方式——點對方（原攻擊者）
+  // 的頭像、二次確認是否要反擊，確認後直接自動丟骰；不想反擊則改用「下一步」
+  // 按鈕的「跳過攻擊」(skip-attack phase) 跳過。不再需要靠中央骰子區塊的閃爍
+  // 提示（Mike回報骰子閃爍不夠清楚，四面骰也沒辦法套用一樣的閃爍動畫，見
+  // stageNextStepState.js 對應的修正）。
+  if (counterAttackPrompt.active && counterAttackPrompt.originalAccount === String(targetAccount || '').trim()) {
+    if (shouldConfirmTargetAction()) {
+      const confirmed = await openConfirmDialog({
+        title: t('room.confirm.title'),
+        message: t('toast.counter_attack_target_confirm', { name: getTargetDisplayName(targetAccount) }),
+        confirmLabel: t('room.confirm.confirm'),
+        cancelLabel: t('room.confirm.cancel'),
+      });
+      if (!confirmed) return;
+    }
+    await counterAttackPlayerTarget(targetAccount);
     return;
   }
 

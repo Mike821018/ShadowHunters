@@ -160,10 +160,20 @@ export function createStageNextStepStateHandlers({
     } else if (selfStatus === 1 && getPendingAbilityActivation()) {
       disabled = true;
       label = t('room.table_next_step.choose_target');
-    } else if (selfStatus === 1 || selfStatus === 2) {
-      // status=1（回合開始）跟 status=2（擲骰移動）現在共用同一套按鈕行為：
-      // 「回合開始」按鈕本身已經沒有獨立用途（按下行動骰之前，開場/移動能力都還能發動），
-      // 這裡一律顯示停用狀態，引導玩家改用中央骰子區塊按下行動骰。
+    } else if (selfStatus === 1 || (selfStatus === 2 && !movePrompt.active)) {
+      // 2026-11-01 修正：Mike 要求移動擲骰改成直接點擊這顆「下一步」按鈕觸發
+      // （原本這裡一律停用、純粹顯示提示文字，實際擲骰要點擊中央骰子區塊才行），
+      // 所以改成啟用狀態，並設定 phase='roll-move-dice'，讓按鈕本身用橘色底色
+      // 閃爍提示（見 theme.css 的 roll-move-dice-pulse）。按鈕文字維持原本的
+      // 「擲移動骰」。點擊後的實際行為不用另外處理：runStageNextStep() 裡
+      // selfStatus===1/2 的分支本來就會呼叫 rollDiceFromCenter() 擲骰，這裡只要
+      // 把按鈕改成可點、補上對應 phase 即可。
+      label = t('room.table_next_step.roll_move_dice');
+      phase = 'roll-move-dice';
+    } else if (selfStatus === 2) {
+      // movePrompt.active：擲骰已經完成，正在等待玩家選擇要移動到哪個區域
+      // （見 .stage-card-field.move-target-prompt 的高亮），這顆按鈕本身沒有
+      // 動作可做，維持停用、純粹顯示提示文字。
       disabled = true;
       label = t('room.table_next_step.roll_move_dice');
     } else if (pendingKillLoot.active) {
@@ -234,18 +244,22 @@ export function createStageNextStepStateHandlers({
     // 仍然停留在 5（跟攻擊擲骰同一個階段），導致原本的骰子閃爍判斷誤判成「可以
     // 擲骰」，骰子跟著閃爍；但這個時間點玩家應該做的是選擇要拿哪件裝備，不是
     // 擲骰，所以要排除 pendingKillLoot.active 的情況。
+    // 2026-11-01 修正（再追加）：Mike 回報中央骰子區塊的閃爍提示不夠清楚，
+    // 而且四面骰沒辦法套用一樣的閃爍動畫，所以連「反擊」這個原本保留給骰子
+    // 閃爍的最後一個情境，也改成跟攻擊一樣「點頭像→二次確認→自動丟骰」
+    // （見 playerCardActions.js 新增的 counterAttackPrompt 分支、room.js 的
+    // counterAttackPlayerTarget()）。中央骰子區塊因此不再需要為任何擲骰情境
+    // 閃爍提示——這裡只留下 pendingDiceAction 這個純粹的「忙碌中」旗標判斷
+    // （目前只有 activateSelfAbility() 自己發送 next_step 的那短短一瞬間會是
+    // true），骰子點擊本身仍然保留在 rollDiceFromCenter()，當作萬一需要的
+    // 保險入口，但不會再主動閃爍邀請玩家點它。
     const shouldPromptRoll = Boolean(
       hasRoom
       && selfAccount
       && roomStatus === 2
       && selfAccount === currentAccount
       && !pendingKillLoot.active
-      && (
-        Boolean(pendingDiceAction)
-        || selfStatus === 5
-        || selfStatus === 1
-        || (selfStatus === 2 && !movePrompt.active)
-      )
+      && Boolean(pendingDiceAction)
       && !diceRollBusy
       && !diceRollAnimating
       && !stageNextStepBusy

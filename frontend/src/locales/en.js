@@ -955,6 +955,7 @@ export default {
     vote_abolish_cast: 'Vote to abolish cast',
     vote_abolish_done: 'Vote passed, village abolished',
     attack_target_confirm: 'Attack {name}?',
+    counter_attack_target_confirm: 'Counter-attack {name}?',
     card_target_confirm: 'Use this card on {name}?',
     reveal_character_confirm: 'Reveal your role? This cannot be undone.',
     character_ability_confirm: 'Activate your role ability now?',
