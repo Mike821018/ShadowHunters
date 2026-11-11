@@ -320,12 +320,14 @@ class room(Thread):
             'timestamp': int(time.time()),
         })
 
-    def add_chat_message(self, account, name, text):
-        self._push_message('chat', text=text, account=account, name=name)
-        # 遊戲結束後的聊天要盡量同步進最新戰報，避免回放只停在勝利宣告。
-        # 2026-10-20 修正：房間被廢除（status 4）之後也在還能聊天，跟遊戲正常結束（status 3）一樣，也應該同步進戰報。
-        should_archive_chat = bool(self.is_chat_archived) or int(getattr(self, 'room_status', 0) or 0) in (3, 4)
-        if should_archive_chat and self.manager_ref and hasattr(self.manager_ref, 'records_api'):
+    def _archive_latest_message_if_needed(self):
+        # 2026-11-10 修正：原本只有 add_chat_message() 會在遊戲結束／廢村後把新訊息同步
+        # 進已經存檔的那筆戰報，add_system_message() 完全沒做這件事——導致 GM 旁觀主持
+        # 在遊戲結束或廢村之後做的任何操作（調整血量、強制揭露身分、丟棄／給予裝備等）
+        # 留下的系統訊息，只留在記憶體裡的 room.chat_messages，從來沒有補進戰報，回放時
+        # 就會「看起來系統訊息不見了」。把同步邏輯抽成共用方法，chat／system 都呼叫。
+        should_archive = bool(self.is_chat_archived) or int(getattr(self, 'room_status', 0) or 0) in (3, 4)
+        if should_archive and self.manager_ref and hasattr(self.manager_ref, 'records_api'):
             try:
                 latest_msg = self.chat_messages[-1] if self.chat_messages else None
                 if latest_msg:
@@ -334,8 +336,15 @@ class room(Thread):
                 # 日誌記錄，但不中斷遊戲流程
                 pass
 
+    def add_chat_message(self, account, name, text):
+        self._push_message('chat', text=text, account=account, name=name)
+        # 遊戲結束後的聊天要盡量同步進最新戰報，避免回放只停在勝利宣告。
+        # 2026-10-20 修正：房間被廢除（status 4）之後也在還能聊天，跟遊戲正常結束（status 3）一樣，也應該同步進戰報。
+        self._archive_latest_message_if_needed()
+
     def add_system_message(self, text):
         self._push_message('system', text=text)
+        self._archive_latest_message_if_needed()
 
     def join(self, player_info):  # pyright: ignore[reportIncompatibleMethodOverride]
         ret = False

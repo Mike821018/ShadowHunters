@@ -362,6 +362,8 @@ export default {
     },
     info: {
       title: 'Village Info',
+      collapse: 'Collapse village info',
+      expand: 'Expand village info',
       rail_title: 'Village Info',
       not_joined: 'Not joined a village',
       room_id: 'Room ID: ',
@@ -957,6 +959,7 @@ export default {
     attack_target_confirm: 'Attack {name}?',
     counter_attack_target_confirm: 'Counter-attack {name}?',
     card_target_confirm: 'Use this card on {name}?',
+    move_target_confirm: 'Move to {area}?',
     reveal_character_confirm: 'Reveal your role? This cannot be undone.',
     character_ability_confirm: 'Activate your role ability now?',
     character_revealed: 'Role revealed',

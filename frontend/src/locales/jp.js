@@ -362,6 +362,8 @@ export default {
     },
     info: {
       title: '村の情報',
+      collapse: '村情報を折りたたむ',
+      expand: '村情報を展開する',
       rail_title: '村情報',
       not_joined: '村に参加していません',
       room_id: '部屋番号：',
@@ -955,6 +957,7 @@ export default {
     attack_target_confirm: '{name} を攻撃しますか？',
     counter_attack_target_confirm: '{name} に反撃しますか？',
     card_target_confirm: '{name} にこのカードを使いますか？',
+    move_target_confirm: '{area} に移動しますか？',
     reveal_character_confirm: '役職を公開しますか？公開後は取り消せません。',
     character_ability_confirm: '役職能力を発動しますか？',
     character_revealed: '役職を公開しました',

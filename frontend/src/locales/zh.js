@@ -350,6 +350,8 @@ export default {
     },
     info: {
       title: '村子資訊',
+      collapse: '收合村莊資訊',
+      expand: '展開村莊資訊',
       rail_title: '村莊資訊',
       not_joined: '尚未加入村子',
       room_id: '房號：',
@@ -954,6 +956,7 @@ export default {
     attack_target_confirm: '要攻擊 {name} 嗎？',
     counter_attack_target_confirm: '要對 {name} 發動反擊嗎？',
     card_target_confirm: '要對 {name} 使用這張卡嗎？',
+    move_target_confirm: '要移動到 {area} 嗎？',
     reveal_character_confirm: '要揭露你的角色嗎？揭露後無法取消。',
     character_ability_confirm: '要發動角色能力嗎？',
     character_revealed: '角色已揭露',

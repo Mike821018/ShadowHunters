@@ -789,7 +789,19 @@ export function buildChatStageLines({
       const formatted = formatSystem(text, ts);
       // 2026-10-24 修正：右下角浮動聊天室現在自己有聊天／系統獨立顯示開關
       // （見 floatingChat.js），不用再靠這裡把系統訊息鏡像塞進聊天清單。
-      if (formatted) pushSystemLine(formatted, '', ts, false);
+      // 2026-11-10 修正：上面那次改動把鏡像關掉時，沒注意到同一份 chatLines 也是
+      // 房間頁／回放頁「內嵌聊天室」面板（room.js 的 renderChatStage，不是浮動聊天室）
+      // 在用的——結果連內嵌聊天室原本「聊天跟系統訊息混在一起顯示」的畫面也一併被
+      // 改掉了，這不是故意要做的。現在房間頁的內嵌聊天室／系統訊息面板已經改成不管
+      // 螢幕寬度都隱藏、統一只用浮動聊天室（見 theme.css），不會再受這裡影響；但回放頁
+      // 沒有浮動聊天室、還是顯示內嵌面板，所以這裡把鏡像加回來，讓回放頁的聊天欄
+      // 恢復成以前那樣聊天跟系統訊息混合顯示。
+      // 2026-11-10 新增：Mike 要求「本場配置：X獵人 Y暗影 Z中立」這則開局陣營配置
+      // 公告要更醒目一點，跟其他一般系統訊息用同一套淡黃底色太容易被滑過去——這裡
+      // 額外判斷原始文字是不是這則公告，是的話加上 system-game-config 這個 class，
+      // CSS 另外給它套一個比較搶眼的藍底樣式（見 theme.css 的 .system-line.system-game-config）。
+      const extraClass = /^本場配置：/.test(text) ? 'system-game-config' : '';
+      if (formatted) pushSystemLine(formatted, extraClass, ts, true);
       return;
     }
     const account = String(message?.account || '').trim();
@@ -837,7 +849,8 @@ export function buildChatStageLines({
       + timeoutRemainDisplay + '" data-remain-synced-at="' + getRenderSyncedAtMs() + '">' + timeoutRemainDisplay + '</span>';
     const timeoutTextTemplate = esc(t('room.info.turn_timeout_fmt', { who: timeoutCurrent || '-' }));
     const timeoutTextHtml = timeoutTextTemplate.replace('{n}', timeoutRemainSpan);
-    pushSystemLine(timeoutTextHtml, timeoutClass, nowTs, false);
+    // 2026-11-10 修正：跟上面系統訊息同一批，鏡像加回來給回放頁的內嵌聊天欄用。
+    pushSystemLine(timeoutTextHtml, timeoutClass, nowTs, true);
   }
 
   return { chatLines, systemLines, combinedLines };

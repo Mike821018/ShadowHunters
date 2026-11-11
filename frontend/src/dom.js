@@ -12,6 +12,8 @@ export function getDomElements() {
     playersTbody: document.getElementById('playersTbody'),
     roomCards: document.getElementById('roomCards'),
     battleCards: document.getElementById('battleCards'),
+    // 2026-11-10 新增：點擊場地卡上的玩家 token 彈出的完整卡片面板內容容器。
+    stageOccupantCardPopupBody: document.getElementById('stageOccupantCardPopupBody'),
     btnRoomBackLobby: document.getElementById('btnRoomBackLobby'),
     stageNextStepButton: document.getElementById('stageNextStepButton'),
     areaChoiceDialog: document.getElementById('areaChoiceDialog'),
@@ -120,6 +122,13 @@ export function getDomElements() {
     tripModifyForm: document.getElementById('tripModifyForm'),
     tripDeleteForm: document.getElementById('tripDeleteForm'),
     roomInfo: document.getElementById('roomInfo'),
+    // 2026-11-10 新增：房間頁「村莊資訊」改版——標題改顯示村莊名稱、旁邊加收合按鈕。
+    // roomTitle 兩邊頁面都有（原本就是靜態的「村子資訊」字樣），但只有房間頁的
+    // JS 邏輯會動它、回放頁維持原樣不動；roomInfoCollapseToggle 這顆收合按鈕只有
+    // 房間頁的 HTML 裡有，回放頁用 getElementById 查不到就是 null，後面用到的地方
+    // 都已經用 optional chaining 處理，不會報錯。
+    roomTitle: document.getElementById('roomTitle'),
+    roomInfoCollapseToggle: document.getElementById('roomInfoCollapseToggle'),
     ratingDialog: document.getElementById('ratingDialog'),
     ratingDialogTitle: document.getElementById('ratingDialogTitle'),
     ratingDialogMessage: document.getElementById('ratingDialogMessage'),

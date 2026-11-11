@@ -41,7 +41,6 @@ import {
   getCurrentTurnPlayer as getCurrentTurnPlayerModule,
   isReplayViewState as isReplayViewStateModule,
   isRoomLayoutPage as isRoomLayoutPageModule,
-  showOccupantNamePopup as showOccupantNamePopupModule,
   getDiscardEquipmentOptions as getDiscardEquipmentOptionsModule,
   getDrawablePileColors as getDrawablePileColorsModule,
 } from './room/roomStateHelpers.js';
@@ -67,7 +66,9 @@ let pendingAbilityActivation = null;
 let pendingDiceAction = null;
 let diceRollInterval = null;
 let diceRollTimeout = null;
-let occupantNamePopupTimer = null;
+let occupantCardPopupAccount = null;
+let occupantCardPopupRenderCtx = null;
+let occupantCardPopupOutsideHandlerBound = false;
 
 const {
   getLocalizedCardName,
@@ -107,6 +108,11 @@ function setPendingDiceAction(action) {
 
 const DICE_ANIMATION_DURATION_MS = 900;
 const DICE_ANIMATION_TICK_MS = 70;
+// 2026-11-11 新增：抽卡動畫的播放時間，要跟 theme.css 的 .draw-card-flight-ghost
+// transition 時間對齊（位移 0.3s，淡出延後到 0.3s 才開始、再花 0.15s，整段動畫
+// 共 0.45s 結束），這裡抓 500ms（留一點緩衝）才移除飄浮的卡片節點，確保卡片
+// 真的飛到終點、淡出完畢後才被移除，不會動畫還沒播完節點就被拔掉。
+const DRAW_CARD_FLIGHT_DURATION_MS = 500;
 const GREEN_EQUIPMENT_OR_DAMAGE_CARDS = new Set(['Anger', 'Blackmail', 'Greed']);
 
 function normalizeDiceValue(value, sides) {
@@ -307,15 +313,92 @@ function isRoomLayoutPage(state = null, dataSnapshot = latestRoomSnapshot) {
   return isRoomLayoutPageModule(state, dataSnapshot);
 }
 
-function showOccupantNamePopup(name, anchorEl) {
-  return showOccupantNamePopupModule({
-    name,
-    anchorEl,
-    getTimer: () => occupantNamePopupTimer,
-    setTimer: (timer) => {
-      occupantNamePopupTimer = timer;
-    },
-  });
+// 2026-11-10 修正：場地卡上點玩家 token 原本只彈出一個 1.2 秒後自動消失的名字
+// 小提示（showOccupantNamePopup），玩家反饋希望能直接從這裡看到、操作該玩家的
+// 完整卡片，所以整個換成下面這組「彈出完整卡片」的邏輯，取代原本的名字提示。
+//
+// 直接重用 renderPlayerCards()（跟村民列表、對局卡牆共用同一支渲染函式）渲染一張
+// 只含這個帳號的卡片，所以攻擊／能力／選卡片目標／GM 改角色等點擊，都跟點村民
+// 列表裡的卡片完全一樣（bindPlayerCardClickTargets 裡已經把這個彈窗的容器一起
+// 加進點擊路由），裝備／護盾徽章的小說明視窗也一樣能點開，不用另外刻一套。
+//
+// occupantCardPopupRenderCtx 存著「目前這次房間渲染」用的 renderPlayerCards 包裝
+// 函式跟相關參數（targetAccounts／targetPromptClass／裝備護盾點擊callback），每次
+// renderState() 都會更新一次，確保彈窗內容也能跟著房間狀態即時更新（例如對方剛好
+// 這時候被攻擊、換裝等），不會在開著的情況下卡在剛打開那一刻的舊資料。
+function closeOccupantCardPopup() {
+  occupantCardPopupAccount = null;
+  const panel = document.getElementById('stageOccupantCardPopup');
+  if (panel) panel.hidden = true;
+  const body = document.getElementById('stageOccupantCardPopupBody');
+  if (body) body.innerHTML = '';
+}
+
+function positionOccupantCardPopup(anchorEl) {
+  const panel = document.getElementById('stageOccupantCardPopup');
+  if (!panel || !anchorEl) return;
+  const rect = anchorEl.getBoundingClientRect();
+  const panelWidth = Math.min(320, window.innerWidth - 24);
+  let left = rect.right + 12;
+  let top = rect.top - 8;
+  if (left + panelWidth > window.innerWidth - 12) {
+    left = Math.max(12, rect.left - panelWidth - 12);
+  }
+  const estimatedHeight = Math.min(420, window.innerHeight - 48);
+  if (top + estimatedHeight > window.innerHeight - 12) {
+    top = Math.max(12, window.innerHeight - estimatedHeight - 12);
+  }
+  panel.style.left = `${Math.round(left)}px`;
+  panel.style.top = `${Math.round(top)}px`;
+}
+
+function renderOccupantCardPopup() {
+  const panel = document.getElementById('stageOccupantCardPopup');
+  const body = document.getElementById('stageOccupantCardPopupBody');
+  const closeButton = document.getElementById('stageOccupantCardPopupClose');
+  if (!panel || !body) return;
+  if (closeButton) closeButton.onclick = closeOccupantCardPopup;
+  if (!occupantCardPopupAccount || !occupantCardPopupRenderCtx) {
+    panel.hidden = true;
+    return;
+  }
+  const data = latestRoomSnapshot;
+  const playerEntry = data?.players?.[occupantCardPopupAccount];
+  if (!data || !playerEntry) {
+    // 玩家離開房間、或這場遊戲資料還沒跟上（例如剛切到新房間），彈窗裡沒有東西可顯示，直接關掉。
+    closeOccupantCardPopup();
+    return;
+  }
+  panel.hidden = false;
+  const { renderPlayerCards: renderCardsFn, ...cardOptions } = occupantCardPopupRenderCtx;
+  const singlePlayerData = { ...data, players: { [occupantCardPopupAccount]: playerEntry } };
+  renderCardsFn(body, singlePlayerData, { view: 'flow', ...cardOptions });
+}
+
+function openOccupantCardPopup(account, anchorEl) {
+  if (!account) return;
+  occupantCardPopupAccount = account;
+  renderOccupantCardPopup();
+  positionOccupantCardPopup(anchorEl);
+
+  if (!occupantCardPopupOutsideHandlerBound) {
+    document.addEventListener('pointerdown', (event) => {
+      if (!occupantCardPopupAccount) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('#stageOccupantCardPopup') || target.closest('.stage-field-occupant')) return;
+      closeOccupantCardPopup();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && occupantCardPopupAccount) closeOccupantCardPopup();
+    });
+    window.addEventListener('resize', () => {
+      if (!occupantCardPopupAccount) return;
+      const anchor = document.querySelector(`.stage-field-occupant[data-occupant-account="${CSS.escape(occupantCardPopupAccount)}"]`);
+      if (anchor instanceof HTMLElement) positionOccupantCardPopup(anchor);
+    });
+    occupantCardPopupOutsideHandlerBound = true;
+  }
 }
 
 function getDiscardEquipmentOptions(dataSnapshot = latestRoomSnapshot) {
@@ -728,6 +811,51 @@ function renderActiveCardDisplay(data) {
   }
 }
 
+// 2026-11-11 新增：Mike 要求抽卡後要有動畫，把卡片從牌庫飛進中央的「發動」格
+// （#activeCardDisplay），而不是像現在這樣直接憑空出現。因為牌庫位置在桌面版、
+// 手機版（.table-stage 用 flex order 排列）、房間頁跟回放頁之間都不一樣，寫死
+// 座標沒辦法套用到每種情況，所以改成在抽卡「當下」直接讀牌庫格子跟發動格當時
+// 實際的畫面座標（getBoundingClientRect），生成一張飄在最上層的卡片影子，用
+// CSS transition 從牌庫位置飛到發動格位置、同時淡出，發動格底下原本就已經
+// renderActiveCardDisplay() 顯示好新卡片了，影子淡出時看起來就像「卡片飛進去、
+// 蓋在原本的格子上」。找不到牌庫格子或發動格（例如發動格還是 hidden）就直接
+// 跳過，不影響正常抽卡流程。
+function playDrawCardFlightAnimation(sourceRect, colorKey) {
+  if (!sourceRect || !sourceRect.width || !sourceRect.height) return;
+  const displayEl = document.getElementById('activeCardDisplay');
+  if (!(displayEl instanceof HTMLElement) || displayEl.hidden) return;
+  const targetRect = displayEl.getBoundingClientRect();
+  if (!targetRect.width || !targetRect.height) return;
+
+  const normalizedColor = ['white', 'black', 'green'].includes(colorKey) ? colorKey : '';
+  const ghost = document.createElement('span');
+  ghost.className = `stage-card stage-card-pile draw-card-flight-ghost${normalizedColor ? ` stage-card-${normalizedColor}` : ''}`;
+  ghost.setAttribute('aria-hidden', 'true');
+  ghost.style.position = 'fixed';
+  ghost.style.left = `${sourceRect.left}px`;
+  ghost.style.top = `${sourceRect.top}px`;
+  ghost.style.width = `${sourceRect.width}px`;
+  ghost.style.height = `${sourceRect.height}px`;
+  document.body.appendChild(ghost);
+
+  // 起始座標要先讓瀏覽器真的套用、畫出來一次之後，才能改成目的地座標讓
+  // transition 生效（同一個 frame 內改兩次座標，瀏覽器會直接跳過中間的
+  // transition，卡片會瞬間出現在終點、不會飛）。
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      ghost.style.left = `${targetRect.left}px`;
+      ghost.style.top = `${targetRect.top}px`;
+      ghost.style.width = `${targetRect.width}px`;
+      ghost.style.height = `${targetRect.height}px`;
+      ghost.style.opacity = '0';
+    });
+  });
+
+  window.setTimeout(() => {
+    ghost.remove();
+  }, DRAW_CARD_FLIGHT_DURATION_MS);
+}
+
 function renderTableDice(data) {
   const d6 = normalizeDiceValue(data?.dice?.D6, 6);
   const d4 = normalizeDiceValue(data?.dice?.D4, 4);
@@ -815,7 +943,7 @@ function renderFieldCards(data, state = null) {
     resolvePlayerColorHex,
     getMoveAreaPromptState,
     getAbilityAreaPromptState,
-    showOccupantNamePopup,
+    onOccupantCardOpen: openOccupantCardPopup,
   });
 }
 
@@ -1116,6 +1244,13 @@ export function renderState({
   renderPlayerCards(el.roomCards, data, { view: 'room', enableVoteKick: true, targetAccounts: playerPromptTargets, targetPromptClass: playerPromptClass, onEquipmentChipClick: handleEquipmentChipClick, onShieldChipClick: handleShieldChipClick });
   patchRoomCardsLayout();
   renderPlayerCards(el.battleCards, data, { view: 'flow', targetAccounts: playerPromptTargets, targetPromptClass: playerPromptClass, onEquipmentChipClick: handleEquipmentChipClick, onShieldChipClick: handleShieldChipClick });
+  // 2026-11-10 新增：場地卡上點玩家 token 彈出的完整卡片，跟上面兩份玩家卡一樣要能即時
+  // 跟著房間狀態更新（例如彈窗開著的時候對方剛好被攻擊、換裝），所以每次 renderState()
+  // 都重新存一次目前這輪用的 renderPlayerCards 包裝函式跟相關參數，再呼叫
+  // renderOccupantCardPopup() 讓目前開著的彈窗（如果有）照最新資料重繪；沒有開著的話
+  // 這個函式內部會直接跳過。
+  occupantCardPopupRenderCtx = { renderPlayerCards, targetAccounts: playerPromptTargets, targetPromptClass: playerPromptClass, onEquipmentChipClick: handleEquipmentChipClick, onShieldChipClick: handleShieldChipClick };
+  renderOccupantCardPopup();
 
   // 手機版玩家列表會被 floatingSysInfo.js 整個移進右下角的浮動收合面板，
   // 面板收合時看不到裡面正在閃爍的玩家卡片，所以額外讓收合按鈕本身也跟著閃爍，
@@ -1515,6 +1650,19 @@ export function bindRoomEvents({
     const normalizedAreaName = String(areaName || '').trim();
     if (!prompt.active || !normalizedAreaName || !prompt.areaNames.includes(normalizedAreaName)) return;
 
+    // 2026-11-10 新增：Mike 要求骰到 7、可以自行選擇移動場地時，也要跟攻擊／使用卡片
+    // 一樣加上二次確認（避免手滑點錯場地），沿用同一個「二次確認」開關
+    // （state.skipTargetConfirm，房間設定裡可以關掉）。
+    if (!Boolean(state.skipTargetConfirm)) {
+      const confirmed = await openConfirmDialog({
+        title: t('room.confirm.title'),
+        message: t('toast.move_target_confirm', { area: getLocalizedCardName(normalizedAreaName) }),
+        confirmLabel: t('room.confirm.confirm'),
+        cancelLabel: t('room.confirm.cancel'),
+      });
+      if (!confirmed) return;
+    }
+
     stageNextStepBusy = true;
     updateStageNextStepButtonState(state);
     try {
@@ -1543,6 +1691,15 @@ export function bindRoomEvents({
     const drawablePileColors = getDrawablePileColors();
     if (!drawablePileColors.includes(color)) return;
 
+    // 2026-11-11 新增：抽卡動畫要飛的起點，得在送出抽卡請求「之前」先記錄牌庫
+    // 格子當時的畫面座標——送出之後 renderState() 會立刻把牌庫張數畫面更新，
+    // 但格子本身的位置不會變，所以這裡抓的座標直接拿去給動畫飛行用就好。
+    const drawColorKey = String(color || '').toLowerCase();
+    const pileEl = document.querySelector(
+      `.table-stage [data-pile-type="deck"][data-card-color="${drawColorKey}"]`,
+    );
+    const pileRect = pileEl instanceof HTMLElement ? pileEl.getBoundingClientRect() : null;
+
     stageNextStepBusy = true;
     updateStageNextStepButtonState(state);
     try {
@@ -1554,6 +1711,9 @@ export function bindRoomEvents({
         target: { kind: 'none' },
       });
       renderState(data);
+      if (pileRect) {
+        playDrawCardFlightAnimation(pileRect, drawColorKey);
+      }
       toast(t('toast.next_step_ok'));
     } catch (error) {
       if (error?.code === 'ROOM_NOT_FOUND') {
@@ -2236,6 +2396,19 @@ export function bindRoomEvents({
 
   const selectAbilityAreaTarget = async (areaName) => {
     if (!pendingAbilityActivation || !state.roomId || !areaName) return;
+    // 2026-11-10 新增：Mike 要求選擇移動類能力的目標場地時，也比照擲骰移動加上
+    // 二次確認，同一個「二次確認」開關（state.skipTargetConfirm）。能力本身是否要
+    // 發動，在 startSelfAbilityActivation() 那一步已經先確認過一次，這裡是確認「要
+    // 把目標定在這個場地」。
+    if (!Boolean(state.skipTargetConfirm)) {
+      const confirmed = await openConfirmDialog({
+        title: t('room.confirm.title'),
+        message: t('toast.move_target_confirm', { area: getLocalizedCardName(areaName) }),
+        confirmLabel: t('room.confirm.confirm'),
+        cancelLabel: t('room.confirm.cancel'),
+      });
+      if (!confirmed) return;
+    }
     try {
       await activateSelfAbility({ kind: 'area', id: areaName });
     } catch (error) {
@@ -2809,10 +2982,13 @@ export function bindRoomEvents({
 
     // maxPlayersSelect 在聊天室不會渲染（dialog 裡整段跳過），這裡拿不到值
     // 就直接沿用房間目前的上限，不送出這個欄位的變更。
+    // 2026-11-11 修正：建房時人數上限早就開放到 10（見 lobby.js／room_manager.py），
+    // 但這裡的驗證還停在舊的 8 人上限，村長事後想把房間人數調到 9、10 人時會被擋下來
+    // （下拉選單選項也只到 8，一併補上 9、10）。
     let maxPlayersPatch;
     if (maxPlayersSelect) {
       const maxPlayers = Number.parseInt(String(maxPlayersSelect.value || ''), 10);
-      if (!Number.isInteger(maxPlayers) || maxPlayers < 4 || maxPlayers > 8) {
+      if (!Number.isInteger(maxPlayers) || maxPlayers < 4 || maxPlayers > 10) {
         toast(t('room.settings.invalid_max_players'), 'error');
         return;
       }
@@ -3001,6 +3177,25 @@ export function bindRoomEvents({
     clearRoomAutoRefreshTimer,
     clearRoomEventSource,
   });
+
+  // 2026-11-10 新增：房間頁「村莊資訊」收合／展開按鈕。回放頁沒有這顆按鈕
+  // （el.roomInfoCollapseToggle 查不到是 null），下面整段直接是 no-op，不影響回放頁。
+  // 預設展開；收合狀態存在 localStorage，不分房間、單純記住使用者上次的畫面偏好，
+  // 跟 floatingChat.js 的收合狀態記憶方式一致。
+  const ROOM_INFO_COLLAPSE_KEY = 'sh.roomInfo.collapsed';
+  if (el.roomInfoCollapseToggle && el.roomInfo) {
+    const applyRoomInfoCollapsed = (collapsed) => {
+      el.roomInfo.classList.toggle('room-info-collapsed', collapsed);
+      el.roomInfoCollapseToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      el.roomInfoCollapseToggle.setAttribute('aria-label', collapsed ? t('room.info.expand') : t('room.info.collapse'));
+    };
+    applyRoomInfoCollapsed(localStorage.getItem(ROOM_INFO_COLLAPSE_KEY) === 'true');
+    el.roomInfoCollapseToggle.addEventListener('click', () => {
+      const next = !el.roomInfo.classList.contains('room-info-collapsed');
+      applyRoomInfoCollapsed(next);
+      localStorage.setItem(ROOM_INFO_COLLAPSE_KEY, String(next));
+    });
+  }
 
   if (el.roomInfo) {
     el.roomInfo.dataset.bound = 'true';

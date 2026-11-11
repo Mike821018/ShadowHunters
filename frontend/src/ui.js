@@ -454,8 +454,13 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
     : null;
 
   if (view === 'room') {
-    const minVisibleSlots = 8;
-    // 2026-10-15：GM 旁觀主持、不下場，在村民座位圖裡固定排在最後，跟真正下場的玩家之間留一格空位；真正玩家還是照原本規則補滿到 8 格，GM 不佔用這個名額。
+    // 2026-11-10 修正：房間人數上限已開放到 10 人（見 backend/room_manager.py 的
+    // max_players 4~10 範圍），這裡原本還停在舊的 8 人上限時代留下的數字，沒有跟著
+    // 調整，10 人房間時座位圖反而會比實際人數還早補滿、看起來很擠。改成跟著人數上限
+    // 一起變成 10，GM 的固定空位／GM 本人座位照舊接在後面，總共 12 格（10 人＋1 格
+    // 空位＋GM），GM 固定落在第 12 格。
+    const minVisibleSlots = 10;
+    // 2026-10-15：GM 旁觀主持、不下場，在村民座位圖裡固定排在最後，跟真正下場的玩家之間留一格空位；真正玩家還是照原本規則補滿到上限格數，GM 不佔用這個名額。
     const nonGmEntries = entries.filter(([, p]) => !p?.is_gm);
     const gmEntries = entries.filter(([, p]) => p?.is_gm);
     const seatCards = nonGmEntries.map(renderCard);

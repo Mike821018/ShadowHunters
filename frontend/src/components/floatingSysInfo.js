@@ -1,5 +1,5 @@
 /**
- * Floating fieldset panels (room / replay-room only, mobile only)
+ * Floating fieldset panels (room / replay-room only)
  *
  * Mobile screens don't have room for the "傷害計量表" (HP/damage meter) and
  * "村民列表" (player list) fieldsets to stay inline, so on narrow viewports
@@ -7,6 +7,11 @@
  * floating collapsible panels, stacked above the floating chat bubble
  * (bottom-right): from bottom to top it's 聊天室 (chat, handled by
  * floatingChat.js), 血量 (HP), then 玩家 (players).
+ *
+ * 2026-11-10 修正：血量（HP）面板改成不分螢幕寬度都套用 —— 桌面版也跟手機版一樣收合
+ * 成右下角可展開的浮動按鈕，不再固定顯示在頁面上（Mike 要求「桌面版的血量條也改成浮動
+ * 按鈕」）。「村民列表」維持原樣，只有手機寬度才收合成浮動面板，桌面／平板版仍然固定
+ * 顯示在頁面上。
  *
  * "系統訊息" (system messages) is NOT handled here at all — it is hidden
  * entirely on mobile via CSS (`.room-layout-system-fieldset { display: none; }`),
@@ -17,11 +22,12 @@
  * id exactly as before; moving their containing <fieldset> elsewhere in the
  * DOM does not affect those id lookups or event listeners.
  *
- * On desktop/tablet widths this module is a no-op and the page is left
- * completely untouched.
+ * On desktop/tablet widths the HP panel is now active too; only the players
+ * panel stays mobile-only (desktop/tablet is a no-op for it, page left
+ * completely untouched there).
  *
  * Mutual exclusivity: only one floating panel (chat / HP / players) may be
- * open at a time on mobile. Each panel registers itself with the shared
+ * open at a time. Each panel registers itself with the shared
  * floatingPanelGroup coordinator and is told to close whenever another
  * panel opens — see floatingPanelGroup.js.
  */
@@ -156,8 +162,8 @@ function createFloatingFieldsetPanel({ fieldsetSelector, wrapClass, lsKey, icon,
 
 export function initFloatingSysInfo({ state }) {
   if (state?.page !== 'room' && state?.page !== 'replay-room') return;
-  if (!window.matchMedia || !window.matchMedia(MOBILE_QUERY).matches) return;
 
+  // 2026-11-10 修正：血量（傷害計量表）改成不分螢幕寬度，桌面版也和手機版一樣改成可收合的浮動按鈕（不再固定顯示在頁面上），Mike 要求「桌面版的血量條也改成浮動按鈕」。「村民列表」維持原樣只在手機寬度才收到浮動面板，桌面版仍然固定顯示在頁面上，沒有被要求一起改。
   createFloatingFieldsetPanel({
     fieldsetSelector: '.room-damage-meter-fieldset',
     wrapClass: 'sh-floating-hp',
@@ -165,6 +171,8 @@ export function initFloatingSysInfo({ state }) {
     icon: '🩸',
     label: '傷害計量表',
   });
+
+  if (!window.matchMedia || !window.matchMedia(MOBILE_QUERY).matches) return;
 
   createFloatingFieldsetPanel({
     fieldsetSelector: '.room-layout-player-fieldset',

@@ -109,6 +109,8 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
             <option value="6" ${maxPlayers === 6 ? 'selected' : ''}>6</option>
             <option value="7" ${maxPlayers === 7 ? 'selected' : ''}>7</option>
             <option value="8" ${maxPlayers === 8 ? 'selected' : ''}>8</option>
+            <option value="9" ${maxPlayers === 9 ? 'selected' : ''}>9</option>
+            <option value="10" ${maxPlayers === 10 ? 'selected' : ''}>10</option>
           </select>
           <span class="field-hint room-settings-hint">${esc(t('room.settings.max_players_hint'))}</span>
         </span>`}
@@ -228,19 +230,66 @@ export function renderVillageInfo({ el, esc, withVillageSuffix, goToRegisterPage
     return;
   }
 
+  // 2026-11-10 修正：房間頁（直播中）跟回放頁共用這個函式，但 Mike 只要求改房間頁的
+  // 版面（標題改村莊名稱＋收合按鈕、說明拿掉標題直接當第一行、設定徽章併進人數那一行），
+  // 回放頁要完全不動、維持原本「村子資訊」固定標題＋「村子名稱／村子說明」各自一行的
+  // 樣子。所以這裡用 isReplayView 分兩條路徑，不要共用同一份 HTML 樣板。
+  if (isReplayView) {
+    el.villageInfoList.innerHTML = `
+      <li class="village-info-row village-info-row-primary">
+        <span class="village-info-item"><strong>${esc(t('room.info.name'))}</strong>${esc(villageName || '-')}</span>
+      </li>
+      <li class="village-info-row village-info-row-primary village-info-row-desc">
+        <span class="village-info-item"><strong>${esc(t('room.info.desc'))}</strong>${esc(villageDescription)}</span>
+        ${replayNotice ? `<span class="village-info-item village-info-replay"><strong>${esc(t('room.info.replay_notice'))}</strong>${esc(replayNotice)}</span>` : ''}
+      </li>
+      <li class="village-info-row village-info-row-meta">
+        <span class="village-info-item"><strong>${esc(t('room.info.room_id'))}</strong>${room.room_id ?? '-'}</span>
+        <span class="village-info-item"><strong>${esc(t('room.info.status'))}</strong><span class="${statusClass}">${esc(statusText)}</span></span>
+        <span class="village-info-item"><strong>${esc(t('room.info.count'))}</strong>${Number(room.player_count || 0)}/${maxPlayers}</span>
+        <span class="village-info-settings-line village-info-settings-badges-line">${roomSettingsBadgesHtml}</span>
+      </li>
+      <li class="village-info-row village-info-row-actions">
+        ${canRegister ? `<button id="btnOpenResidentRegister" class="btn btn-inline" type="button">${esc(t('room.info.open_register'))}</button>` : ''}
+        ${canLeave ? `<button id="btnLeaveVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.leave'))}</button>` : ''}
+        ${canEditSettings ? `<button id="btnEditRoomSettingsInline" class="btn btn-inline" type="button">${esc(t('room.ops.edit_settings'))}</button>` : ''}
+        ${canToggleReady ? `<button id="btnToggleReadyInline" class="btn btn-inline" type="button">${esc(isSelfReady ? t('room.ops.unready') : t('room.ops.ready'))}</button>` : ''}
+        ${canRollCall ? `<button id="btnRollCallInline" class="btn btn-inline" type="button">${esc(t('room.ops.roll_call'))}</button>` : ''}
+        ${canExtendTurnTimeout ? `<button id="btnExtendTurnTimeoutInline" class="btn btn-inline" type="button">${esc(t('room.ops.extend_turn_timeout'))}</button>` : ''}
+        ${canGmReleaseStart ? `<button id="btnGmReleaseStartInline" class="btn btn-inline" type="button">${esc(t('room.ops.gm_release_start'))}</button>` : ''}
+        ${canAbolish ? `<button id="btnAbolishVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.abolish'))}</button>` : ''}
+        ${canVoteAbolish ? `<button id="btnVoteAbolishVillageInline" class="btn btn-inline" type="button">${esc(t('room.ops.vote_abolish', { n: abolishVoteThreshold }))}</button>` : ''}
+      </li>
+      ${settingsDialog}
+      ${timeoutWarnRow}
+      ${boomedNoticeRow}
+      ${awaitingGmReleaseNoticeRow}
+    `;
+
+    bindVillageSettingsBadgePopover(el.villageInfoList);
+
+    if (canRegister) {
+      const btn = el.villageInfoList.querySelector('#btnOpenResidentRegister');
+      btn?.addEventListener('click', () => goToRegisterPage(room.room_id));
+    }
+    return;
+  }
+
+  // 房間頁（直播中）：標題列（<legend>）改顯示村莊名稱，取代原本固定的「村子資訊」
+  // 字樣；找不到名稱時退回原本的標題文字，不要開天窗。
+  if (el.roomTitle) {
+    el.roomTitle.textContent = villageName || t('room.info.title');
+  }
+
   el.villageInfoList.innerHTML = `
-    <li class="village-info-row village-info-row-primary">
-      <span class="village-info-item"><strong>${esc(t('room.info.name'))}</strong>${esc(villageName || '-')}</span>
-    </li>
-    <li class="village-info-row village-info-row-primary village-info-row-desc">
-      <span class="village-info-item"><strong>${esc(t('room.info.desc'))}</strong>${esc(villageDescription)}</span>
-      ${replayNotice ? `<span class="village-info-item village-info-replay"><strong>${esc(t('room.info.replay_notice'))}</strong>${esc(replayNotice)}</span>` : ''}
+    <li class="village-info-row village-info-row-desc">
+      <span class="village-info-item village-info-desc-plain">${esc(villageDescription)}</span>
     </li>
     <li class="village-info-row village-info-row-meta">
       <span class="village-info-item"><strong>${esc(t('room.info.room_id'))}</strong>${room.room_id ?? '-'}</span>
       <span class="village-info-item"><strong>${esc(t('room.info.status'))}</strong><span class="${statusClass}">${esc(statusText)}</span></span>
       <span class="village-info-item"><strong>${esc(t('room.info.count'))}</strong>${Number(room.player_count || 0)}/${maxPlayers}</span>
-      <span class="village-info-settings-line village-info-settings-badges-line">${roomSettingsBadgesHtml}</span>
+      <span class="village-info-item village-info-settings-badges-inline">${roomSettingsBadgesHtml}</span>
     </li>
     <li class="village-info-row village-info-row-actions">
       ${canRegister ? `<button id="btnOpenResidentRegister" class="btn btn-inline" type="button">${esc(t('room.info.open_register'))}</button>` : ''}

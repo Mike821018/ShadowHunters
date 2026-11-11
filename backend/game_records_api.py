@@ -900,12 +900,17 @@ class GameRecordsAPI:
         nicknames = {row['nickname'] for row in nickname_rows}
         games = []
         for game in self.record_store.game_records.values():
+            game_is_chat = str(getattr(game, 'room_kind', 'game') or 'game') == 'chat'
             for player in game.players:
                 if str(player.trip_display or '').strip() != trip_display:
                     continue
                 accounts.add(player.player_id)
                 if str(player.player_name or '').strip():
                     nicknames.add(str(player.player_name or '').strip())
+                if game_is_chat:
+                    # Chat-room records still contribute nicknames/accounts above,
+                    # but must not show up in the play-records list itself.
+                    continue
 
                 is_winner = player.player_id in (game.winner_players or [])
                 winner_camps = self._winner_camp_codes_from_game(game)

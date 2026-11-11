@@ -170,6 +170,16 @@
                     <div id="stageFieldDetailNumbers" class="stage-field-detail-numbers"></div>
                     <p id="stageFieldDetailDescription" class="stage-field-detail-description">點選場地卡上的數字即可查看場地名稱與效果說明。</p>
                   </div>
+                  <!-- 2026-11-10 新增：點擊場地卡上的玩家 token，彈出該玩家的完整卡片（跟村民列表
+                       同一套卡片渲染，點擊後可以直接對卡片做攻擊／能力／選卡片目標等操作，不用再切回
+                       村民列表找人）。 -->
+                  <div id="stageOccupantCardPopup" class="stage-field-detail-panel stage-occupant-card-popup" hidden>
+                    <div class="stage-field-detail-header">
+                      <strong>玩家卡片</strong>
+                      <button id="stageOccupantCardPopupClose" class="stage-field-detail-close" type="button" aria-label="關閉玩家卡片">×</button>
+                    </div>
+                    <div id="stageOccupantCardPopupBody" class="player-cards stage-occupant-card-popup-body"></div>
+                  </div>
                   <dialog id="areaChoiceDialog" class="area-choice-dialog" aria-labelledby="areaChoiceTitle">
                     <form method="dialog" class="area-choice-form">
                       <div class="area-choice-header">

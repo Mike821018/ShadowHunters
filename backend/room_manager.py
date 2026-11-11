@@ -975,7 +975,11 @@ class RoomManager:
         if viewer_is_gm:
             return trip_display
         hide_trip = bool(getattr(game_room, 'hide_trip', True))
-        if hide_trip and int(getattr(game_room, 'room_status', 0) or 0) != 3:
+        # 2026-11-10 修正：廢村（room_status 4）要跟完村（room_status 3）一樣視為遊戲結束、
+        # 不再遮罩 TRIP——跟 room.py 的 can_view_character() 裡「廢村視為完村」的角色揭露
+        # 判斷對齊（那邊 2026-10-29 已經把 4 一起算進去），這裡原本漏掉只檢查 == 3，
+        # 導致廢村後 TRIP 仍然顯示「-」看不到。
+        if hide_trip and int(getattr(game_room, 'room_status', 0) or 0) not in (3, 4):
             return '-'
         return trip_display
 

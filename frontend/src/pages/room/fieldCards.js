@@ -71,7 +71,7 @@ export function renderStageFieldCards({
   resolvePlayerColorHex,
   getMoveAreaPromptState,
   getAbilityAreaPromptState,
-  showOccupantNamePopup,
+  onOccupantCardOpen,
 }) {
   const root = document;
   const cards = Array.from(root.querySelectorAll('.table-stage [data-field-slot]'));
@@ -259,7 +259,7 @@ export function renderStageFieldCards({
         button.addEventListener('click', (event) => {
           event.preventDefault();
           event.stopPropagation();
-          showOccupantNamePopup(button.getAttribute('data-occupant-name') || '', button);
+          onOccupantCardOpen(button.getAttribute('data-occupant-account') || '', button);
         });
       });
     }

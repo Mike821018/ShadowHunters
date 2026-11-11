@@ -33,7 +33,21 @@
         <section class="panel" tabindex="0">
           <div class="room-layout-info-chat-row">
             <fieldset class="room-layout-info-fieldset">
-              <legend><strong id="roomTitle" data-i18n="room.info.title">村子資訊</strong></legend>
+              <!-- 2026-11-10 修正：Mike 要求把「村莊資訊」這個固定字樣的標題，改成直接
+                   顯示村莊名稱，旁邊加一個可以收合/展開整塊村莊資訊的小箭頭按鈕，讓
+                   這塊版面平常可以縮得更矮。roomTitle 的文字內容改由 room.js 的
+                   renderVillageInfo 動態寫入村莊名稱（找不到房間資料時維持原本的
+                   「村子資訊」字樣）；roomInfoCollapseToggle 的收合/展開行為則是
+                   一次性綁定在 bindRoomEvents() 裡，點擊時切換 #roomInfo 的顯示、
+                   用 localStorage 記住收合狀態。只有這個房間頁有這兩個新元素，
+                   回放頁（replay_room.html）維持原本「村子資訊」固定標題、沒有
+                   收合功能。 -->
+              <legend class="room-info-legend">
+                <strong id="roomTitle" data-i18n="room.info.title">村子資訊</strong>
+                <button id="roomInfoCollapseToggle" class="room-info-collapse-toggle" type="button" aria-expanded="true" aria-controls="roomInfo" aria-label="收合村莊資訊">
+                  <span class="room-info-collapse-icon" aria-hidden="true">▾</span>
+                </button>
+              </legend>
               <div class="card-body" id="roomInfo">
                 <ul id="villageInfoList" class="village-info-list">
                   <li class="lighttxt" data-i18n="room.info.not_joined">尚未加入村子</li>
@@ -186,6 +200,16 @@
                       </div>
                       <div id="stageFieldDetailNumbers" class="stage-field-detail-numbers"></div>
                       <p id="stageFieldDetailDescription" class="stage-field-detail-description">點選場地卡上的數字即可查看場地名稱與效果說明。</p>
+                    </div>
+                    <!-- 2026-11-10 新增：點擊場地卡上的玩家 token，彈出該玩家的完整卡片（跟村民列表
+                         同一套卡片渲染，點擊後可以直接對卡片做攻擊／能力／選卡片目標等操作，不用再切回
+                         村民列表找人）。 -->
+                    <div id="stageOccupantCardPopup" class="stage-field-detail-panel stage-occupant-card-popup" hidden>
+                      <div class="stage-field-detail-header">
+                        <strong>玩家卡片</strong>
+                        <button id="stageOccupantCardPopupClose" class="stage-field-detail-close" type="button" aria-label="關閉玩家卡片">×</button>
+                      </div>
+                      <div id="stageOccupantCardPopupBody" class="player-cards stage-occupant-card-popup-body"></div>
                     </div>
                     <div id="stageDiscardDetail" class="stage-field-detail-panel stage-discard-detail-panel" hidden>
                       <div class="stage-field-detail-header">
