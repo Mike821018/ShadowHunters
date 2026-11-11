@@ -3,7 +3,7 @@ import { getCharacterLocalizedName, getCurrentUiLang } from '../characterInfo.js
 import { t } from '../i18n.js';
 import { clearRoomAccount } from '../session.js';
 import { apiFetch } from '../utils.js';
-import { showAreaChoiceDialog, showConfirmDialog, showEquipmentChoiceDialog, showGmCharacterChoiceDialog, showGmPlayerAdjustDialog, showGreenChoiceDialog } from './room/choiceDialogs.js';
+import { showAreaChoiceDialog, showConfirmDialog, showEquipmentChoiceDialog, showGmCharacterChoiceDialog, showGmPlayerAdjustDialog, showGreenChoiceDialog, EQUIPMENT_CHOICE_GIVE_UP } from './room/choiceDialogs.js';
 import { renderVillageInfo as renderVillageInfoModule } from './room/villageInfoRendering.js';
 import { buildReplayRoomState as buildReplayRoomStateModule } from './room/replayAdapter.js';
 import { buildChatStageLines } from './room/chatFormatter.js';
@@ -1970,17 +1970,30 @@ export function bindRoomEvents({
       });
     }
 
+    // 2026-11-11 新增：殺人後奪取裝備原本只能「取消」（回到選擇前，狀態卡住不動），
+    // 沒有「明確放棄掠奪」的選項，導致玩家卡在這個流程裡出不去。後端 loot_from_kill
+    // 本來就支援 equipment=None、take_all=False 時直接放棄掠奪並丟棄剩餘裝備，這裡
+    // 把這個分支串到一顆獨立的「放棄掠奪」按鈕上（見 choiceDialogs.js 的
+    // EQUIPMENT_CHOICE_GIVE_UP sentinel），跟原本的「取消」（先不決定、保留選擇視窗
+    // 可重新開啟）區分開來。
+    let giveUpLoot = false;
     if (!takeAll) {
-      equipmentName = await showEquipmentChoiceDialog({
+      const choiceResult = await showEquipmentChoiceDialog({
         el,
         title: t('room.equipment_choice.title'),
         message: t('room.equipment_choice.message', { name: deadPlayer?.name || normalizedTarget }),
         options: equipmentNames.map(localizeEquipmentOption),
         cancelLabel: t('room.area_choice.cancel'),
+        giveUpLabel: t('room.equipment_choice.give_up'),
       });
-      if (!equipmentName) {
+      if (!choiceResult) {
         toast(t('toast.area_choice_cancelled'));
         return;
+      }
+      if (choiceResult === EQUIPMENT_CHOICE_GIVE_UP) {
+        giveUpLoot = true;
+      } else {
+        equipmentName = choiceResult;
       }
     }
 
@@ -1993,7 +2006,7 @@ export function bindRoomEvents({
         from_account: normalizedTarget,
         take_all: takeAll,
       };
-      if (!takeAll) {
+      if (!takeAll && !giveUpLoot) {
         payload.equipment_name = equipmentName;
       }
       const lootData = await dispatch('loot_from_kill', payload);
@@ -2010,7 +2023,7 @@ export function bindRoomEvents({
         });
         renderState(nextData);
       }
-      toast(t('toast.loot_ok'));
+      toast(giveUpLoot ? t('toast.loot_give_up') : t('toast.loot_ok'));
     } catch (error) {
       if (error?.code === 'ROOM_NOT_FOUND') {
         goToLobbyPage();
@@ -3180,9 +3193,13 @@ export function bindRoomEvents({
 
   // 2026-11-10 新增：房間頁「村莊資訊」收合／展開按鈕。回放頁沒有這顆按鈕
   // （el.roomInfoCollapseToggle 查不到是 null），下面整段直接是 no-op，不影響回放頁。
-  // 預設展開；收合狀態存在 localStorage，不分房間、單純記住使用者上次的畫面偏好，
-  // 跟 floatingChat.js 的收合狀態記憶方式一致。
-  const ROOM_INFO_COLLAPSE_KEY = 'sh.roomInfo.collapsed';
+  // 預設展開；收合狀態存在 localStorage。
+  // 2026-11-11 修正：原本這個 key 不分房間、所有房間共用同一份收合狀態（仿照
+  // floatingChat.js 的畫面偏好記憶方式）——但 Mike 回報村莊資訊裡還包含「住民
+  // 登記／登入」這類重要按鈕，在 A 房間收合過之後，開 B 房間也會直接被收合，
+  // 可能讓人以為登入按鈕不見了。改成跟陣營猜測徽章（campGuess）一樣，key 加上
+  // 房間 id，各房間各自獨立記住自己的收合狀態，不會互相影響。
+  const ROOM_INFO_COLLAPSE_KEY = `sh.roomInfo.collapsed.${state.roomId ?? ''}`;
   if (el.roomInfoCollapseToggle && el.roomInfo) {
     const applyRoomInfoCollapsed = (collapsed) => {
       el.roomInfo.classList.toggle('room-info-collapsed', collapsed);

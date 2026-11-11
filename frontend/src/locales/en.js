@@ -620,6 +620,7 @@ export default {
     equipment_choice: {
       title: 'Erstwhile Altar',
       message: 'Choose which equipment to take from {name}.',
+      give_up: 'Give Up Loot',
     },
     gm_character_choice: {
       title: 'Change Player Role',
@@ -948,6 +949,7 @@ export default {
     next_step_ok: 'next_step OK',
     card_effect_ok: 'card_effect OK',
     loot_ok: 'loot_from_kill OK',
+    loot_give_up: 'Gave up the loot',
     loot_take_all_confirm: 'This effect can take all equipment at once. Take all?',
     steal_ok: 'steal_equipment OK',
     color_changed: 'Color changed',

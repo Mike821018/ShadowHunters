@@ -8,6 +8,12 @@
   --muted: #999;
   --panel: #f7f7f7;
   --warn: #f60;
+  /* 2026-11-11 新增：Mike 回報場上一堆「可以點擊」的閃爍提示（抽牌堆、擲骰、
+     攻擊／場地／移動目標、回合開始等）節奏快慢不一致，容易看起來很亂。這些
+     animation 的時長原本各自寫死在各自的規則裡，大部分已經是 0.65s，只有
+     移動目標提示（.stage-card-field.move-target-prompt）是 1.1s 的孤例。
+     改成統一讀這個變數，之後要整體調快/調慢閃爍節奏，只需要改這一個地方。 */
+  --stage-prompt-blink-duration: 0.65s;
 }
 
 * {
@@ -1241,7 +1247,7 @@ legend {
    節奏跟強度，光暈顏色維持原本的琥珀色（跟其他「可操作」提示一致）。 */
 .stage-card-pile.is-draw-prompt {
   cursor: pointer;
-  animation: draw-pile-prompt 0.65s ease-in-out infinite;
+  animation: draw-pile-prompt var(--stage-prompt-blink-duration) ease-in-out infinite;
 }
 
 .stage-card-pile.is-draw-prompt .stage-pile-count {
@@ -1289,7 +1295,7 @@ legend {
 }
 .stage-card-field.move-target-prompt {
   cursor: pointer;
-  animation: stage-move-target-pulse 1.1s ease-in-out infinite;
+  animation: stage-move-target-pulse var(--stage-prompt-blink-duration) ease-in-out infinite;
 }
 @keyframes stage-move-target-pulse {
   0%,
@@ -1371,7 +1377,7 @@ legend {
    一樣只是調骰子本身卡片的濾鏡，沒有額外加 box-shadow／外圈光暈，跟 Mike
    明確拒絕的橘色光暈是兩回事。 */
 .stage-center-badges.is-roll-prompt .stage-badge {
-  animation: dice-roll-prompt 0.65s ease-in-out infinite;
+  animation: dice-roll-prompt var(--stage-prompt-blink-duration) ease-in-out infinite;
 }
 
 @keyframes dice-roll-prompt {
@@ -1953,7 +1959,7 @@ legend {
      跟其他階段按鈕「只有橘色外框光暈閃爍、底色不變」的風格不一致，Mike 回報
      看起來不統一。改成直接併進這份共用清單，統一都用同一套 turn-start-pulse
      （只有 box-shadow 光暈＋亮度變化），拿掉原本獨立的 roll-move-dice-pulse。 */
-  animation: turn-start-pulse 0.65s ease-in-out infinite;
+  animation: turn-start-pulse var(--stage-prompt-blink-duration) ease-in-out infinite;
 }
 
 .stage-next-step-button[data-phase='turn-start']:hover:not(:disabled),
@@ -2387,12 +2393,12 @@ legend {
 
 .player-card.attack-target-prompt {
   cursor: pointer;
-  animation: attack-target-pulse 0.65s ease-in-out infinite;
+  animation: attack-target-pulse var(--stage-prompt-blink-duration) ease-in-out infinite;
 }
 
 .player-card.area-target-prompt {
   cursor: pointer;
-  animation: area-target-pulse 0.65s ease-in-out infinite;
+  animation: area-target-pulse var(--stage-prompt-blink-duration) ease-in-out infinite;
 }
 
 /* 2026-10-17 新增：綠卡目標確認期間，跟這次效果沒有直接關係的玩家（出卡的人、
@@ -5638,11 +5644,11 @@ legend {
    attack-target-pulse／area-target-pulse 動畫讓按鈕本身也跟著閃爍提示。
    renderState() 裡會依目前的 playerPromptClass 切換這兩個 class。 */
 .sh-ffs-toggle-btn.attack-target-prompt {
-  animation: attack-target-pulse 0.65s ease-in-out infinite;
+  animation: attack-target-pulse var(--stage-prompt-blink-duration) ease-in-out infinite;
 }
 
 .sh-ffs-toggle-btn.area-target-prompt {
-  animation: area-target-pulse 0.65s ease-in-out infinite;
+  animation: area-target-pulse var(--stage-prompt-blink-duration) ease-in-out infinite;
 }
 
 .sh-ffs-panel {

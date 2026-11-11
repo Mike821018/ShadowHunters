@@ -57,7 +57,16 @@ export function showAreaChoiceDialog({ el, title, message, hurtLabel, healLabel,
   });
 }
 
-export function showEquipmentChoiceDialog({ el, title, message, options, cancelLabel }) {
+// 2026-11-11 新增：殺人掠奪裝備時，原本取消只會回傳空字串並 toast「已取消」，
+// 但後端 loot_from_kill 其實早就支援「放棄掠奪」這個完整分支（equipment=None、
+// take_all=False 時會自動丟棄剩餘裝備並結束掠奪）。這裡新增一個可選的
+// giveUpLabel 參數：有傳入時才會顯示一顆獨立於「取消」的「放棄掠奪」按鈕，
+// 回傳一個不會跟任何裝備名稱衝突的 sentinel 值（EQUIPMENT_CHOICE_GIVE_UP），
+// 讓呼叫端可以分辨「使用者按了取消（先不決定）」跟「使用者明確選擇放棄掠奪」。
+// 其他 3 個共用此對話框的呼叫端都沒有傳 giveUpLabel，所以按鈕預設維持隱藏，不受影響。
+export const EQUIPMENT_CHOICE_GIVE_UP = '__equipment_choice_give_up__';
+
+export function showEquipmentChoiceDialog({ el, title, message, options, cancelLabel, giveUpLabel }) {
   return new Promise((resolve) => {
     const dialog = el.equipmentChoiceDialog;
     const optionsHost = el.equipmentChoiceOptions;
@@ -81,6 +90,15 @@ export function showEquipmentChoiceDialog({ el, title, message, options, cancelL
     if (el.equipmentChoiceTitle) el.equipmentChoiceTitle.textContent = title;
     if (el.equipmentChoiceMessage) el.equipmentChoiceMessage.textContent = message;
     if (el.equipmentChoiceCancelButton) el.equipmentChoiceCancelButton.textContent = cancelLabel;
+    const giveUpButton = el.equipmentChoiceGiveUpButton;
+    if (giveUpButton instanceof HTMLElement) {
+      if (giveUpLabel) {
+        giveUpButton.textContent = giveUpLabel;
+        giveUpButton.hidden = false;
+      } else {
+        giveUpButton.hidden = true;
+      }
+    }
     optionsHost.innerHTML = normalizedOptions
       .map((option) => `<button class="equipment-choice-option" type="button" data-equipment-choice="${escapeAttr(option.value)}" aria-label="${escapeAttr(option.label)}">${escapeHtml(option.label)}</button>`)
       .join('');
@@ -90,6 +108,7 @@ export function showEquipmentChoiceDialog({ el, title, message, options, cancelL
       dialog.removeEventListener('cancel', onCancel);
       dialog.removeEventListener('close', onClose);
       el.equipmentChoiceCancelButton?.removeEventListener('click', onCancelClick);
+      giveUpButton?.removeEventListener('click', onGiveUpClick);
       optionsHost.querySelectorAll('[data-equipment-choice]').forEach((button) => {
         button.removeEventListener('click', onOptionClick);
       });
@@ -106,6 +125,7 @@ export function showEquipmentChoiceDialog({ el, title, message, options, cancelL
     };
     const onClose = () => finish(dialog.returnValue || '');
     const onCancelClick = () => dialog.close('');
+    const onGiveUpClick = () => dialog.close(EQUIPMENT_CHOICE_GIVE_UP);
     const onOptionClick = (event) => {
       const target = event.currentTarget;
       if (!(target instanceof HTMLElement)) return;
@@ -115,6 +135,9 @@ export function showEquipmentChoiceDialog({ el, title, message, options, cancelL
     dialog.addEventListener('cancel', onCancel);
     dialog.addEventListener('close', onClose);
     el.equipmentChoiceCancelButton?.addEventListener('click', onCancelClick);
+    if (giveUpLabel) {
+      giveUpButton?.addEventListener('click', onGiveUpClick);
+    }
     optionsHost.querySelectorAll('[data-equipment-choice]').forEach((button) => {
       button.addEventListener('click', onOptionClick);
     });

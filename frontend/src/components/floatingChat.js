@@ -50,11 +50,18 @@ function getLocalizedCardNameFallback(cardNameEnglish) {
 // 2026-10-24 新增：回傳 chatFormatter.js 整理好的聊天／系統訊息（含按時間順序
 // 合併好、各自標好類型的 combinedLines），讓浮動聊天室可以用兩個獨立開關分別
 // 顯示／隱藏聊天或系統訊息，不用再靠 mirrorToChat 把系統訊息硬塞進聊天清單。
-function buildChatAndSystemLines(roomData, account) {
+function buildChatAndSystemLines(roomData, account, roomId) {
   return buildChatStageLines({
     messages: Array.isArray(roomData?.chat_messages) ? roomData.chat_messages : [],
     data: roomData || {},
-    state: { account: String(account || '').trim() },
+    // 2026-11-11 修正：這裡原本沒有帶 roomId，導致 chatFormatter.js 的
+    // getChatRoleHtml 在算「陣營猜測」徽號時，getCampGuessIndex 拿到的
+    // roomId 永遠是 undefined（它的防呆判斷 roomId == null 時直接回傳 0 ＝
+    // 「尚未猜測」），讓浮動聊天室（也就是玩家實際看到、唯一在房間頁顯示的
+    // 聊天室）的「(???)」永遠不會跟著陣營猜測徽號變色或變成「(---)」。
+    // 房間頁內嵌的聊天面板（chatFormatter 原本設計給 renderChatStage 用）
+    // 現在已經統一隱藏、改用這個浮動聊天室，所以這裡才是真正需要修的地方。
+    state: { account: String(account || '').trim(), roomId },
     esc,
     t,
     isReplayView: false,
@@ -320,7 +327,7 @@ export async function initFloatingChat({ state }) {
     if (!lastRoomData) return;
     const wasNearBottom = isNearBottom();
     const prevScrollTop = el.msgs.scrollTop;
-    const { combinedLines } = buildChatAndSystemLines(lastRoomData, account);
+    const { combinedLines } = buildChatAndSystemLines(lastRoomData, account, roomId);
     const lines = combinedLines
       .filter((entry) => (entry.type === 'system' ? showSystem : showChat))
       .map((entry) => entry.html);
@@ -434,6 +441,14 @@ export async function initFloatingChat({ state }) {
       el.toggleBtn.focus();
     }
   });
+
+  // 2026-11-11 新增：村民卡片上的「陣營猜測」徽章用的是純前端 localStorage，
+  // 點擊切換時故意不整個房間重繪（見 ui.js 的 advanceCampGuess），所以浮動
+  // 聊天室原本接不到這個變更，要等到整個網頁重新整理、或剛好有新訊息進來
+  // 觸發 poll() 重繪時，才會跟著顯示最新的猜測顏色。這裡訂閱 ui.js 發出的
+  // 全域事件，猜測一變更就立刻用目前已經拿到的資料重繪一次（不用多打 API，
+  // 也不用等下一輪輪詢）。
+  window.addEventListener('sh:campGuessChanged', () => renderCurrentView());
 
   // ── initialize ────────────────────────────────────────────────────────────
   renderAllMessages(initResult.data || {}, { forceScrollBottom: true });

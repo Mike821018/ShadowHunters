@@ -16,7 +16,11 @@ function colorHex(color) {
 // 其他玩家看到，所以整套狀態都只存在這台裝置的 localStorage，不是房間資料的一部分。
 // 切換順序：灰？(未知) → 藍？(可能是獵人) → 紅？(可能是暗影) → 黃？(可能是中立) →
 // 藍！(可能不是獵人) → 紅！(可能不是暗影) → 黃！(可能不是中立) → 回到灰？。
-const CAMP_GUESS_STATES = [
+// 2026-11-11 修正：匯出這份狀態表跟 getCampGuessIndex()，讓 chatFormatter.js
+// 可以直接重用同一份猜測資料，把聊天室訊息裡的「(???)」跟這裡的猜測徽章連動
+// （Mike 要求：猜測「可能是某陣營」時「(???)」要跟著變色；猜測「可能不是某
+// 陣營」時改顯示「(---)」），不用在兩個地方各自維護一份重複的狀態定義。
+export const CAMP_GUESS_STATES = [
   { symbol: '?', cls: '', labelKey: 'ui.camp_guess_unknown' },
   { symbol: '?', cls: 'hunter', labelKey: 'ui.camp_guess_maybe_hunter' },
   { symbol: '?', cls: 'shadow', labelKey: 'ui.camp_guess_maybe_shadow' },
@@ -57,7 +61,7 @@ function writeCampGuessMap(roomId, viewerAccount, map) {
   }
 }
 
-function getCampGuessIndex(roomId, viewerAccount, targetAccount) {
+export function getCampGuessIndex(roomId, viewerAccount, targetAccount) {
   if (roomId == null || !viewerAccount || !targetAccount) return 0;
   const idx = Number(readCampGuessMap(roomId, viewerAccount)[targetAccount]);
   return Number.isInteger(idx) && idx >= 0 && idx < CAMP_GUESS_STATES.length ? idx : 0;
@@ -197,7 +201,7 @@ export function createStatusHelpers({ state, el }) {
   return { setStatus, setTransportMode, pushLog };
 }
 
-export function renderPlayerCards(container, data, { esc, getInitial, statusText, state, onColorChange, onPlayerCardClick, onEquipmentChipClick, onShieldChipClick, view = 'flow', targetAccounts = [], targetPromptClass = 'attack-target-prompt' } = {}) {
+export function renderPlayerCards(container, data, { esc, getInitial, statusText, state, onColorChange, onPlayerCardClick, onEquipmentChipClick, onShieldChipClick, onCampGuessChange, view = 'flow', targetAccounts = [], targetPromptClass = 'attack-target-prompt' } = {}) {
   if (!container) return;
   // 2026-10-23 新增：Mike 回報手機上選色塊時「點開面板就自動關掉」「編輯色碼也會跳掉」——
   // 根本原因是別人的任何動作（加入房間、改顏色、狀態切換等）都會經由 SSE/輪詢觸發這支
@@ -671,6 +675,23 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
     const label = t(nextState.labelKey);
     badge.setAttribute('aria-label', label);
     badge.setAttribute('title', label);
+    // 2026-11-11 修正：Mike 回報聊天室的「(???)」跟陣營猜測徽章連動後，猜測了
+    // 卻沒看到聊天室跟著變色——這個徽章本身是故意不整個房間重繪（上面的註解），
+    // 但聊天室訊息的 HTML 是渲染當下就決定好的字串，不會因為猜測改變而自動
+    // 重新產生，所以已經顯示在畫面上的訊息會一直停在舊的樣子，直到下一次剛好
+    // 有新的 renderState() 被呼叫才會跟著更新。這裡補上一個可選的回呼，猜測
+    // 變更時主動請聊天室重新渲染一次（沿用現有資料，不會多打一次 API）。
+    if (typeof onCampGuessChange === 'function') {
+      onCampGuessChange();
+    }
+    // 2026-11-11 新增：上面的 onCampGuessChange 只接到房間頁內嵌聊天室
+    // （renderChatStage，現在已經隱藏不顯示）那條路徑，浮動聊天室
+    // （floatingChat.js）是完全獨立的模組、有自己的輪詢跟重繪，接不到這個
+    // 回呼。這裡額外發一個全域事件，讓浮動聊天室自己訂閱、收到就重繪一次，
+    // 不用整個網頁重新整理才看得到最新的猜測顏色。
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('sh:campGuessChanged'));
+    }
   };
   container.querySelectorAll('[data-player-account] [data-camp-guess-toggle]').forEach((badge) => {
     badge.addEventListener('click', (event) => {

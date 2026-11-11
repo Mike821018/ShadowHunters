@@ -27,6 +27,7 @@ export function getDomElements() {
     equipmentChoiceMessage: document.getElementById('equipmentChoiceMessage'),
     equipmentChoiceOptions: document.getElementById('equipmentChoiceOptions'),
     equipmentChoiceCancelButton: document.getElementById('equipmentChoiceCancelButton'),
+    equipmentChoiceGiveUpButton: document.getElementById('equipmentChoiceGiveUpButton'),
     gmCharacterChoiceDialog: document.getElementById('gmCharacterChoiceDialog'),
     gmCharacterChoiceTitle: document.getElementById('gmCharacterChoiceTitle'),
     gmCharacterChoiceMessage: document.getElementById('gmCharacterChoiceMessage'),

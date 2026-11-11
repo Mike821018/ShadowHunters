@@ -80,6 +80,12 @@ class Altar(area):
         self.target = 'other'
     
     def action(self, user, target, action_type=''):
+        # 2026-11-11 修正：Mike 要求跟穆迪精靈一致，沒有裝備的玩家也要能被選為
+        # 古代祭壇的目標（原本可選目標清單直接排除沒裝備的玩家，見
+        # room_manager.py）。這裡補上對應的沒效果分支：選了沒裝備的玩家就是
+        # 單純不會發生任何事，不會留下一筆沒辦法結算的待處理奪取。
+        if not getattr(target, 'equipment_list', None):
+            return 0, []
         return 2, [target, user]
 
 field_index = [None, None, Cabin(), Cabin(), Gate(), Gate(), Church(), 'Any', Cemetery(), Woods(), Altar()]

@@ -606,6 +606,7 @@ export default {
     equipment_choice: {
       title: '古代祭壇',
       message: '請選擇要從 {name} 奪取的裝備。',
+      give_up: '放棄掠奪',
     },
     gm_character_choice: {
       title: '更改玩家角色',
@@ -945,6 +946,7 @@ export default {
     next_step_ok: 'next_step 成功',
     card_effect_ok: 'card_effect 成功',
     loot_ok: 'loot_from_kill 成功',
+    loot_give_up: '已放棄掠奪',
     loot_take_all_confirm: '此效果可一次奪取全部裝備，是否全拿？',
     steal_ok: 'steal_equipment 成功',
     color_changed: '已更換顏色',

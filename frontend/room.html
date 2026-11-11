@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>暗影獵人｜村莊</title>
-    <link rel="stylesheet" href="./src/theme.css?v=20261013-issue126-stageglowfix1" />
+    <link rel="stylesheet" href="./src/theme.css" />
   </head>
   <body data-page="room" class="room-page">
     <div id="header">
@@ -239,6 +239,7 @@
                         <p id="equipmentChoiceMessage" class="area-choice-message">請選擇要奪取的裝備。</p>
                         <div id="equipmentChoiceOptions" class="equipment-choice-options"></div>
                         <div class="area-choice-actions equipment-choice-actions">
+                          <button id="equipmentChoiceGiveUpButton" class="btn area-choice-button danger" type="button" hidden>放棄掠奪</button>
                           <button id="equipmentChoiceCancelButton" class="btn area-choice-button neutral" type="button" autofocus>取消</button>
                         </div>
                       </form>
@@ -368,6 +369,6 @@
     </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./src/app.js?v=20261003-issue70-mutualexclusion1"></script>
+    <script type="module" src="./src/app.js"></script>
   </body>
 </html>

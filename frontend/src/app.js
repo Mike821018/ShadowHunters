@@ -105,6 +105,10 @@ const renderState = (data) => renderRoomState({
       } catch {
       }
     },
+    // 2026-11-11 新增：陣營猜測徽章改成不整個房間重繪，但聊天室「(???)」要跟
+    // 猜測連動，所以猜測變更時要主動重新渲染一次聊天室，才不會卡在舊的顯示。
+    // 沿用剛剛那次 renderPlayerCards() 收到的 roomData，不用再打一次 API。
+    onCampGuessChange: () => renderState(roomData),
     ...options,
   }),
   statusText: getStatusTextMap(),

@@ -1101,7 +1101,10 @@ class RoomManager:
                     'options': list(getattr(current_area, 'options', []) or []),
                 }
             elif getattr(current_area, 'is_action', False) and area_name == 'Erstwhile Altar':
-                target_players = [player for player in game_room.players.values() if bool(getattr(player, 'is_alive', False)) and bool(getattr(player, 'equipment_list', [])) and not bool(player.profile.get('is_gm', False))]
+                # 2026-11-11 修正：Mike 要求跟穆迪精靈一致，拿掉「沒裝備的玩家不能
+                # 被選為古代祭壇目標」這個限制——選了沒裝備的玩家不會發生任何事
+                # （見 area_module.py 的 Altar.action()），純粹是可以選而已。
+                target_players = [player for player in game_room.players.values() if bool(getattr(player, 'is_alive', False)) and not bool(player.profile.get('is_gm', False))]
                 if area_target in ('other', 'others'):
                     target_players = [player for player in target_players if player != current_player]
                 area_prompt = {
@@ -1126,15 +1129,14 @@ class RoomManager:
                 target_players = [player for player in game_room.players.values() if bool(getattr(player, 'is_alive', False)) and not bool(player.profile.get('is_gm', False))]
                 if card_target == 'other':
                     target_players = [player for player in target_players if player != current_player]
-                if raw_active_card_name == 'Moody Goblin':
-                    target_players = [player for player in target_players if bool(getattr(player, 'equipment_list', []))]
+                # 2026-11-11 修正：Mike 要求偷裝備類卡片（這裡的穆迪精靈）也要能對
+                # 沒有裝備的玩家使用——原本這裡會把沒裝備的玩家整個排除在可選目標
+                # 之外，連選都選不到；但卡片本身對沒裝備的目標本來就沒有效果（沒
+                # 另外加後備傷害），所以拿掉這個排除限制，單純讓玩家可以選、選了
+                # 就是浪費這張卡，跟其他普通目標卡片一致，不用特殊處理。
                 target_accounts = [player.account for player in target_players]
             # Banana Peel without equipment applies to self; no target selection required
             if str(getattr(active_card, 'name', '') or '') == 'Banana Peel' and not getattr(current_player, 'equipment_list', []):
-                card_target = 'self'
-                target_accounts = []
-            # Moody Goblin should auto-resolve when nobody has equipment to steal.
-            if raw_active_card_name == 'Moody Goblin' and not target_accounts:
                 card_target = 'self'
                 target_accounts = []
             card_prompt = {

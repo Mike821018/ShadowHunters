@@ -618,6 +618,7 @@ export default {
     equipment_choice: {
       title: '古の祭壇',
       message: '{name} から奪う装備を選んでください。',
+      give_up: '掠奪を放棄',
     },
     gm_character_choice: {
       title: 'プレイヤーの役職を変更',
@@ -946,6 +947,7 @@ export default {
     next_step_ok: 'next_step OK',
     card_effect_ok: 'card_effect OK',
     loot_ok: 'loot_from_kill OK',
+    loot_give_up: '掠奪を放棄しました',
     loot_take_all_confirm: 'この効果では装備を一括で奪えます。すべて奪いますか？',
     steal_ok: 'steal_equipment OK',
     color_changed: '色を変更しました',

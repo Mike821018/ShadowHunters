@@ -1,4 +1,5 @@
 import json
+import re
 from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -7,6 +8,30 @@ from typing import Tuple, cast
 from urllib.parse import parse_qs, urlparse
 
 from backend.room_manager import RoomManager
+
+# 2026-11-11 新增：網站前面掛了 CDN（見下面 _handle_room_events 裡特地為 SSE
+# 加上的 Cloudflare 專用 no-store 標頭），一般靜態檔案（theme.css、app.js）
+# 原本是靠 .html 裡手動寫的 ?v=... 版本號破快取，但常常忘記更新，導致 CSS/JS
+# 改了卻被 CDN 或瀏覽器快取卡住、看不到效果。這裡改成每次讀取 .html 頁面時，
+# 自動依照它引用的 ./src/*.css、./src/*.js 檔案「目前」的修改時間動態算出
+# 版本號蓋掉，不用再手動管理（也不在乎 .html 原始碼裡有沒有寫、寫的是什麼）。
+_ASSET_VERSION_PATTERN = re.compile(r'((?:href|src)=")(\./src/[^"?]+\.(?:css|js))(?:\?[^"]*)?(")')
+
+
+def _asset_version_token(abs_path: Path) -> str:
+    try:
+        return str(int(abs_path.stat().st_mtime))
+    except OSError:
+        return '0'
+
+
+def _inject_asset_versions(html_text: str, frontend_dir: Path) -> str:
+    def _replace(match: 're.Match') -> str:
+        prefix, rel_href, suffix = match.group(1), match.group(2), match.group(3)
+        abs_path = frontend_dir / rel_href[len('./'):]
+        version = _asset_version_token(abs_path)
+        return f'{prefix}{rel_href}?v={version}{suffix}'
+    return _ASSET_VERSION_PATTERN.sub(_replace, html_text)
 
 
 class ShadowHuntersHTTPServer(ThreadingHTTPServer):
@@ -58,7 +83,27 @@ class ShadowHuntersRequestHandler(SimpleHTTPRequestHandler):
             return self._handle_game_record_by_room(parsed.query)
         if parsed.path == '/':
             self.path = '/index.html'
+            parsed = urlparse(self.path)
+        if parsed.path.endswith('.html'):
+            return self._serve_html_with_injected_versions(parsed.path)
         return super().do_GET()
+
+    def _serve_html_with_injected_versions(self, url_path: str):
+        abs_html_path = Path(self.translate_path(url_path))
+        try:
+            raw = abs_html_path.read_bytes()
+        except OSError:
+            self.send_error(HTTPStatus.NOT_FOUND, 'File not found')
+            return
+        try:
+            body = _inject_asset_versions(raw.decode('utf-8'), Path(self.directory)).encode('utf-8')
+        except UnicodeDecodeError:
+            body = raw
+        self.send_response(HTTPStatus.OK)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _server(self) -> ShadowHuntersHTTPServer:
         return cast(ShadowHuntersHTTPServer, self.server)

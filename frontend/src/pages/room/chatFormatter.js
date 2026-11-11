@@ -2,6 +2,7 @@ import { renderChatTextWithEmojis } from './chatEmoji.js';
 import { PLAYER_COLOR_HEX, DEPARTED_PLAYER_COLOR_HEX, resolvePlayerColorHex } from '../../constants.js';
 import { getCharacterInfo } from '../../characterInfo.js';
 import { getRenderSyncedAtMs } from './renderClock.js';
+import { getCampGuessIndex, CAMP_GUESS_STATES } from '../../ui.js';
 
 export function buildChatStageLines({
   messages,
@@ -773,6 +774,21 @@ export function buildChatStageLines({
     const hasKnownRole = Boolean(resolvedCharacter);
     const roleNameEn = hasKnownRole ? resolvedCharacter : (isSelfPlayer ? String(player.self_character || '').trim() : '');
     if (!roleNameEn) {
+      // 2026-11-11 新增：Mike 要求聊天室的「(???)」跟玩家自己在村民卡片上設定的
+      // 「陣營猜測」徽號連動（這個猜測純粹是個人前端 localStorage 標記，只有
+      // 自己看得到，不會影響其他玩家畫面）。猜測「可能是某陣營」（彩色問號）
+      // 時，「(???)」文字不變，但顏色改成對應陣營；猜測「可能不是某陣營」
+      // （打叉）時，改顯示「(---)」。
+      // 2026-11-11 修正：原本「排除」狀態故意不上色，以為排除不代表具體陣營——
+      // 這個理解是錯的，「排除」本來就是針對某一個具體陣營（只是正負面相反），
+      // 村民卡片上的排除徽章（✕）也是照樣用對應陣營顏色、只是改虛線空心樣式，
+      // 這裡改成跟卡片徽章一致，排除狀態的文字也照樣上對應陣營的顏色。
+      const guessState = CAMP_GUESS_STATES[getCampGuessIndex(state?.roomId, viewerAccount, acc)];
+      if (guessState?.cls) {
+        const campCls = guessState.cls.replace('is-exclude', '').trim();
+        const label = guessState.cls.includes('is-exclude') ? '(---)' : '(???)';
+        return `<span class="chat-role chat-role-${esc(campCls)}">${label}</span>`;
+      }
       return '<span class="chat-role">(???)</span>';
     }
     const roleCamp = hasKnownRole ? player.character_camp : (isSelfPlayer ? player.self_character_camp : '');
