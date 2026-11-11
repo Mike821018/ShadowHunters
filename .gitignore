@@ -43,4 +43,19 @@ backend/data/*.db.bak*
 backend/data/*.db-journal
 frontend/backups/
 *.bak
+*.bak.*
 info.py
+
+# Claude session artifacts (not part of game source)
+.claude/
+Claude outputs/
+FEEDBACK_COWORK_DISPATCH.md
+
+# Local debug scripts
+_debug_start_server.bat
+
+# Runtime-generated snapshots
+backend/data/live_room_snapshots.json
+
+# Stray OS shortcuts
+*.lnk
