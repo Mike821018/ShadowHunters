@@ -180,6 +180,10 @@ a:hover {
   gap: 4px;
   color: #555;
   white-space: nowrap;
+  /* 2026-11-11 修正：新增第三個「快速頭像先彈出完整卡片」選項後，
+     桌面視窗較窄時整排會被裁切看不到文字（原本只有 <=1024px 的媒體查詢
+     才允許換行）。改成一律允許換行，單一選項內部文字仍不換行。 */
+  flex-wrap: wrap;
 }
 
 .tab {
@@ -1010,14 +1014,12 @@ legend {
    共用基礎外觀（定位、邊框、陰影），這裡只加寬一點點，因為玩家卡片內容（裝備、角色、
    TRIP 等）比場地說明文字多，320px 的場地面板寬度放一張完整玩家卡片會太擠。
    2026-11-10 修正：原本另外限制了 max-height: min(70vh, 520px) 想避免卡片在小螢幕
-   超出畫面，結果在不少螢幕高度下反而比單張玩家卡片本身還矮，逼著內容捲動——而角色
-   說明小視窗（.player-role-popover）是用滑過/點擊展開「蓋」在卡片上面的純 CSS 效果
-   （見 .player-role-info:hover/:focus-within .player-role-popover），一旦外層有
-   overflow-y: auto，這個蓋出來的小視窗超出目前捲動範圍的部分就會被捲動容器裁掉、
-   玩家點了角色卻看起來完全沒反應。改成只用視窗高度當安全上限（不再額外限制
-   70vh/520px 這麼緊），一般情況下一張玩家卡片的內容早就比這個寬鬆很多，不會真的
-   觸發捲動，角色說明視窗就能正常完整蓋出來；真的極端矮的視窗下還是會捲動，當作
-   最後防線，不會讓面板整個跑出畫面外。 */
+   超出畫面，結果在不少螢幕高度下反而比單張玩家卡片本身還矮，逼著內容捲動，一般
+   情況下一張玩家卡片的內容早就比這個寬鬆很多，不會真的觸發捲動；真的極端矮的
+   視窗下還是會捲動，當作最後防線，不會讓面板整個跑出畫面外。
+   2026-11-12 補充：角色說明已經改成點擊彈出跟裝備卡共用的獨立浮動視窗
+   （#activeCardDialog，position: fixed，見 cardInfoDialog.js），不再是蓋在卡片
+   上面的 CSS 小視窗，所以也不會有被這裡的 overflow-y: auto 裁切的問題了。 */
 .stage-occupant-card-popup {
   width: min(320px, calc(100vw - 24px));
   max-height: calc(100vh - 24px);
@@ -2092,6 +2094,10 @@ legend {
   color: #3e5668;
   font-size: 13px;
   line-height: 1.55;
+  /* 2026-11-12 新增：角色說明彈窗（openRoleInfoDialog）把勝利條件/能力說明用
+     \n\n 隔開塞進同一個 textContent 裡，預設 white-space 會把換行吃掉、擠成
+     一整段，pre-line 讓換行符號繼續有效、但還是會正常自動換行，不會破版。 */
+  white-space: pre-line;
 }
 
 .active-card-dialog[open] {
@@ -2119,7 +2125,10 @@ legend {
   .stage-next-step-button[data-phase='skip-attack'],
   .stage-next-step-button[data-phase='end-turn'],
   .stage-card-field.move-target-prompt,
-  .player-card.area-target-prompt {
+  .player-card.area-target-prompt,
+  .mobile-quick-icon.area-target-prompt .mobile-quick-avatar,
+  .player-card.ability-turn-start-flash,
+  .mobile-quick-icon.ability-turn-start-flash .mobile-quick-avatar {
     animation: none;
   }
 }
@@ -2419,8 +2428,83 @@ legend {
   box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.4);
 }
 
-.player-card.ready {
-  background: #f3e8ff;
+/* 2026-11-11 修正（Mike 回報手機版快速頭像整個正方形按鈕一起閃爍不好看）：
+   .mobile-quick-icon 本身是一顆連頭貼帶名字的方形按鈕，跟 .player-card（本來就是
+   一整張卡片）不一樣，閃爍效果整顆按鈕一起動看起來像方形色塊在閃。改成只套在裡面
+   圓形的 .mobile-quick-avatar 上，按鈕本身只保留 cursor，視覺上變成頭像圓圈在發光
+   閃爍，名字文字不會跟著閃。pulseSync.js 的 syncPulsePromptsIn() 也要跟著改，
+   把 animation-delay 同步對齊的目標從按鈕本身改成這裡的頭像圓圈，不然相位同步會
+   套用到沒有 animation 的按鈕上、完全沒作用。 */
+.mobile-quick-icon.attack-target-prompt {
+  cursor: pointer;
+}
+
+.mobile-quick-icon.attack-target-prompt .mobile-quick-avatar {
+  animation: attack-target-pulse var(--stage-prompt-blink-duration) ease-in-out infinite;
+}
+
+.mobile-quick-icon.area-target-prompt {
+  cursor: pointer;
+}
+
+.mobile-quick-icon.area-target-prompt .mobile-quick-avatar {
+  animation: area-target-pulse var(--stage-prompt-blink-duration) ease-in-out infinite;
+}
+
+.mobile-quick-icon.prompt-target-static {
+  cursor: default;
+}
+
+.mobile-quick-icon.prompt-target-static .mobile-quick-avatar {
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.42);
+}
+
+.mobile-quick-icon.gm-edit-target-prompt {
+  cursor: pointer;
+}
+
+/* 2026-11-11 新增、2026-11-12 修正：Mike 要求「個人能力可以發動」時自己的玩家卡片
+   要有閃爍提示，不能只靠原本安靜的 player-ability-chip（⚡）小徽章。顏色選用琥珀/
+   金色（跟 ⚡ 圖示的色調呼應），跟攻擊目標（紅）、場地目標（藍）、GM 編輯目標（紫）
+   區分開，避免玩家搞混「這是要我選目標」還是「這是我自己可以發動能力」。
+   原本 timing 1~7（特定階段才能發動）另外用一個 ability-ready-prompt class 做
+   「只要還在那個階段就持續閃爍」，但玩家反映太刺眼，而且角色死亡後如果該階段能力
+   一直沒被標記成已使用，就會卡成永遠持續閃、玩家自己也關不掉。現已移除這個 class，
+   跟 timing 8（不限特定階段、整個自己回合都能發動，例如 David）統一改用下面這個
+   ability-turn-start-flash：只在「剛變成可以發動」那一刻閃幾下就停，用有限次數的
+   keyframes（不是 infinite），播完動畫會自然停在最後一格、不需要額外的 JS 去移除
+   class（見 ui.js 的 computeAbilityTurnStartFlash()，用時間戳記控制這個 class 要
+   套用多久，不是用動畫播放次數控制，所以不會因為某個狀態卡住就一直閃）。
+   timing 11（standby，目前只有艾莉）不套用這個 class，維持原本安靜的徽章。 */
+.player-card.ability-turn-start-flash {
+  cursor: pointer;
+  animation: ability-turn-start-flash 1.5s ease-in-out;
+}
+
+.mobile-quick-icon.ability-turn-start-flash {
+  cursor: pointer;
+}
+
+.mobile-quick-icon.ability-turn-start-flash .mobile-quick-avatar {
+  animation: ability-turn-start-flash 1.5s ease-in-out;
+}
+
+@keyframes ability-turn-start-flash {
+  0%,
+  20%,
+  40%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.3);
+    filter: brightness(1);
+  }
+  10%,
+  30% {
+    box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.65), 0 8px 16px rgba(180, 83, 9, 0.26);
+    filter: brightness(1.1);
+  }
+}
+
+.player-card.ready {  background: #f3e8ff;
   border-color: #c084fc;
 }
 
@@ -2884,6 +2968,16 @@ legend {
   color: inherit;
   cursor: pointer;
   text-align: left;
+  /* 2026-11-12 修正：原本沒有 min-width/max-width，inline-flex 預設照內容（角色
+     名稱全長＋揭露狀態文字）撐開寬度，不會真的被外層卡片擠壓縮小；窄版面（例如
+     彈出的單張玩家卡片）裡，英文版「(Revealed)」這類較長字樣就會整個超出卡片
+     邊框，而不是被下面 .player-role-name/.player-role-state 的 ellipsis 截斷——
+     因為那個截斷本來就只在「容器本身有被擠壓」時才會生效。補上 min-width: 0
+     讓這顆按鈕真的能被外層（.player-role-info 的 min-width: 0 → grid/flex 欄位）
+     擠壓縮小，max-width: 100% 確保不會比卡片本身還寬，超框問題在任何卡片寬度下
+     都不會再發生，不只是壓窄這個單一情境。 */
+  min-width: 0;
+  max-width: 100%;
 }
 
 .player-role-name {
@@ -2897,7 +2991,16 @@ legend {
 }
 
 .player-role-state {
-  flex: 0 0 auto;
+  /* 2026-11-12 修正：原本 flex: 0 0 auto 完全不給縮，又沒有 overflow/ellipsis，
+     跟旁邊 .player-role-name 不一樣（.player-role-name 本來就有 ellipsis）——
+     窄版面下這段文字（英文版「(Revealed)」/「(Unrevealed)」較長）會直接超出卡片
+     邊框而不是被截斷。改成 flex: 0 1 auto + min-width: 0，優先維持原本大小，
+     但空間真的不夠時可以縮小並用 ellipsis 省略，不會再整個溢出。 */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
   color: #6c7884;
   font-size: 10px;
@@ -2945,44 +3048,11 @@ legend {
   text-overflow: ellipsis;
 }
 
-.player-role-popover {
-  position: absolute;
-  left: 0;
-  top: calc(100% + 6px);
-  width: min(340px, 72vw);
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid #d4e2ee;
-  background: #ffffff;
-  box-shadow: 0 10px 28px rgba(20, 35, 52, 0.16);
-  font-size: 12px;
-  line-height: 1.45;
-  color: #2f4558;
-  display: none;
-  z-index: 20;
-}
-
-.player-role-popover > div + div {
-  margin-top: 4px;
-}
-
-.player-role-popover .damage-meter-badge {
-  min-width: 20px;
-  height: 20px;
-  font-size: 12px;
-  vertical-align: middle;
-  margin-right: 4px;
-}
-
-.player-role-info:hover .player-role-popover,
-.player-role-info:focus-within .player-role-popover {
-  display: block;
-}
-
-.player-card:has(.player-role-info:hover),
-.player-card:has(.player-role-info:focus-within) {
-  z-index: 40;
-}
+/* 2026-11-12 移除：.player-role-popover 一整組（滑過/focus 展開的 CSS 小視窗）
+   已經改成點擊 .player-role-trigger 後彈出跟裝備卡共用的 #activeCardDialog
+   浮動視窗（見 ui.js 的 onRoleInfoClick 處理、cardInfoDialog.js 的
+   openRoleInfoDialog），不再需要這裡的 hover/focus-within CSS 開關跟專屬的
+   z-index 墊高規則。 */
 
 .equip-row {
   margin-top: 8px;
@@ -4076,9 +4146,6 @@ legend {
     height: 48px;
   }
 
-  .player-role-popover {
-    width: min(360px, calc(100vw - 28px));
-  }
 
   .equip-chip {
     font-size: 12px;
@@ -5518,12 +5585,17 @@ legend {
     color: #dce8f0;
   }
 
-  /* 下一步／結束回合按鈕：獨立整列、加大觸控面積 */
+  /* 下一步／結束回合按鈕：獨立整列、加大觸控面積。
+     2026-11-12 修正：先前「骰子／發動／牌庫」收合工具箱的功能本身（體感不好操作）
+     已經整個撤回，但 Mike 要求單獨保留這顆按鈕跟骰子互換位置的部分——按鈕移到
+     地圖正下方（原本骰子/中央badges的位置），比起留在骰子、牌庫都滑過去之後的
+     最下面更好按。這裡只動 order（從 12 改回 7，排到 stage-center-badges 的
+     order:10 之前），不牽涉工具箱那套收合/自動展開的機制。 */
   [data-page="room"] .table-stage .stage-next-step-button,
   [data-page="replay-room"] .table-stage .stage-next-step-button,
   .room-page .table-stage .stage-next-step-button,
   .table-stage .stage-next-step-button {
-    order: 12;
+    order: 7;
     position: static;
     top: auto;
     left: auto;
@@ -5566,6 +5638,138 @@ legend {
   .table-stage .stage-card-10 { order: 25; }
   .table-stage .stage-card-11 { order: 26; }
   .table-stage .stage-card-12 { order: 27; }
+}
+
+/* 2026-11-11 新增：遊戲桌面上方的簡化玩家快速選取列（頭貼 + 名稱前幾字 + 右下角徽章），
+   跟村民列表的完整卡片是兩份獨立畫面、互相不取代（見 ui.js 的 renderMobilePlayerQuickBar）。
+   跟「遊戲桌面」那個 fieldset 同一層級、獨立一排（見 room.html），不巢狀放進 .table-stage。
+   2026-11-11 修正：Mike 要求電腦版也加上這排，原本只在手機斷點內顯示、桌面/平板版整個
+   display:none，改成不分螢幕寬度一律顯示（橫向可滑動的一排），跟村民列表並存。 */
+.mobile-player-quick-bar {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 4px 2px 10px;
+  margin-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.mobile-quick-icon {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 52px;
+  padding: 4px 2px;
+  background: none;
+  border: none;
+  cursor: default;
+  font: inherit;
+}
+
+.mobile-quick-icon.dead {
+  opacity: 0.55;
+  filter: grayscale(0.4);
+}
+
+.mobile-quick-icon.current-turn .mobile-quick-avatar {
+  box-shadow: 0 0 0 2px #22a06b;
+}
+
+.mobile-quick-avatar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #eef1f3;
+  border: 1px solid #d2dadf;
+  overflow: visible;
+}
+
+.mobile-quick-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.mobile-quick-avatar-initial {
+  font-size: 16px;
+  font-weight: 700;
+  color: #456;
+}
+
+.mobile-quick-badge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 3px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  border: 1px solid #d2dadf;
+  color: #7a8793;
+  background: #eef1f3;
+}
+
+.mobile-quick-badge.shadow {
+  color: #a61f34;
+  background: #fdecef;
+  border-color: #f1b9c3;
+}
+
+.mobile-quick-badge.hunter {
+  color: #0f4f93;
+  background: #e8f2ff;
+  border-color: #b7d3f5;
+}
+
+.mobile-quick-badge.civilian {
+  color: #8a6800;
+  background: #fff7dd;
+  border-color: #efd78c;
+}
+
+.mobile-quick-badge.is-exclude {
+  background: transparent;
+  border-style: dashed;
+}
+
+/* 2026-11-11 新增：Mike 要求快速頭像左下角加一塊 token 顏色色塊，跟右下角的
+   角色/陣營猜測徽章（.mobile-quick-badge）左右對稱，不用點開就能看到顏色標記，
+   跟完整玩家卡片上的色塊（.color-chip-static）呼應同一個用途。 */
+.mobile-quick-color-chip {
+  position: absolute;
+  left: -3px;
+  bottom: -3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.mobile-quick-name {
+  max-width: 52px;
+  font-size: 11px;
+  line-height: 1.1;
+  color: #456;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 手機版點擊輸入框畫面自動放大修正：iOS Safari 等瀏覽器在 focus 到 font-size 小於 16px 的

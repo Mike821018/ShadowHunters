@@ -36,50 +36,12 @@ import { registerFloatingPanel, notifyFloatingPanelOpened, notifyFloatingPanelCl
 
 const MOBILE_QUERY = '(max-width: 640px)';
 
-// ─── player-role popover escape hatch ───────────────────────────────────────────────
-// The "村民列表" fieldset gets moved into a floating panel body which must
-// scroll (`.sh-ffs-body { overflow-y: auto }`) inside a clipped panel shell
-// (`.sh-ffs-panel { overflow: hidden }`). The existing `.player-role-popover`
-// (shown on focus/hover of a `.player-role-trigger` button) is positioned
-// `absolute` relative to the player card, so once it's nested inside that
-// scrolling/clipped panel it can get cut off instead of showing its full
-// description text. Pinning it to `position: fixed` with a viewport-relative
-// position (computed on focus) lets it escape that clipping entirely while
-// keeping the exact same visual spot, so the full text is always visible.
-function positionRolePopover(trigger) {
-  const info = trigger.closest('.player-role-info');
-  const popover = info ? info.querySelector('.player-role-popover') : null;
-  if (!popover) return;
-
-  const triggerRect = trigger.getBoundingClientRect();
-  const popRect = popover.getBoundingClientRect();
-  const margin = 8;
-
-  const maxLeft = window.innerWidth - popRect.width - margin;
-  const left = Math.max(margin, Math.min(triggerRect.left, maxLeft));
-
-  let top = triggerRect.bottom + 6;
-  const maxTop = window.innerHeight - popRect.height - margin;
-  if (top > maxTop) {
-    // Not enough room below — flip to show above the trigger instead.
-    top = Math.max(margin, triggerRect.top - popRect.height - 6);
-  }
-
-  popover.style.position = 'fixed';
-  popover.style.left = `${left}px`;
-  popover.style.top = `${top}px`;
-  popover.style.zIndex = '210';
-}
-
-function resetRolePopover(trigger) {
-  const info = trigger.closest('.player-role-info');
-  const popover = info ? info.querySelector('.player-role-popover') : null;
-  if (!popover) return;
-  popover.style.position = '';
-  popover.style.left = '';
-  popover.style.top = '';
-  popover.style.zIndex = '';
-}
+// 2026-11-12 移除：這裡原本有一組「player-role popover escape hatch」，讓
+// .player-role-popover（滑過/focus 展開的角色說明小視窗）在被收進這個會裁切
+// 內容的浮動面板時，改用 position: fixed 逃出裁切範圍。角色說明現在已經改成
+// 點擊彈出跟裝備卡共用的 #activeCardDialog 獨立浮動視窗（position: fixed，
+// 本來就不受任何父層 overflow 影響，見 ui.js／cardInfoDialog.js），.player-role-popover
+// 這個元素已經不存在，這組escape hatch 跟著一起移除。
 
 function createFloatingFieldsetPanel({ fieldsetSelector, wrapClass, lsKey, icon, label }) {
   const fieldset = document.querySelector(fieldsetSelector);
@@ -109,16 +71,6 @@ function createFloatingFieldsetPanel({ fieldsetSelector, wrapClass, lsKey, icon,
   // Move (not clone) the existing fieldset into the floating panel body.
   body.appendChild(fieldset);
 
-  // Keep any `.player-role-popover` inside this panel fully visible instead
-  // of being clipped by the panel's own scroll/overflow boundaries.
-  body.addEventListener('focusin', (event) => {
-    const trigger = event.target.closest ? event.target.closest('.player-role-trigger') : null;
-    if (trigger) positionRolePopover(trigger);
-  });
-  body.addEventListener('focusout', (event) => {
-    const trigger = event.target.closest ? event.target.closest('.player-role-trigger') : null;
-    if (trigger) resetRolePopover(trigger);
-  });
 
   let collapsed = localStorage.getItem(lsKey) !== 'false'; // default: collapsed
 

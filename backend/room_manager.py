@@ -1255,6 +1255,12 @@ class RoomManager:
             'area_prompt': area_prompt,
             'card_prompt': card_prompt,
             'green_confirm_prompt': green_confirm_prompt,
+            # 2026-11-12 新增：Mike 要求初始綠卡流程開始時，要給房間裡每個人（不只是
+            # 輪到的那個人）都跳一個說明用的通知彈窗。前端只看得到 enable_initial_green_card
+            # 這個房間設定本身（是否啟用），看不到「現在是不是正在跑這個流程」這個
+            # 動態狀態，所以把 game_room._initial_green_card_executed 這個內部旗標也
+            # 原樣送出去，前端比對這個欄位從 false 變 true 的那一刻跳一次彈窗即可。
+            'initial_green_card_active': bool(getattr(game_room, '_initial_green_card_executed', False)),
             'attack_prompt': attack_prompt,
             'active_card_display': active_card_display,
             'active_card': {

@@ -279,5 +279,32 @@ export async function handlePlayerCardClick(targetAccount, ctx) {
       };
     }
     dialog.showModal();
+    return;
   }
+
+  // 2026-11-12 新增：純偵錯用的 log，只會出現在瀏覽器 console，玩家不會看到。
+  // 上面這一長串判斷式只要有命中任何一種操作都會在各自的分支裡 return，執行
+  // 到這裡代表這次點擊完全沒有命中任何東西（Mike 回報「有時候點玩家卡片沒
+  // 反應，多點幾次就會成功」，懷疑是跟畫面刷新/推播卡在某個中間狀態的時間差
+  // 有關）。把當下所有相關 prompt／目標清單的狀態印出來，下次重現時直接把
+  // console 內容貼出來，就能比對出到底是哪個 prompt 在那個瞬間是不是 active、
+  // 目標清單裡有沒有包含這次點的帳號。
+  console.debug('[player-card-click] 點擊沒有命中任何操作', {
+    targetAccount,
+    account: state.account,
+    roomStatus,
+    isGameOngoing,
+    isGameFinished,
+    isSelfCard,
+    isGmViewer,
+    awaitingGmRelease,
+    areaPrompt,
+    cardPrompt,
+    attackPrompt,
+    counterAttackPrompt,
+    greenConfirmActive: greenConfirm.active,
+    pendingSteal,
+    pendingKillLoot,
+    pendingAbilityActivation,
+  });
 }

@@ -12,6 +12,7 @@ export function getDomElements() {
     playersTbody: document.getElementById('playersTbody'),
     roomCards: document.getElementById('roomCards'),
     battleCards: document.getElementById('battleCards'),
+    mobilePlayerQuickBar: document.getElementById('mobilePlayerQuickBar'),
     // 2026-11-10 新增：點擊場地卡上的玩家 token 彈出的完整卡片面板內容容器。
     stageOccupantCardPopupBody: document.getElementById('stageOccupantCardPopupBody'),
     btnRoomBackLobby: document.getElementById('btnRoomBackLobby'),

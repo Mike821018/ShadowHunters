@@ -21,19 +21,12 @@
 // 房間狀態更新幾次，同一段連續的閃爍只會對齊一次虛擬時鐘，播放中途不會再被打斷
 // 重新定位，從同一個 class／屬性關閉後再重新打開（clearPulseAnimationDelay 會
 // 清空），才會重新對齊一次新的起始相位。
-const PULSE_SYNC_PERIOD_MS = 650; // 必須跟 theme.css 裡這些動畫共用的 0.65s 週期一致
-
-function syncPulseAnimationDelay(el) {
-  if (!el || typeof el.style === 'undefined') return;
-  if (el.style.animationDelay) return; // 已經對齊過、動畫正在播放中，不要再重新設定
-  const offsetMs = Date.now() % PULSE_SYNC_PERIOD_MS;
-  el.style.animationDelay = `-${offsetMs}ms`;
-}
-
-function clearPulseAnimationDelay(el) {
-  if (!el || typeof el.style === 'undefined') return;
-  el.style.animationDelay = '';
-}
+//
+// 2026-11-11 搬出來共用：村民列表卡片／手機版快速選取玩家列的攻擊/場地目標閃爍
+// 提示完全沒套用這套對齊機制，造成跟這裡的骰子/下一步按鈕閃爍不同步，所以把
+// PULSE_SYNC_PERIOD_MS／syncPulseAnimationDelay／clearPulseAnimationDelay 搬到
+// pulseSync.js 共用（見該檔案開頭的說明），這裡改成直接 import。
+import { syncPulseAnimationDelay, clearPulseAnimationDelay } from '../../pulseSync.js';
 
 export function createStageNextStepStateHandlers({
   t,

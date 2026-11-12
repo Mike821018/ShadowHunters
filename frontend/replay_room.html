@@ -20,7 +20,10 @@
           </div>
         </div>
         <div id="menu" class="room-menu-bar">
-          <button id="btnRoomBackLobby" class="btn room-back-lobby-btn" type="button" data-i18n="common.nav.back_lobby">返回大廳</button>
+          <!-- 2026-11-11 修正：Mike 要求這類導覽按鈕支援中鍵開新分頁、右鍵開瀏覽器選單，
+               原本的 <button> 完全沒有這些原生行為，改成真正的 <a href> 連結（JS 綁定見
+               roomControls.js，只在純左鍵點擊時才攔截改走原本的 JS 流程）。 -->
+          <a id="btnRoomBackLobby" class="btn room-back-lobby-btn" href="./lobby.html" data-i18n="common.nav.back_lobby">返回大廳</a>
           <div class="auto-refresh-controls" aria-live="polite"></div>
         </div>
       </div>
@@ -61,7 +64,7 @@
 
           <div class="room-top-row room-layout-stage-row">
             <fieldset class="room-layout-game-fieldset">
-              <legend><strong data-i18n="room.stage.table">遊戲桌面</strong></legend>
+              <!-- 2026-11-12 移除：跟 room.html 一致，拿掉「遊戲桌面」標題。 -->
               <div class="card-body">
                 <div id="gameStage" class="room-stage-surface room-game-surface" aria-live="polite">
                   <div class="table-stage" aria-label="遊戲桌面卡片佈局">

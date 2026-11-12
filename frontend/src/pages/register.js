@@ -956,8 +956,16 @@ export async function initRegisterPage({
   const nicknameMaxDisplayWidth = 20;
 
   const btnBackToRoom = document.getElementById('btnBackToRoom');
-  if (btnBackToRoom instanceof HTMLButtonElement && btnBackToRoom.dataset.bound !== 'true') {
-    btnBackToRoom.addEventListener('click', () => {
+  if (btnBackToRoom instanceof HTMLAnchorElement && btnBackToRoom.dataset.bound !== 'true') {
+    // 2026-11-11 修正：原本是 <button>，改成 <a href> 以支援中鍵開新分頁、右鍵開瀏覽器選單。
+    // href 要在綁定當下依據 state.roomId 算出來（跟 goToRoomPage/goToLobbyPage 的判斷邏輯一致），
+    // 這樣原生的中鍵/右鍵行為才會導向正確的目的地；純左鍵點擊才攔截改走原本的 JS 流程
+    // （因為 JS 流程還需要 syncAccountForRoom/persistSession 等副作用）。
+    const backToRoomId = Number(state.roomId || 0);
+    btnBackToRoom.href = backToRoomId > 0 ? `./room.html?roomId=${encodeURIComponent(backToRoomId)}` : './lobby.html';
+    btnBackToRoom.addEventListener('click', (event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
       const roomId = Number(state.roomId || 0);
       if (roomId > 0) {
         goToRoomPage(roomId);

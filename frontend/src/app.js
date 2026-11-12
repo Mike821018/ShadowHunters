@@ -18,7 +18,7 @@ import { bindSoundToggle } from './soundEffects.js';
 import { persistSession, restoreSession } from './session.js';
 import { createAppState } from './state.js';
 import { createDispatch } from './transport.js';
-import { createStatusHelpers, createToast, loadAnnouncement, renderPlayerCards } from './ui.js';
+import { createStatusHelpers, createToast, loadAnnouncement, renderPlayerCards, renderMobilePlayerQuickBar } from './ui.js';
 import { getDomElements } from './dom.js';
 import { countChars, countDisplayWidth, esc, getInitial, isValidAsciiCredential, normalizeVillageName, withVillageSuffix } from './utils.js';
 import { initFloatingChat } from './components/floatingChat.js';
@@ -58,6 +58,39 @@ const openConfirmDialog = ({ title, message, confirmLabel, cancelLabel }) => sho
   confirmLabel: confirmLabel || t('room.confirm.confirm'),
   cancelLabel: cancelLabel || t('room.confirm.cancel'),
 });
+
+// 2026-11-11 新增（Mike 回報開局前點快速頭像沒反應）：原本「開局前投票踢出」
+// 只接在 renderPlayerCards 的 onPlayerCardClick 裡，快速頭像（renderMobilePlayerQuickBar）
+// 完全沒有同樣的管道。搬到專用函式來共用，兩邊都用同一套邏輯
+// 判斷（options.enableVoteKick + room_status===1 才會動作）。
+async function handleVoteKickClick(targetAccount, { roomData, enableVoteKick }) {
+  if (!enableVoteKick) return;
+  const roomStatus = Number(roomData?.room?.room_status || 0);
+  if (roomStatus !== 1) return;
+  if (!state.roomId || !state.account) return;
+  if (!targetAccount || targetAccount === state.account) return;
+
+  const targetName = roomData?.players?.[targetAccount]?.name || targetAccount;
+  const ok = await openConfirmDialog({
+    title: t('room.confirm.title'),
+    message: t('toast.vote_kick_confirm', { name: targetName }),
+    confirmLabel: t('room.confirm.confirm'),
+    cancelLabel: t('room.confirm.cancel'),
+  });
+  if (!ok) return;
+
+  try {
+    const newData = await dispatch('vote_kick', {
+      room_id: state.roomId,
+      voter_account: state.account,
+      target_account: targetAccount,
+    });
+    const kicked = !newData?.players?.[targetAccount];
+    renderState(newData);
+    toast(kicked ? t('toast.vote_kick_done', { name: targetName }) : t('toast.vote_kick_cast', { name: targetName }));
+  } catch {
+  }
+}
 const renderState = (data) => renderRoomState({
   state,
   el,
@@ -77,38 +110,25 @@ const renderState = (data) => renderRoomState({
       } catch {
       }
     },
-    onPlayerCardClick: async (targetAccount) => {
-      if (!options.enableVoteKick) return;
-      const roomStatus = Number(roomData?.room?.room_status || 0);
-      if (roomStatus !== 1) return;
-      if (!state.roomId || !state.account) return;
-      if (!targetAccount || targetAccount === state.account) return;
-
-      const targetName = roomData?.players?.[targetAccount]?.name || targetAccount;
-      const ok = await openConfirmDialog({
-        title: t('room.confirm.title'),
-        message: t('toast.vote_kick_confirm', { name: targetName }),
-        confirmLabel: t('room.confirm.confirm'),
-        cancelLabel: t('room.confirm.cancel'),
-      });
-      if (!ok) return;
-
-      try {
-        const newData = await dispatch('vote_kick', {
-          room_id: state.roomId,
-          voter_account: state.account,
-          target_account: targetAccount,
-        });
-        const kicked = !newData?.players?.[targetAccount];
-        renderState(newData);
-        toast(kicked ? t('toast.vote_kick_done', { name: targetName }) : t('toast.vote_kick_cast', { name: targetName }));
-      } catch {
-      }
-    },
+    onPlayerCardClick: (targetAccount) => handleVoteKickClick(targetAccount, { roomData, enableVoteKick: options.enableVoteKick }),
     // 2026-11-11 新增：陣營猜測徽章改成不整個房間重繪，但聊天室「(???)」要跟
     // 猜測連動，所以猜測變更時要主動重新渲染一次聊天室，才不會卡在舊的顯示。
     // 沿用剛剛那次 renderPlayerCards() 收到的 roomData，不用再打一次 API。
     onCampGuessChange: () => renderState(roomData),
+    ...options,
+  }),
+  // 2026-11-11 新增：手機板遊戲桌面上方的簡化玩家 icon 排，只需要跟
+  // renderPlayerCards 一樣帶入 esc/getInitial/state 這些預設值；targetAccounts／
+  // targetPromptClass 由 room.js 呼叫時用 ...options 帶進來；攻擊/能力等「遊戲中」
+  // 操作仍然交給 playerCardBindings.js 的既有委派監聽處理。另外補上
+  // onPlayerCardClick 接共用的 handleVoteKickClick，讓開局前（room_status===1）點快速
+  // 頭像也能投票踢出，跟完整玩家卡片（el.roomCards）一致（需要 room.js 調用
+  // 時傳 enableVoteKick: true 才會真正啟用）。
+  renderMobilePlayerQuickBar: (container, roomData, options = {}) => renderMobilePlayerQuickBar(container, roomData, {
+    esc,
+    getInitial,
+    state,
+    onPlayerCardClick: (targetAccount) => handleVoteKickClick(targetAccount, { roomData, enableVoteKick: options.enableVoteKick }),
     ...options,
   }),
   statusText: getStatusTextMap(),

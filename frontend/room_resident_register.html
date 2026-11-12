@@ -20,7 +20,11 @@
           </div>
         </div>
         <div id="menu" class="room-menu-bar">
-          <button id="btnBackToRoom" class="btn room-back-lobby-btn" type="button" data-i18n="common.nav.back_room">回到房間</button>
+          <!-- 2026-11-11 修正：Mike 要求這類導覽按鈕支援中鍵開新分頁、右鍵開瀏覽器選單，
+               原本的 <button> 完全沒有這些原生行為，改成真正的 <a href> 連結。這裡的 href
+               先給預設值（回大廳），實際要回到哪個房間要看當下的 state.roomId，由
+               register.js 在綁定事件時動態改寫 href（JS 綁定見 register.js）。 -->
+          <a id="btnBackToRoom" class="btn room-back-lobby-btn" href="./lobby.html" data-i18n="common.nav.back_room">回到房間</a>
         </div>
       </div>
     </div>

@@ -22,7 +22,10 @@
           <a id="bugReportQuickLink" class="btn" href="./report.html" target="_blank" rel="noopener" data-i18n="common.nav.report">問題回報</a>
         </div>
         <div id="menu" class="room-menu-bar">
-          <button id="btnRoomBackLobby" class="btn room-back-lobby-btn" type="button" data-i18n="common.nav.back_lobby">返回大廳</button>
+          <!-- 2026-11-11 修正：Mike 要求這類導覽按鈕支援中鍵開新分頁、右鍵開瀏覽器選單，
+               原本的 <button> 完全沒有這些原生行為，改成真正的 <a href> 連結（JS 綁定見
+               roomControls.js，只在純左鍵點擊時才攔截改走原本的 JS 流程）。 -->
+          <a id="btnRoomBackLobby" class="btn room-back-lobby-btn" href="./lobby.html" data-i18n="common.nav.back_lobby">返回大廳</a>
           <div id="autoRefreshOptions" class="auto-refresh-controls" aria-live="polite"></div>
         </div>
       </div>
@@ -91,9 +94,18 @@
             </fieldset>
           </div>
 
+          <!-- 2026-11-11 新增：簡化玩家快速選取列（頭貼 + 名稱前幾字 + 右下角徽章），跟上方
+               完整的村民列表是兩份獨立畫面、互相不取代；不分螢幕寬度一律顯示（2026-11-11 修正：
+               Mike 要求電腦版也加上這排，原本只在窄螢幕顯示），見 theme.css。點擊路由跟村民
+               列表共用同一套邏輯，見 playerCardBindings.js。跟「遊戲桌面」這個區塊同一層級、
+               獨立一排，不巢狀放在 #gameStage 裡面，避免跟桌面卡片排版互相干擾。 -->
+          <div id="mobilePlayerQuickBar" class="mobile-player-quick-bar" aria-label="快速選擇玩家"></div>
+
           <div class="room-top-row room-layout-stage-row">
             <fieldset class="room-layout-game-fieldset">
-                <legend><strong data-i18n="room.stage.table">遊戲桌面</strong></legend>
+                <!-- 2026-11-12 移除：原本這裡有「遊戲桌面」標題（legend），Mike 覺得
+                     不需要，直接拿掉；fieldset 本身保留，版面跟 CSS 都不受影響（legend
+                     不是必要元素，少了它瀏覽器照樣正常畫出 fieldset）。 -->
                 <div class="card-body">
                   <div id="gameStage" class="room-stage-surface room-game-surface" aria-live="polite">
                     <div class="table-stage" aria-label="遊戲桌面卡片佈局">

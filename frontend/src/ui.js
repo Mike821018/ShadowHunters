@@ -3,6 +3,10 @@ import { PLAYER_COLORS, PLAYER_COLOR_HEX, resolvePlayerColorHex } from './consta
 import { getCharacterLocalizedName, getCharacterTooltipInfo, getCurrentUiLang } from './characterInfo.js';
 import { getAvatarColorById, getAvatarImageSrcById } from './avatarConfig.js';
 import { apiFetch } from './utils.js';
+// 2026-11-11 新增：村民列表卡片／手機版快速選取玩家列的攻擊/場地目標閃爍提示，要跟
+// 骰子／下一步按鈕用同一個虛擬時鐘對齊，不然每次整個 innerHTML 重新渲染都會讓動畫
+// 從頭開始算相位，看起來像各閃各的（Mike 回報的「閃爍不同步」）。見 pulseSync.js。
+import { syncPulsePromptsIn } from './pulseSync.js';
 
 function colorHex(color) {
   // 2026-10-22 修正：聊天村玩家顏色改存完整色碼（例如 '#3fae7d'），不再限制在
@@ -201,7 +205,41 @@ export function createStatusHelpers({ state, el }) {
   return { setStatus, setTransportMode, pushLog };
 }
 
-export function renderPlayerCards(container, data, { esc, getInitial, statusText, state, onColorChange, onPlayerCardClick, onEquipmentChipClick, onShieldChipClick, onCampGuessChange, view = 'flow', targetAccounts = [], targetPromptClass = 'attack-target-prompt' } = {}) {
+// 2026-11-11 新增、2026-11-12 擴大適用範圍：個人能力可以發動時的閃爍提示，原本只有
+// 「不限特定階段、整個自己回合都能發動」（ability_timing=8，例如 David）用這種一次性
+// 閃法，其他 timing（1~7，特定階段才能發動）原本是持續閃一整個階段。後來玩家反映
+// 持續閃太刺眼，而且角色死亡後如果該階段能力一直沒被標記成已使用，就會卡成永遠持續
+// 閃、玩家自己也關不掉，所以把全部 timing（1~8）統一改成這裡的做法：只在「剛變成
+// 可以發動」那一刻閃一下，之後安靜下來，提醒效果還在、但不會一直吵，也不會因為某個
+// 狀態卡住就永遠閃下去。
+// 這裡用一個模組層級的 Map 記住每個帳號「上一次渲染時是不是 ready」，才能抓到 false → true
+// 那個上升緣；渲染用的卡片 DOM 每次都整個重建（innerHTML 直接整段換掉），沒辦法用
+// dataset 存在卡片元素本身上。另外閃爍視窗用時間戳記（flashUntil）判斷，不是單純
+// 「這次渲染要不要加 class」，這樣就算上升緣發生後緊接著又有別的 SSE 推播觸發重新
+// 渲染（很常見），閃爍也不會被中途打斷消失。
+// 2026-11-11 補充：村民列表卡片（renderPlayerCards）跟手機版快速頭像列
+// （renderMobilePlayerQuickBar）是兩個各自獨立呼叫、各自整個 innerHTML 重建的
+// 渲染流程，如果共用同一份 Map，兩邊會搶同一個上升緣——先跑的那邊把 wasReady 更新
+// 成 true 之後，後跑的那邊讀到的 prev.wasReady 就已經是 true，變成偵測不到上升緣、
+// 只有其中一邊會閃。所以兩邊分開各自一份 Map，各自獨立偵測同一個遊戲狀態的變化，
+// 兩邊才會同時閃。
+const abilityTurnStartFlashStateRoster = new Map();
+const abilityTurnStartFlashStateMobile = new Map();
+const ABILITY_TURN_START_FLASH_MS = 1500;
+
+function computeAbilityTurnStartFlash(stateMap, account, isReadyNow) {
+  const key = String(account || '');
+  if (!key) return false;
+  const prev = stateMap.get(key) || { wasReady: false, until: 0 };
+  let until = prev.until;
+  if (isReadyNow && !prev.wasReady) {
+    until = Date.now() + ABILITY_TURN_START_FLASH_MS;
+  }
+  stateMap.set(key, { wasReady: isReadyNow, until });
+  return Date.now() < until;
+}
+
+export function renderPlayerCards(container, data, { esc, getInitial, statusText, state, onColorChange, onPlayerCardClick, onEquipmentChipClick, onShieldChipClick, onRoleInfoClick, onCampGuessChange, view = 'flow', targetAccounts = [], targetPromptClass = 'attack-target-prompt' } = {}) {
   if (!container) return;
   // 2026-10-23 新增：Mike 回報手機上選色塊時「點開面板就自動關掉」「編輯色碼也會跳掉」——
   // 根本原因是別人的任何動作（加入房間、改顏色、狀態切換等）都會經由 SSE/輪詢觸發這支
@@ -279,6 +317,30 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
         })
         .join('');
 
+      const isSelf = Boolean(selfAccount && account === selfAccount);
+      const abilityStatus = String(p.ability_status || '').trim().toLowerCase();
+      const canUseAbility = p.can_use_ability == null
+        ? (isSelf ? Boolean(p.self_can_use_ability) : false)
+        : Boolean(p.can_use_ability);
+      const showsReady = canUseAbility && abilityStatus !== 'disabled' && abilityStatus !== 'used';
+      const showsDisabled = abilityStatus === 'disabled';
+      const hasAbilityIndicator = showsReady || showsDisabled;
+      // 2026-11-11 新增、2026-11-12 修正：Mike 要求「個人能力可以發動」時要讓自己的
+      // 玩家卡片閃爍，不能只靠原本安靜的 player-ability-chip（⚡）小徽章，太容易被忽略。
+      // 原本 timing 1~7（開場/移動/場地/攻擊/防禦/結束/綠卡等特定階段才能發動）用的是
+      // 「只要還在那個階段就持續閃爍」，但玩家反映這樣太刺眼，而且角色死亡後如果該階段
+      // 能力一直沒被標記成已使用（後端 can_use_ability 不會因為玩家死亡就重置），就會
+      // 卡成永遠持續閃、玩家自己也關不掉。改成跟 timing 8（不限特定階段、整個自己回合
+      // 都能發動，例如 David）同一套做法：只在「剛變成可以發動」那一刻閃幾下就停
+      // （computeAbilityTurnStartFlash()，用時間戳記控制、不是持續動畫），之後安靜下來，
+      // 不會因為狀態卡住就一直閃。timing 11（standby，目前只有艾莉 Allie）這種角色
+      // 幾乎整場都 showsReady=true，維持原本安靜的 ⚡ 徽章，不加任何閃爍。
+      const selfAbilityTiming = isSelf ? Number(p.self_character_ability_timing ?? 0) : 0;
+      const isFlashableAbilityTiming = [1, 2, 3, 4, 5, 6, 7, 8].includes(selfAbilityTiming);
+      const abilityBlinkClass = (isSelf && isFlashableAbilityTiming)
+        ? (computeAbilityTurnStartFlash(abilityTurnStartFlashStateRoster, account, showsReady) ? 'ability-turn-start-flash' : '')
+        : '';
+
       const classes = [
         'player-card',
         p.alive ? 'alive' : 'dead',
@@ -295,11 +357,10 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
         p.is_ready ? 'ready' : '',
         targetAccountSet.has(account) ? targetPromptClass : '',
         account === currentAccount ? 'current-turn' : '',
+        abilityBlinkClass,
       ]
         .filter(Boolean)
         .join(' ');
-
-      const isSelf = Boolean(selfAccount && account === selfAccount);
       const isWinner = winnerSet.has(String(account || '').trim());
       // 2026-10-15：GM 旁觀主持，角色欄直接顯示「GM」，也不顯示顏色位置那個 token 色塊（GM 不佔用九種類色，那個色塊单純是當傚選色）。
       // 2026-10-23 修正：上面這個前提只適用一般遊戲村——聊天村的 GM 一樣會被配到隨機色碼
@@ -325,11 +386,10 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       const campGuessState = (!roleNameEn && !isGm)
         ? CAMP_GUESS_STATES[getCampGuessIndex(state?.roomId, state?.account, account)]
         : null;
-      const tooltipNameRaw = String(roleTooltip?.name || roleDisplayName || '-');
-      const tooltipNameMatch = tooltipNameRaw.match(/^\(([A-Za-z])\)(.*)$/);
-      const tooltipNameHtml = tooltipNameMatch
-        ? `<span class="damage-meter-badge ${esc(roleCampClass)}">${esc(tooltipNameMatch[1].toUpperCase())}</span> ${esc(tooltipNameMatch[2] || '')}`
-        : esc(tooltipNameRaw);
+      // 2026-11-12 修正：角色說明改成點擊彈出跟裝備卡共用的浮動視窗（見下面
+      // onRoleInfoClick 那段點擊處理），不再需要這裡原本只給 .player-role-popover
+      // 用的特殊「(V)Vampire(吸血鬼)」編碼名稱格式，直接重用 roleDisplayName 即可，
+      // 這幾個變數跟著拿掉。
       const damageDisplayText = `${esc(p.damage || 0)}`;
       const hpDisplayText = hpVisible ? `${esc(p.hp || 0)}` : '??';
       const tripDisplayText = displayTrip || '-';
@@ -349,13 +409,6 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
         ? `<button class="player-shield-chip" type="button" data-shield-source="${esc(invulnerabilitySource)}" aria-label="${esc(t('room.invulnerability_source.aria_label'))}" title="${esc(t('room.invulnerability_source.title'))}">🛡️</button>`
         : '';
       const crownBadge = isWinner ? `<span class="avatar-crown" aria-label="${esc(t('ui.winner_crown'))}" title="${esc(t('ui.winner_crown'))}">👑</span>` : '';
-      const abilityStatus = String(p.ability_status || '').trim().toLowerCase();
-      const canUseAbility = p.can_use_ability == null
-        ? (isSelf ? Boolean(p.self_can_use_ability) : false)
-        : Boolean(p.can_use_ability);
-      const showsReady = canUseAbility && abilityStatus !== 'disabled' && abilityStatus !== 'used';
-      const showsDisabled = abilityStatus === 'disabled';
-      const hasAbilityIndicator = showsReady || showsDisabled;
       let abilityBadge = '';
       if (hasAbilityIndicator) {
         if (showsReady) {
@@ -417,21 +470,13 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
           </div>
           <div class="player-card-meta-role">
             <div class="player-role-info">
-              <button class="player-role-trigger" type="button" aria-label="${esc(t('ui.role_detail'))}">
+              <button class="player-role-trigger" type="button" aria-label="${esc(t('ui.role_detail'))}"${roleTooltip ? ` data-role-info-available="1" data-role-name="${esc(roleDisplayName)}" data-role-camp="${esc(roleTooltip.camp)}" data-role-win="${esc(roleTooltip.win)}" data-role-ability="${esc(roleTooltip.ability)}" data-role-reveal-label="${esc(roleRevealStatusLabel)}"` : ''}>
                 ${roleNameEn
                   ? `<span class="damage-meter-badge ${esc(roleCampClass)} player-role-badge">${esc(roleBadgeText)}</span>`
                   : (campGuessState ? `<span class="damage-meter-badge player-role-badge player-camp-guess-badge ${esc(campGuessState.cls)}" data-camp-guess-toggle data-player-account="${esc(account)}" role="button" tabindex="0" aria-label="${esc(t(campGuessState.labelKey))}" title="${esc(t(campGuessState.labelKey))}">${esc(campGuessState.symbol)}</span>` : '')}
                 <span class="player-role-name">${esc(roleDisplayName)}</span>
                 <span class="player-role-state">${esc(roleRevealStatusLabel)}</span>
               </button>
-              ${roleTooltip ? `
-                <div class="player-role-popover" role="tooltip">
-                  <div><strong>${esc(t('ui.role_name'))}</strong> ${tooltipNameHtml}</div>
-                  <div><strong>${esc(t('ui.role_camp'))}</strong> ${esc(roleTooltip.camp)}</div>
-                  <div><strong>${esc(t('ui.role_win'))}</strong> ${esc(roleTooltip.win)}</div>
-                  <div><strong>${esc(t('ui.role_ability'))}</strong> ${esc(roleTooltip.ability)}</div>
-                </div>
-              ` : ''}
             </div>
           </div>
           <div class="player-card-hp">
@@ -489,6 +534,10 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       container.innerHTML = entries.map(renderCard).join('');
     }
   }
+
+  // 2026-11-11 新增：不管剛剛走哪個分支（seat-grid／flow-grid／空清單），只要容器裡
+  // 有帶攻擊/場地目標閃爍 class 的卡片，統一對齊到跟骰子/下一步按鈕同一個虛擬時鐘。
+  syncPulsePromptsIn(container);
 
   if (openColorPickerAccount) {
     const reopenCard = container.querySelector(`[data-player-account="${CSS.escape(openColorPickerAccount)}"] [data-color-picker]`);
@@ -622,7 +671,10 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
         if (activeSelection && activeSelection.toString().length > 0) return;
 
         const target = event.target;
-        if (target instanceof Element && target.closest('[data-pick-color], .color-picker, .player-role-trigger, .player-role-popover, .player-role-info, .equip-chip, .player-shield-chip, .player-ability-chip')) return;
+        // 2026-11-12 修正：跟 playerCardBindings.js 那邊同一個理由——角色還沒揭露、
+        // 沒有資訊可以顯示時 .player-role-trigger 不會接點擊事件，這裡原本整個排除
+        // 會讓投票踢出在角色名稱這塊區域也點不到，只排除真的有彈窗可開的情況。
+        if (target instanceof Element && target.closest('[data-pick-color], .color-picker, .player-role-trigger[data-role-info-available], .equip-chip, .player-shield-chip, .player-ability-chip')) return;
         const account = card.getAttribute('data-player-account');
         if (account) onPlayerCardClick(account);
       });
@@ -656,6 +708,33 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
         const owner = target.closest('[data-player-account]');
         const account = String(owner?.getAttribute('data-player-account') || '').trim();
         onShieldChipClick({ account, source, anchorEl: target });
+      });
+    });
+  }
+
+  // 2026-11-12 新增：角色說明原本是滑過／點擊展開的 CSS 浮動小視窗（.player-role-popover），
+  // 手機上沒有「滑過」這個動作、改成點擊後反而容易跟下面點卡片本身的動作搞混；而且這顆
+  // 按鈕原本完全沒有接 click 事件——Mike 回報「偶爾點玩家卡片沒反應、多點幾次才會成功」，
+  // 原因之一就是點擊剛好落在角色名稱/狀態文字這塊完全沒有處理常式的區域，等於點了空氣
+  // （見下面 handlePlayerCardClick 呼叫前那段 .closest(...) 的排除清單）。現在改成跟裝備／
+  // 護盾徽章一樣，點擊後彈出跟裝備卡說明共用的同一個浮動視窗（#activeCardDialog），角色
+  // 說明資訊搬去那邊顯示，不用再塞在卡片本身有限的寬度裡，順便解決英文版「(Revealed)」
+  // 字樣在彈窗玩家卡片裡超框的問題（見 room.js 的 handleRoleInfoClick）。
+  if (typeof onRoleInfoClick === 'function') {
+    container.querySelectorAll('[data-player-account] .player-role-trigger[data-role-info-available]').forEach((trigger) => {
+      trigger.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const target = event.currentTarget;
+        if (!(target instanceof HTMLElement)) return;
+        onRoleInfoClick({
+          name: target.getAttribute('data-role-name') || '',
+          camp: target.getAttribute('data-role-camp') || '',
+          win: target.getAttribute('data-role-win') || '',
+          ability: target.getAttribute('data-role-ability') || '',
+          revealLabel: target.getAttribute('data-role-reveal-label') || '',
+          anchorEl: target,
+        });
       });
     });
   }
@@ -732,6 +811,142 @@ export function renderPlayerCards(container, data, { esc, getInitial, statusText
       setPreview(pinnedLive);
     });
   });
+}
+
+// 2026-11-11 新增：Mike 要求手機板在遊戲桌面區塊上方加一排簡化版玩家 icon（頭貼 +
+// ID 前幾個字 + 右下角徽章），方便攻擊／卡片／能力選目標時不用捲動到最上面的
+// 村民列表。跟村民列表的完整卡片是兩份獨立存在的畫面、不互相取代。點擊行為刻意
+// 不在這裡自己處理——跟村民列表、場地卡彈出的玩家卡片一樣，只要在 room.html 放
+// 一個帶 data-player-account 的容器、加進 playerCardBindings.js 的清單，點擊就會
+// 自動走同一套既有的目標判斷邏輯（攻擊／能力／卡片／GM 操作），不用另外重寫一次。
+const MOBILE_QUICK_NAME_MAX_CHARS = 6;
+
+function truncateMobileQuickName(name) {
+  const value = String(name || '').trim();
+  if (!value) return '';
+  // 用 Array.from 逐字元切，避免把中文／emoji 這類多位元組字元從中間切斷出現亂碼。
+  const chars = Array.from(value);
+  if (chars.length <= MOBILE_QUICK_NAME_MAX_CHARS) return value;
+  return `${chars.slice(0, MOBILE_QUICK_NAME_MAX_CHARS).join('')}…`;
+}
+
+export function renderMobilePlayerQuickBar(container, data, { esc, getInitial, state, onPlayerCardClick, onOpenCardPopup, targetAccounts = [], targetPromptClass = 'attack-target-prompt' } = {}) {
+  if (!container) return;
+  const players = data?.players || {};
+  const targetAccountSet = new Set(Array.isArray(targetAccounts) ? targetAccounts : []);
+  const currentAccount = data?.turn?.current_account || null;
+  const actionOrder = Array.isArray(data?.action_order) ? data.action_order : [];
+  const orderIndex = new Map(actionOrder.map((acc, idx) => [String(acc), idx]));
+  const inGameOrder = Number(data?.room?.room_status || 0) >= 2 && orderIndex.size > 0;
+  const selfAccount = state?.account || null;
+
+  // GM 旁觀主持、永遠不會是攻擊/卡片/能力的合法目標，這排快速選單乾脆不顯示 GM。
+  const entries = Object.entries(players)
+    .filter(([, p]) => !p?.is_gm)
+    .sort(([accA, a], [accB, b]) => {
+      if (inGameOrder) {
+        const ia = orderIndex.has(accA) ? Number(orderIndex.get(accA)) : Number.MAX_SAFE_INTEGER;
+        const ib = orderIndex.has(accB) ? Number(orderIndex.get(accB)) : Number.MAX_SAFE_INTEGER;
+        if (ia !== ib) return ia - ib;
+      }
+      const ao = Number(a?.join_order || 0);
+      const bo = Number(b?.join_order || 0);
+      if (ao && bo) return ao - bo;
+      if (ao) return -1;
+      if (bo) return 1;
+      return 0;
+    });
+
+  container.innerHTML = entries.map(([account, p]) => {
+    const avatarNo = Number(p.avatar_no || 0);
+    const avatarSrc = avatarNo ? getAvatarImageSrcById(avatarNo) : '';
+    const isSelf = Boolean(selfAccount && account === selfAccount);
+    // 2026-11-11 新增、2026-11-12 修正：跟村民列表卡片（renderPlayerCards）一樣的
+    // 個人能力可發動閃爍，讓手機/電腦版快速頭像列也有同樣的提示（見上面
+    // renderPlayerCards 裡那段「改成只閃幾秒」的修正說明，這裡沿用一樣的判斷、
+    // 只是換一份獨立的 Map）。
+    const quickBarAbilityStatus = String(p.ability_status || '').trim().toLowerCase();
+    const quickBarCanUseAbility = p.can_use_ability == null
+      ? (isSelf ? Boolean(p.self_can_use_ability) : false)
+      : Boolean(p.can_use_ability);
+    const quickBarShowsReady = quickBarCanUseAbility && quickBarAbilityStatus !== 'disabled' && quickBarAbilityStatus !== 'used';
+    const quickBarSelfAbilityTiming = isSelf ? Number(p.self_character_ability_timing ?? 0) : 0;
+    const quickBarIsFlashableAbilityTiming = [1, 2, 3, 4, 5, 6, 7, 8].includes(quickBarSelfAbilityTiming);
+    const abilityBlinkClass = (isSelf && quickBarIsFlashableAbilityTiming)
+      ? (computeAbilityTurnStartFlash(abilityTurnStartFlashStateMobile, account, quickBarShowsReady) ? 'ability-turn-start-flash' : '')
+      : '';
+    const resolvedCharacter = String(p.character || p.character_name || '').trim();
+    const hasKnownRole = Boolean(resolvedCharacter);
+    const roleNameEn = hasKnownRole ? resolvedCharacter : (isSelf ? p.self_character : null);
+    const roleCamp = hasKnownRole ? p.character_camp : (isSelf ? p.self_character_camp : null);
+    const roleCampClass = roleCamp ? String(roleCamp).toLowerCase() : 'civilian';
+    const roleBadgeText = roleNameEn ? String(roleNameEn).trim().charAt(0).toUpperCase() || '?' : '?';
+    const campGuessState = !roleNameEn
+      ? CAMP_GUESS_STATES[getCampGuessIndex(state?.roomId, state?.account, account)]
+      : null;
+    const badgeHtml = roleNameEn
+      ? `<span class="mobile-quick-badge ${esc(roleCampClass)}">${esc(roleBadgeText)}</span>`
+      : (campGuessState?.cls ? `<span class="mobile-quick-badge ${esc(campGuessState.cls)}">${esc(campGuessState.symbol)}</span>` : '<span class="mobile-quick-badge">?</span>');
+    const avatarHtml = !p.alive
+      ? '<img src="./assets/avatars/ghost_dead.gif" alt="" class="mobile-quick-avatar-img" />'
+      : avatarSrc
+        ? `<img src="${avatarSrc}" alt="" class="mobile-quick-avatar-img" />`
+        : `<span class="mobile-quick-avatar-initial">${esc(getInitial(p.name || account))}</span>`;
+    const classes = [
+      'mobile-quick-icon',
+      p.alive ? 'alive' : 'dead',
+      account === currentAccount ? 'current-turn' : '',
+      targetAccountSet.has(account) ? targetPromptClass : '',
+      abilityBlinkClass,
+    ].filter(Boolean).join(' ');
+    const displayName = truncateMobileQuickName(p.name || account);
+    // 2026-11-11 新增：Mike 要求快速頭像左下角加一塊 token 顏色色塊，跟完整玩家
+    // 卡片一樣讓人不用點開就能分辨自己／對方的顏色標記（跟右下角的角色/陣營猜測
+    // 徽章左右對稱）。colorHex() 是這個檔案最上面就有的共用函式，直接重用。
+    const colorChipHtml = `<span class="mobile-quick-color-chip" style="background:${colorHex(p.color)}" aria-hidden="true"></span>`;
+    return `<button type="button" class="${classes}" data-player-account="${esc(account)}" aria-label="${esc(t('ui.player_label', { name: p.name || account }))}">`
+      + `<span class="mobile-quick-avatar">${avatarHtml}${badgeHtml}${colorChipHtml}</span>`
+      + `<span class="mobile-quick-name">${esc(displayName)}</span>`
+      + '</button>';
+  }).join('');
+
+  // 2026-11-11 新增（Mike 回報開局前點快速頭像沒反應）：renderPlayerCards 本身對
+  // 每張卡片有一組直接綁在卡片 DOM 上的點擊監聽（見下面該函式內 onPlayerCardClick
+  // 區塊），app.js 用它來接「開局前投票踢出」這個功能（options.enableVoteKick +
+  // room_status===1 才會動作，遊戲中點一樣會因為 room_status 不符被忽略，不會互相
+  // 干擾）。這排快速頭像原本完全沒接這組監聽，只靠 playerCardBindings.js 那個委派
+  // 監聽（處理攻擊/能力/卡片等「遊戲中」操作），導致開局前點快速頭像完全沒有投票踢出
+  // 的管道——這裡補上同樣的直接監聽，讓快速頭像跟完整玩家卡片有一樣的投票踢出能力。
+  // 2026-11-11 新增：Mike 要求加一個開關（state.quickAvatarPopupFirst，房間頁
+  // 「自動更新」設定區塊可以切換），讓點快速頭像可以選擇「先彈出完整卡片」
+  // （重用場地卡玩家 token 那套 stageOccupantCardPopup，見 room.js 的
+  // openOccupantCardPopup）還是維持原本「直接動作」（投票踢出／遊戲中操作）。
+  // 這裡刻意只掛一個監聽、放在最前面判斷，開關打開時用 stopImmediatePropagation()
+  // 擋掉後面的投票踢出（同一個元素上的監聽）跟 playerCardBindings.js 那個委派在
+  // 容器上的監聽（事件往上冒泡才會碰到，stopPropagation 一樣擋得住），避免兩套
+  // 行為同時觸發。state 是用參考傳進來的同一個物件，所以這裡直接讀
+  // state.quickAvatarPopupFirst，開關隨時切換都會立刻反映在下一次點擊，不用等
+  // 這排重新渲染。
+  if (typeof onPlayerCardClick === 'function' || typeof onOpenCardPopup === 'function') {
+    container.querySelectorAll('[data-player-account]').forEach((card) => {
+      card.addEventListener('click', (event) => {
+        const activeSelection = typeof window.getSelection === 'function' ? window.getSelection() : null;
+        if (activeSelection && activeSelection.toString().length > 0) return;
+        const account = card.getAttribute('data-player-account');
+        if (!account) return;
+        if (state?.quickAvatarPopupFirst && typeof onOpenCardPopup === 'function') {
+          event.stopImmediatePropagation();
+          onOpenCardPopup(account, card);
+          return;
+        }
+        if (typeof onPlayerCardClick === 'function') onPlayerCardClick(account);
+      });
+    });
+  }
+
+  // 2026-11-11 新增：這排每次房間狀態更新都整個 innerHTML 重新渲染，攻擊/場地目標
+  // 閃爍提示要對齊到跟骰子/下一步按鈕同一個虛擬時鐘，不然看起來會各閃各的。
+  syncPulsePromptsIn(container);
 }
 
 export async function loadAnnouncement(el) {

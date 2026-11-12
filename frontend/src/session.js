@@ -8,6 +8,7 @@ export function persistSession(state) {
       transportMode: state.transportMode,
       skipTargetConfirm: state.skipTargetConfirm,
       autoEndTurn: state.autoEndTurn,
+      quickAvatarPopupFirst: state.quickAvatarPopupFirst,
     })
   );
 }
@@ -26,6 +27,7 @@ export function restoreSession(state) {
       state.transportMode = restoredMode === 'demo' ? 'auto' : (restoredMode || state.transportMode);
       state.skipTargetConfirm = parsed.skipTargetConfirm ?? state.skipTargetConfirm;
       state.autoEndTurn = parsed.autoEndTurn ?? state.autoEndTurn;
+      state.quickAvatarPopupFirst = parsed.quickAvatarPopupFirst ?? state.quickAvatarPopupFirst;
       // Restore roomAccounts; if absent, migrate legacy account+roomId pair
       if (parsed.roomAccounts && typeof parsed.roomAccounts === 'object') {
         state.roomAccounts = parsed.roomAccounts;

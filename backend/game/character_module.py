@@ -118,6 +118,9 @@ class Wight(Character):
         self.is_extend = True
         self.ability_timing = 6 # end
         self.target = "self"
+        # 2026-11-12 新增：Mike 要求照妖鏡（Disenchant Mirror）原本只對狼人／吸血鬼
+        # 有效，現在要擴大到整個 capital='W'／'V' 的角色組，Wight 跟狼人同屬 W 組。
+        self.can_be_revealed_by_disenchant_mirror = True
 
         self.extra_turn = 0
 
@@ -252,6 +255,9 @@ class Valkyrie(Character):
         self.hp = 13
         self.ability_timing = 0 # passive
         self.target = "self"
+        # 2026-11-12 新增：Mike 要求照妖鏡（Disenchant Mirror）原本只對狼人／吸血鬼
+        # 有效，現在要擴大到整個 capital='W'／'V' 的角色組，女武神跟吸血鬼同屬 V 組。
+        self.can_be_revealed_by_disenchant_mirror = True
 
         self.atk_type = 2
 
@@ -505,12 +511,16 @@ class Bryan(Character):
 
     def win_check(self, room, user, dead):
         ret = False
-        # 勝利條件: 當你的攻擊造成HP大於13的角色死亡時，或是遊戲結束時，你身處於「古代祭壇」
+        # 勝利條件: 當你的攻擊造成HP大於11（12以上）的角色死亡時，或是遊戲結束時，你身處於「古代祭壇」
         
         # 條件1: 檢查是否有HP>13的角色死亡 (僅在攻擊階段才計算)
         if user.status == 5 and dead:
             for dead_player in dead:
-                if dead_player and not dead_player.is_alive and dead_player.hp > 13:
+                # 2026-11-12 修正：Mike 要求勝利門檻從「HP>13（14 血以上）」下修到
+                # 「HP>11（12 血以上）」，跟上面 ability() 的能力揭露門檻（HP<12，
+                # 即 11 血以下）剛好互補銜接，不再有 12～13 血的角色死亡時勝利／
+                # 揭露都不會觸發的空窗。
+                if dead_player and not dead_player.is_alive and dead_player.hp > 11:
                     ret = True
                     break
 

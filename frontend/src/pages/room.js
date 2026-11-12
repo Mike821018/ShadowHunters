@@ -3,6 +3,10 @@ import { getCharacterLocalizedName, getCurrentUiLang } from '../characterInfo.js
 import { t } from '../i18n.js';
 import { clearRoomAccount } from '../session.js';
 import { apiFetch } from '../utils.js';
+// 2026-11-11 新增：手機版浮動收合按鈕（floatingPlayersToggleBtn）本身要跟著閃爍時，
+// 原本只用 classList.toggle 開關 class，沒有對齊骰子/下一步按鈕共用的虛擬時鐘，
+// 看起來會各閃各的（Mike 回報的「閃爍不同步」）。見 pulseSync.js。
+import { syncPulseAnimationDelay, clearPulseAnimationDelay } from '../pulseSync.js';
 import { showAreaChoiceDialog, showConfirmDialog, showEquipmentChoiceDialog, showGmCharacterChoiceDialog, showGmPlayerAdjustDialog, showGreenChoiceDialog, EQUIPMENT_CHOICE_GIVE_UP } from './room/choiceDialogs.js';
 import { renderVillageInfo as renderVillageInfoModule } from './room/villageInfoRendering.js';
 import { buildReplayRoomState as buildReplayRoomStateModule } from './room/replayAdapter.js';
@@ -69,6 +73,15 @@ let diceRollTimeout = null;
 let occupantCardPopupAccount = null;
 let occupantCardPopupRenderCtx = null;
 let occupantCardPopupOutsideHandlerBound = false;
+// 2026-11-12 新增：殺人後的掠奪裝備流程，Mike 要求從「點死掉那個人的卡片才會彈出
+// 選擇視窗」改成「殺人當下直接自動彈出」。實際的選擇視窗邏輯（resolvePendingKillLoot）
+// 需要用到 dispatch／toast 等東西，定義在 bindRoomEvents 裡面，但偵測「剛好從沒有
+// 死亡掠奪變成有」這個時間點的程式碼在 renderState 這邊（跟其他好幾個自動彈窗通知
+// 用的是同一段 previousRoomSnapshot／data 比對邏輯）。renderState 本身拿不到
+// dispatch，沒辦法直接打開真正的選擇視窗，所以用這個模組層級變數存一份
+// resolvePendingKillLoot 的參照（bindRoomEvents 執行時會指派），renderState 偵測到
+// 剛好死亡時直接呼叫它，效果跟玩家自己點那張卡片一樣。
+let autoOpenKillLootResolver = null;
 
 const {
   getLocalizedCardName,
@@ -79,6 +92,7 @@ const {
   showCardInfoDialog,
   openEquipmentCardDialog,
   openInvulnerabilityInfoDialog,
+  openRoleInfoDialog,
 } = createCardInfoHelpers({
   t,
   getAnchor: () => activeCardDialogAnchor,
@@ -373,6 +387,7 @@ function renderOccupantCardPopup() {
   const { renderPlayerCards: renderCardsFn, ...cardOptions } = occupantCardPopupRenderCtx;
   const singlePlayerData = { ...data, players: { [occupantCardPopupAccount]: playerEntry } };
   renderCardsFn(body, singlePlayerData, { view: 'flow', ...cardOptions });
+  patchRoomCardsLayout('#stageOccupantCardPopupBody');
 }
 
 function openOccupantCardPopup(account, anchorEl) {
@@ -386,7 +401,18 @@ function openOccupantCardPopup(account, anchorEl) {
       if (!occupantCardPopupAccount) return;
       const target = event.target;
       if (!(target instanceof Element)) return;
-      if (target.closest('#stageOccupantCardPopup') || target.closest('.stage-field-occupant')) return;
+      // 2026-11-11 補上 .mobile-quick-icon：手機版快速頭像開啟「先彈出完整卡片」
+      // 開關時也會呼叫這支函式，同一顆頭像再點一次應該視為「重新打開／切換」，
+      // 不應該先被這個外部點擊監聽判定成「點了外面」而關掉一次造成閃爍。
+      // 2026-11-12 修正：Mike 回報「點裝備說明的 X 會連玩家卡片一起收起來」——
+      // 裝備／護盾／角色說明共用的 #activeCardDialog 疊在玩家卡片彈窗上面時，
+      // 點它（包含它自己的關閉按鈕）本來就不算「點了 #stageOccupantCardPopup 裡面」，
+      // 結果這裡判定成「點了外面」，把玩家卡片彈窗也一起關掉，變成兩層一次收掉。
+      // #activeCardDialog 自己另外有一組完全獨立的 outside-click 監聽器（見
+      // createCardInfoHelpers 那邊），只要排除它、讓那個點擊只被它自己的監聽器
+      // 處理，就能維持「一層一層收」：關掉上層的說明視窗時，下面的玩家卡片彈窗
+      // 維持原樣不受影響。
+      if (target.closest('#stageOccupantCardPopup') || target.closest('.stage-field-occupant') || target.closest('.mobile-quick-icon') || target.closest('#activeCardDialog')) return;
       closeOccupantCardPopup();
     });
     document.addEventListener('keydown', (event) => {
@@ -549,10 +575,13 @@ function maybeHandleAutoEndTurn(state, snapshot) {
 // 2026-10-09 修正：拿掉倒數秒數「自動更新」的按鈕群組（0/5/10/20/30秒），
 // 房間頁已經靠 room_state_changed 的 SSE 即時推播更新，不需要這組額外的輪詢
 // 設定；這裡保留原本就在同一個容器內的「二次確認」「自動結束回合」兩個開關。
-function renderAutoRefreshControls({ el, state, onToggleSkipTargetConfirm, onToggleAutoEndTurn }) {
+function renderAutoRefreshControls({ el, state, onToggleSkipTargetConfirm, onToggleAutoEndTurn, onToggleQuickAvatarPopupFirst }) {
   if (!el.autoRefreshOptions) return;
   const requireTargetConfirmChecked = !Boolean(state.skipTargetConfirm);
   const autoEndTurnChecked = state.autoEndTurn !== false;
+  // 2026-11-11 新增：手機版快速選取玩家列點頭像時「先彈出完整卡片」還是「直接動作」
+  // 的開關，Mike 要求預設勾選（先彈出完整卡片，見 state.js 的預設值）。
+  const quickAvatarPopupFirstChecked = Boolean(state.quickAvatarPopupFirst);
   el.autoRefreshOptions.innerHTML = `
     <label class="auto-refresh-skip-confirm">
       <input type="checkbox" data-skip-target-confirm ${requireTargetConfirmChecked ? 'checked' : ''}>
@@ -561,6 +590,10 @@ function renderAutoRefreshControls({ el, state, onToggleSkipTargetConfirm, onTog
     <label class="auto-refresh-skip-confirm">
       <input type="checkbox" data-auto-end-turn ${autoEndTurnChecked ? 'checked' : ''}>
       ${t('room.auto_refresh.auto_end_turn')}
+    </label>
+    <label class="auto-refresh-skip-confirm">
+      <input type="checkbox" data-quick-avatar-popup-first ${quickAvatarPopupFirstChecked ? 'checked' : ''}>
+      ${t('room.auto_refresh.quick_avatar_popup_first')}
     </label>
   `;
   const skipToggle = el.autoRefreshOptions.querySelector('[data-skip-target-confirm]');
@@ -573,6 +606,12 @@ function renderAutoRefreshControls({ el, state, onToggleSkipTargetConfirm, onTog
   if (autoEndTurnToggle instanceof HTMLInputElement) {
     autoEndTurnToggle.addEventListener('change', () => {
       onToggleAutoEndTurn?.(autoEndTurnToggle.checked);
+    });
+  }
+  const quickAvatarPopupFirstToggle = el.autoRefreshOptions.querySelector('[data-quick-avatar-popup-first]');
+  if (quickAvatarPopupFirstToggle instanceof HTMLInputElement) {
+    quickAvatarPopupFirstToggle.addEventListener('change', () => {
+      onToggleQuickAvatarPopupFirst?.(quickAvatarPopupFirstToggle.checked);
     });
   }
 }
@@ -838,6 +877,15 @@ function playDrawCardFlightAnimation(sourceRect, colorKey) {
   ghost.style.height = `${sourceRect.height}px`;
   document.body.appendChild(ghost);
 
+  // 2026-11-11 修正：手機版（iOS Safari）回報完全看不到飛行動畫。原本只靠巢狀兩層
+  // requestAnimationFrame 讓瀏覽器「先套用起點座標、再套用終點座標」來觸發
+  // transition，這招在 Chrome 桌面版通常沒問題，但 Safari（包含 iOS）有時候會把
+  // 兩次樣式改動在同一個 frame 內一起處理、沒有真的畫出起點，transition 就直接跳過、
+  // 卡片瞬間出現在終點——跟 Mike 說的「完全沒看到動畫」症狀吻合。這裡在設定起點
+  // 座標之後，手動讀一次版面屬性（getBoundingClientRect）強制瀏覽器立刻把起點
+  // 樣式畫出來、確定生效之後才進入 rAF 改終點座標，兩層 rAF 保留不動，雙重保險。
+  void ghost.getBoundingClientRect();
+
   // 起始座標要先讓瀏覽器真的套用、畫出來一次之後，才能改成目的地座標讓
   // transition 生效（同一個 frame 內改兩次座標，瀏覽器會直接跳過中間的
   // transition，卡片會瞬間出現在終點、不會飛）。
@@ -947,9 +995,18 @@ function renderFieldCards(data, state = null) {
   });
 }
 
-function patchRoomCardsLayout() {
+// 2026-11-12 修正：這支函式原本寫死只處理 #roomCards，村民列表以外的任何地方
+// （對局卡牆 #battleCards、場地卡點玩家 token 彈出的 #stageOccupantCardPopupBody）
+// 顯示的玩家卡片，就算套到跟村民列表一樣的「preview-only」緊湊版面 CSS（見
+// theme.css 的 [data-page="room"] .player-card 那個大區塊），因為沒有實際做這裡
+// 的 DOM 搬移，CSS 期待的結構（例如 .player-id-block 底下要有 .player-card-meta-role）
+// 對不上實際 DOM，排版會跟村民列表不一致（Mike 回報「彈窗的玩家卡片排版跟原本的
+// 不一樣」就是這個原因，不只是先前修正的英文字樣超框而已）。改成接受一個根節點
+// selector，預設維持原本的 #roomCards，呼叫端可以帶別的容器進來，讓對局卡牆、
+// 彈出的單張玩家卡片也套用同一套 DOM 搬移，排版才會真的跟村民列表一致。
+function patchRoomCardsLayout(rootSelector = '#roomCards') {
   if (!isRoomLayoutPage()) return;
-  const cards = document.querySelectorAll('#roomCards .player-card');
+  const cards = document.querySelectorAll(`${rootSelector} .player-card`);
   cards.forEach((card) => {
     const hpRow = card.querySelector('.player-card-hp');
     const idBlock = card.querySelector('.player-id-block');
@@ -986,6 +1043,7 @@ export function renderState({
   persistSession,
   renderVillageInfo,
   renderPlayerCards,
+  renderMobilePlayerQuickBar,
   statusText,
   areaNames,
 }, data) {
@@ -1056,6 +1114,24 @@ export function renderState({
     const nextRollCallAt = Number(data?.roll_call_notice?.timestamp || 0);
     if (nextRollCallAt > 0 && nextRollCallAt !== previousRollCallAt) {
       playRollCallSound();
+    }
+
+    // 2026-11-12 新增：Mike 要求初始綠卡流程一開始，房間裡「每一個人」都要跳出
+    // 說明用的通知，讓大家知道現在進入這個流程、不是遊戲卡住了——不是像下面森林
+    // ／祭壇、掠奪裝備那樣只給輪到的那個人看。所以這裡刻意不包在 if (selfAccount)
+    // 裡面。只在 initial_green_card_active 從沒有變成有的那一刻跳一次（剛進房間／
+    // 重新整理不會補跳，因為外層已經有 isFreshRoomEntry 擋著），跟森林／祭壇那些
+    // 通知一樣用 showConfirmDialog（hideCancel: true）、不 await。
+    const previousInitialGreenActive = Boolean(previousRoomSnapshot?.initial_green_card_active);
+    const nextInitialGreenActive = Boolean(data?.initial_green_card_active);
+    if (nextInitialGreenActive && !previousInitialGreenActive) {
+      showConfirmDialog({
+        el,
+        title: t('toast.initial_green_card_flow_title'),
+        message: t('toast.initial_green_card_flow_message'),
+        confirmLabel: t('room.confirm.acknowledge'),
+        hideCancel: true,
+      });
     }
 
     // 綠卡確認通知：current_account 在綠卡確認這段流程裡不會變成目標玩家，
@@ -1130,21 +1206,21 @@ export function renderState({
     // 2026-10-24 修正：跟上面森林／祭壇的通知一樣，原本的 toast 在手機上太容易被忽略，
     // 改用 showConfirmDialog（hideCancel: true）跳出需要主動按掉的通知，講清楚要點誰
     // 的卡片才能拿到裝備。
+    // 2026-11-12 修正：Mike 要求直接跳過「請點卡片」這一步，殺人當下直接自動彈出真正
+    // 的裝備選擇視窗（resolvePendingKillLoot，透過上面宣告的 autoOpenKillLootResolver
+    // 參照呼叫，等同玩家自己點了死亡玩家的卡片）。這個選擇視窗本來就有「取消」（先不決定，
+    // 保留選擇視窗可重新開啟、不會真的放棄）跟「放棄掠奪」（真的放棄）兩顆按鈕分開，
+    // 玩家按「取消」關掉之後，伺服器端的待掠奪狀態不會被清掉，之後要做別的事（例如揭露
+    // 角色、發動自己的能力）都不受影響，不想理掠奪就先去做別的事，之後再點死亡玩家的卡片
+    // 重新打開選擇視窗即可。若同時死了不只一個人，這裡只會自動彈出第一個，其餘的要跟以前
+    // 一樣手動點卡片處理（避免背景一次彈出一堆視窗疊在一起）。
     if (selfAccount) {
       const previousKillLoot = getPendingKillLootState(state, previousRoomSnapshot);
       const nextKillLoot = getPendingKillLootState(state, data);
       if (nextKillLoot.active && !previousKillLoot.active) {
-        const deadNames = nextKillLoot.deathAccounts
-          .map((account) => String(data?.players?.[account]?.name || account).trim())
-          .filter(Boolean);
-        if (deadNames.length > 0) {
-          showConfirmDialog({
-            el,
-            title: t('toast.area_action_kill_loot_title'),
-            message: t('toast.area_action_kill_loot', { name: deadNames.join('、') }),
-            confirmLabel: t('room.confirm.acknowledge'),
-            hideCancel: true,
-          });
+        const firstDeathAccount = String(nextKillLoot.deathAccounts[0] || '').trim();
+        if (firstDeathAccount) {
+          autoOpenKillLootResolver?.(firstDeathAccount, data);
         }
       }
     }
@@ -1241,15 +1317,31 @@ export function renderState({
   const handleShieldChipClick = ({ source, anchorEl }) => {
     openInvulnerabilityInfoDialog(source, anchorEl);
   };
-  renderPlayerCards(el.roomCards, data, { view: 'room', enableVoteKick: true, targetAccounts: playerPromptTargets, targetPromptClass: playerPromptClass, onEquipmentChipClick: handleEquipmentChipClick, onShieldChipClick: handleShieldChipClick });
+  // 2026-11-12 新增：角色說明改成點擊彈出，跟裝備／護盾說明共用同一個 #activeCardDialog
+  // 浮動視窗（見 cardInfoDialog.js 的 openRoleInfoDialog）。
+  const handleRoleInfoClick = ({ name, camp, win, ability, revealLabel, anchorEl }) => {
+    openRoleInfoDialog({ name, camp, win, ability, revealLabel, anchorEl });
+  };
+  renderPlayerCards(el.roomCards, data, { view: 'room', enableVoteKick: true, targetAccounts: playerPromptTargets, targetPromptClass: playerPromptClass, onEquipmentChipClick: handleEquipmentChipClick, onShieldChipClick: handleShieldChipClick, onRoleInfoClick: handleRoleInfoClick });
   patchRoomCardsLayout();
-  renderPlayerCards(el.battleCards, data, { view: 'flow', targetAccounts: playerPromptTargets, targetPromptClass: playerPromptClass, onEquipmentChipClick: handleEquipmentChipClick, onShieldChipClick: handleShieldChipClick });
+  renderPlayerCards(el.battleCards, data, { view: 'flow', targetAccounts: playerPromptTargets, targetPromptClass: playerPromptClass, onEquipmentChipClick: handleEquipmentChipClick, onShieldChipClick: handleShieldChipClick, onRoleInfoClick: handleRoleInfoClick });
+  patchRoomCardsLayout('#battleCards');
+  // 2026-11-11 新增：手機板遊戲桌面上方的簡化玩家 icon 排，跟上面村民列表共用同一份
+  // targetAccounts/targetPromptClass，才能在攻擊／能力／卡片選目標時一起亮起提示。
+  if (typeof renderMobilePlayerQuickBar === 'function') {
+    // 2026-11-11 修正：這裡原本沒有傳 enableVoteKick: true，跟 el.roomCards 那邊比對
+    // 之後才發現漏掉——app.js 的 onPlayerCardClick 包裝函式需要這個旗標才會真的
+    // 讓投票踢出生效（見 handleVoteKickClick），漏了的話開局前點快速頭像完全不會有
+    // 反應。另外補上 onOpenCardPopup，手機版「點快速頭像先彈出完整卡片」這個新開關
+    // 開啟時才會用到（見 ui.js／openOccupantCardPopup）。
+    renderMobilePlayerQuickBar(el.mobilePlayerQuickBar, data, { enableVoteKick: true, onOpenCardPopup: openOccupantCardPopup, targetAccounts: playerPromptTargets, targetPromptClass: playerPromptClass });
+  }
   // 2026-11-10 新增：場地卡上點玩家 token 彈出的完整卡片，跟上面兩份玩家卡一樣要能即時
   // 跟著房間狀態更新（例如彈窗開著的時候對方剛好被攻擊、換裝），所以每次 renderState()
   // 都重新存一次目前這輪用的 renderPlayerCards 包裝函式跟相關參數，再呼叫
   // renderOccupantCardPopup() 讓目前開著的彈窗（如果有）照最新資料重繪；沒有開著的話
   // 這個函式內部會直接跳過。
-  occupantCardPopupRenderCtx = { renderPlayerCards, targetAccounts: playerPromptTargets, targetPromptClass: playerPromptClass, onEquipmentChipClick: handleEquipmentChipClick, onShieldChipClick: handleShieldChipClick };
+  occupantCardPopupRenderCtx = { renderPlayerCards, targetAccounts: playerPromptTargets, targetPromptClass: playerPromptClass, onEquipmentChipClick: handleEquipmentChipClick, onShieldChipClick: handleShieldChipClick, onRoleInfoClick: handleRoleInfoClick };
   renderOccupantCardPopup();
 
   // 手機版玩家列表會被 floatingSysInfo.js 整個移進右下角的浮動收合面板，
@@ -1259,8 +1351,18 @@ export function renderState({
   const floatingPlayersToggleBtn = document.querySelector('.sh-floating-players .sh-ffs-toggle-btn');
   if (floatingPlayersToggleBtn) {
     const hasPlayerTargetPrompt = playerPromptTargets.length > 0;
-    floatingPlayersToggleBtn.classList.toggle('attack-target-prompt', hasPlayerTargetPrompt && playerPromptClass === 'attack-target-prompt');
-    floatingPlayersToggleBtn.classList.toggle('area-target-prompt', hasPlayerTargetPrompt && playerPromptClass === 'area-target-prompt');
+    const isFloatingAttackPrompt = hasPlayerTargetPrompt && playerPromptClass === 'attack-target-prompt';
+    const isFloatingAreaPrompt = hasPlayerTargetPrompt && playerPromptClass === 'area-target-prompt';
+    floatingPlayersToggleBtn.classList.toggle('attack-target-prompt', isFloatingAttackPrompt);
+    floatingPlayersToggleBtn.classList.toggle('area-target-prompt', isFloatingAreaPrompt);
+    // 2026-11-11 新增：這顆按鈕是持續存在的同一個 DOM 節點，只在真正從「沒有提示」
+    // 變成「有提示」的那一刻才需要對齊一次虛擬時鐘；已經在閃爍中的話 syncPulseAnimationDelay
+    // 內部的保護會直接跳過，不會打斷正在播放的動畫。
+    if (isFloatingAttackPrompt || isFloatingAreaPrompt) {
+      syncPulseAnimationDelay(floatingPlayersToggleBtn);
+    } else {
+      clearPulseAnimationDelay(floatingPlayersToggleBtn);
+    }
   }
 
   const playerTargets = orderedPlayerEntries(data)
@@ -1987,7 +2089,9 @@ export function bindRoomEvents({
         giveUpLabel: t('room.equipment_choice.give_up'),
       });
       if (!choiceResult) {
-        toast(t('toast.area_choice_cancelled'));
+        // 2026-11-12 修正：這裡原本沿用場地效果那個「已取消場地效果選擇」的 toast，
+        // 文字對不上（這裡是掠奪裝備，不是場地效果），換成專用的掠奪取消文案。
+        toast(t('toast.loot_choice_cancelled'));
         return;
       }
       if (choiceResult === EQUIPMENT_CHOICE_GIVE_UP) {
@@ -2035,6 +2139,11 @@ export function bindRoomEvents({
       updateStageNextStepButtonState(state);
     }
   };
+
+  // 2026-11-12 新增：把這個 bindRoomEvents 作用域裡的 resolvePendingKillLoot 存一份
+  // 參照到模組層級變數，讓 renderState 偵測到「剛好死亡待掠奪」時可以直接呼叫，
+  // 達到自動彈出選擇視窗的效果（見上面 autoOpenKillLootResolver 宣告處的說明）。
+  autoOpenKillLootResolver = resolvePendingKillLoot;
 
   const useErstwhileAltarOnTarget = async (targetAccount) => {
     if (!state.roomId || !state.account || stageNextStepBusy) return;

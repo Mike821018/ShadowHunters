@@ -164,6 +164,39 @@ export function createCardInfoHelpers({ t, getAnchor, setAnchor }) {
     if (activeAnchor) positionCardInfoDialog(dialogEl, activeAnchor);
   };
 
+  // 2026-11-12 新增：角色說明原本是卡片上滑過/點擊展開的 CSS 小視窗（.player-role-popover），
+  // 現在改成跟裝備卡、護盾說明一樣，點擊後重用同一個 #activeCardDialog 浮動視窗顯示——
+  // 這樣角色名稱、陣營、勝利條件、能力說明都有足夠寬度顯示，不用再塞在玩家卡片本身
+  // 有限的寬度裡（這也是英文版「(Revealed)」字樣在彈窗玩家卡片裡超框的根本解法：
+  // 資訊直接搬出卡片，不再跟卡片寬度搶位置）。勝利條件／能力兩段用空行隔開放進
+  // description 欄位，靠 .active-card-dialog-desc 新增的 white-space: pre-line 保留換行。
+  const openRoleInfoDialog = ({ name, camp, win, ability, revealLabel, anchorEl = null } = {}) => {
+    const dialogEl = document.getElementById('activeCardDialog');
+    const nameEl = document.getElementById('activeCardDialogName');
+    const typeEl = document.getElementById('activeCardDialogType');
+    const descEl = document.getElementById('activeCardDialogDesc');
+    const displayName = String(name || '').trim();
+    if (!displayName) return;
+    const typeText = [String(camp || '').trim(), String(revealLabel || '').trim()].filter(Boolean).join(' · ');
+    const descText = [
+      String(win || '').trim() ? `${t('ui.role_win')} ${String(win).trim()}` : '',
+      String(ability || '').trim() ? `${t('ui.role_ability')} ${String(ability).trim()}` : '',
+    ].filter(Boolean).join('\n\n');
+
+    if (!(dialogEl instanceof HTMLDialogElement)) {
+      window.alert([displayName, typeText, '', descText].filter(Boolean).join('\n'));
+      return;
+    }
+
+    if (nameEl instanceof HTMLElement) nameEl.textContent = displayName;
+    if (typeEl instanceof HTMLElement) typeEl.textContent = typeText;
+    if (descEl instanceof HTMLElement) descEl.textContent = descText || t('room.active_card.no_desc');
+    setAnchor(anchorEl instanceof HTMLElement ? anchorEl : null);
+    if (!dialogEl.open) dialogEl.show();
+    const activeAnchor = getAnchor();
+    if (activeAnchor) positionCardInfoDialog(dialogEl, activeAnchor);
+  };
+
   return {
     getLocalizedCardName,
     localizeEquipmentOption,
@@ -173,5 +206,6 @@ export function createCardInfoHelpers({ t, getAnchor, setAnchor }) {
     showCardInfoDialog,
     openEquipmentCardDialog,
     openInvulnerabilityInfoDialog,
+    openRoleInfoDialog,
   };
 }
